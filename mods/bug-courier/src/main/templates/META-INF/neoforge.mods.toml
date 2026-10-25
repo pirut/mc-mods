@@ -1,0 +1,33 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+issueTrackerURL="https://github.com/pirut/bug-courier/issues"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+displayURL="https://github.com/pirut/bug-courier"
+authors="JR Bussard"
+description='''
+A clear in-game way to report bugs to the mods you play. Pick the mod, say what happened, see exactly
+what will be sent, and the mod's issue page opens with the report filled in. Nothing is sent without you.
+'''
+
+[modproperties.${mod_id}]
+bugcourier_tracker="github:pirut/bug-courier"
+bugcourier_labels="bug,player-report"
+
+[[dependencies.${mod_id}]]
+modId="neoforge"
+type="required"
+versionRange="${neo_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"
