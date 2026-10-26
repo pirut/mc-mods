@@ -32,24 +32,28 @@ final class SentScreen extends Screen {
         Component body = zip == null
                 ? Component.translatable("bugcourier.sent.body_nozip", target.tracker().displayName())
                 : Component.translatable("bugcourier.sent.body", target.tracker().displayName(), zip.getFileName().toString());
-        text = MultiLineLabel.create(font, body, Math.min(360, width - 40));
-        int y = height / 2 + 10;
-        int bw = 150;
+        text = MultiLineLabel.create(font, body, Math.min(360, width - 24));
+        // Buttons sit on the bottom two rows, the text above them, so a narrow window can't push them off screen.
+        int bw = Math.min(150, (width - 20) / 2);
+        int row2 = height - 26;
+        int row1 = row2 - 24;
         addRenderableWidget(Button.builder(Component.translatable("bugcourier.sent.open_page"), b -> Util.getPlatform().openUri(prefilled.uri()))
-                .bounds(width / 2 - bw - 4, y, bw, 20).build());
+                .bounds(width / 2 - bw - 2, row1, bw, 20).build());
         Button folder = addRenderableWidget(Button.builder(Component.translatable("bugcourier.sent.open_folder"),
-                b -> Util.getPlatform().openFile(zip.getParent().toFile())).bounds(width / 2 + 4, y, bw, 20).build());
+                b -> Util.getPlatform().openFile(zip.getParent().toFile())).bounds(width / 2 + 2, row1, bw, 20).build());
         folder.active = zip != null;
         addRenderableWidget(Button.builder(Component.translatable("bugcourier.preview.copy"), b -> minecraft.keyboardHandler.setClipboard(full))
-                .bounds(width / 2 - bw - 4, y + 24, bw, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose()).bounds(width / 2 + 4, y + 24, bw, 20).build());
+                .bounds(width / 2 - bw - 2, row2, bw, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose()).bounds(width / 2 + 2, row2, bw, 20).build());
     }
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         super.render(g, mouseX, mouseY, partialTick);
-        g.drawCenteredString(font, title, width / 2, height / 2 - 70, 0xFFFFFF);
-        text.renderCentered(g, width / 2, height / 2 - 50);
+        int textHeight = 14 + text.getLineCount() * font.lineHeight;
+        int top = Math.max(6, (height - 52 - textHeight) / 2);
+        g.drawCenteredString(font, title, width / 2, top, 0xFFFFFF);
+        text.renderCentered(g, width / 2, top + 14);
     }
 
     @Override

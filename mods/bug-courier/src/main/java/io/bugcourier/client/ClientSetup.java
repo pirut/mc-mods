@@ -12,7 +12,9 @@ import java.time.Duration;
 import java.util.Properties;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
@@ -57,13 +59,32 @@ public final class ClientSetup {
 
     private static void onScreenInit(ScreenEvent.Init.Post e) {
         if (e.getScreen() instanceof PauseScreen pause && pause.showsPauseMenu()) {
-            e.addListener(Button.builder(Component.translatable("bugcourier.button"), b -> ReportTargets.openScreen(null, null))
-                    .bounds(4, pause.height - 24, 110, 20).build());
+            Component label = Component.translatable("bugcourier.button");
+            int w = Math.min(110, Minecraft.getInstance().font.width(label) + 16);
+            int[] spot = freeCorner(e.getListenersList(), pause.width, pause.height, w);
+            e.addListener(Button.builder(label, b -> ReportTargets.openScreen(null, null)).bounds(spot[0], spot[1], w, 20).build());
         }
         if (e.getScreen() instanceof TitleScreen && !crashChecked) {
             crashChecked = true;
             offerCrashReport();
         }
+    }
+
+    // The first corner no other button covers, so the button stays visible beside other mods' additions.
+    private static int[] freeCorner(java.util.List<? extends GuiEventListener> existing, int width, int height, int w) {
+        int[][] corners = {{4, height - 24}, {width - w - 4, height - 24}, {4, 4}, {width - w - 4, 4}};
+        for (int[] c : corners) {
+            boolean clear = true;
+            for (GuiEventListener l : existing) {
+                if (l instanceof AbstractWidget o && o.visible && c[0] < o.getX() + o.getWidth() && o.getX() < c[0] + w
+                        && c[1] < o.getY() + o.getHeight() && o.getY() < c[1] + 20) {
+                    clear = false;
+                    break;
+                }
+            }
+            if (clear) return c;
+        }
+        return corners[0];
     }
 
     // The game is gone when it crashes, so the offer comes on the next start, once per crash report.

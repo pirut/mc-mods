@@ -28,5 +28,6 @@
   "bugcourier.crash.title": "The game crashed last time",
   "bugcourier.crash.body": "Want to send the crash report to the mod that caused it? You'll see everything before it's sent.",
   "bugcourier.crash.report": "Report it",
-  "bugcourier.crash.later": "Not now"
+  "bugcourier.crash.later": "Not now",
+  "bugcourier.screen.need_title": "Give the report a title first"
 }
