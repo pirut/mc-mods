@@ -33,6 +33,8 @@ public final class AgentApi implements ILuaAPI {
         try {
             TuiSession.stopComputer(system.getID());
             Relay.stopTuis(system.getID());
+            Questions.computerStopped(system.getID());
+            if (CCAgent.tools() != null) CCAgent.tools().forgetAllowed(system.getID());
         } catch (RuntimeException e) {
             CCAgent.LOG.warn("Couldn't stop computer #{}'s TUI", system.getID(), e);
         }
@@ -55,28 +57,30 @@ public final class AgentApi implements ILuaAPI {
         Jobs.complete(id, new Jobs.Result(ok, values, output, error, millis));
     }
 
-    /** Start Claude Code or Codex for the chat program: (agent, prompt, session?, width) -> run id, or nil and an error. */
+    /** Start Claude Code or Codex for the chat program: (agent, prompt, session?, width, {model, effort, mode}?) -> run id, or nil and an error. */
     @LuaFunction
     public final Object[] ask(IArguments args) throws LuaException {
         var agent = args.getString(0);
         var prompt = LuaStrings.fromLua(args.getString(1));
         var session = args.optString(2, null);
         int width = args.optInt(3, 51);
+        var table = args.optTable(4).orElse(java.util.Map.of());
+        var options = AgentRunner.Options.of(table.get("model"), table.get("effort"), table.get("mode"));
         try {
-            return new Object[]{startAgent(agent, prompt, session, width)};
+            return new Object[]{startAgent(agent, prompt, session, width, options)};
         } catch (ToolException e) {
             return new Object[]{null, e.getMessage()};
         }
     }
 
-    private int startAgent(String agent, String prompt, String session, int width) {
+    private int startAgent(String agent, String prompt, String session, int width, AgentRunner.Options options) {
         var server = CCAgent.server();
         var config = CCAgent.config();
         if (server == null || config == null) throw new ToolException("no world is open");
         var player = Relay.interactingPlayer(system.getID());
         // Someone else's game: their own PC runs the agent.
         if (player != null && !server.isSingleplayerOwner(player.getGameProfile())) {
-            return Relay.launch(player, system, agent, prompt, session, width);
+            return Relay.launch(player, system, agent, prompt, session, width, options);
         }
         if (server.isDedicatedServer()) {
             throw new ToolException("open this computer's screen in the game to use " + agent
@@ -84,7 +88,8 @@ public final class AgentApi implements ILuaAPI {
         }
         if (!CCAgent.running()) throw new ToolException("CC: Agent's MCP server isn't running (see /ccagent)");
         AgentRunner.Sink sink = (run, kind, text) -> system.queueEvent("ccagent_chat", run, kind, LuaStrings.toLua(text));
-        return AgentRunner.start(sink, system.getID(), system.getLabel(), agent, prompt, session, width, config, config.url());
+        return AgentRunner.start(sink, system.getID(), system.getLabel(), agent, prompt, session, width, options, config,
+            config.url());
     }
 
     @LuaFunction
@@ -182,6 +187,18 @@ public final class AgentApi implements ILuaAPI {
         var session = TuiSession.get(id);
         if (session == null || session.computerId != system.getID()) throw new LuaException("no such session");
         return session;
+    }
+
+    /** Answer a question an agent asked (a ccagent_ask event): (id, text) -> whether it was still waiting. */
+    @LuaFunction
+    public final boolean answer(int id, String text) {
+        return Questions.answer(system.getID(), id, LuaStrings.fromLua(text));
+    }
+
+    /** Forget the "Allow for this chat" answers given on this computer. */
+    @LuaFunction
+    public final void resetPermissions() {
+        if (CCAgent.tools() != null) CCAgent.tools().forgetAllowed(system.getID());
     }
 
     /** Agent tool calls after the given entry id, oldest first. */

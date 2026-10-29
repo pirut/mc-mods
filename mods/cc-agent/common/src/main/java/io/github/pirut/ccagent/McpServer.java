@@ -39,7 +39,9 @@ public final class McpServer {
         For a peripheral you don't know (addon mods add many), call describe_peripheral: it names the mod and version \
         that made it, then look up that mod's docs online rather than guessing arguments.
         Use cc_help for CC's own API docs. Files written here land on the computer at once; nothing restarts \
-        unless you reboot it.""";
+        unless you reboot it.
+        To ask the player something (a choice, a missing detail), use ask_player: it shows your question with \
+        buttons on their CC computer and returns the answer.""";
 
     /** Where tool calls go: this game's own server, or the multiplayer server through the relay. */
     public interface Backend {
@@ -94,7 +96,21 @@ public final class McpServer {
                 return;
             }
             switch (exchange.getRequestMethod().toUpperCase(Locale.ROOT)) {
-                case "POST" -> post(exchange);
+                case "POST" -> {
+                    // The in-game chat marks its agent's requests with the computer it's running on.
+                    Integer chat = null;
+                    try {
+                        var header = exchange.getRequestHeaders().getFirst(Questions.CHAT_HEADER);
+                        if (header != null) chat = Integer.parseInt(header.trim());
+                    } catch (NumberFormatException ignored) {
+                    }
+                    Questions.CHAT.set(chat);
+                    try {
+                        post(exchange);
+                    } finally {
+                        Questions.CHAT.remove();
+                    }
+                }
                 case "DELETE" -> send(exchange, 200, "text/plain", "");
                 default -> {
                     exchange.getResponseHeaders().add("Allow", "POST, DELETE");

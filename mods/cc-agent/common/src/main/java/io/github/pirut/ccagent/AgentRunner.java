@@ -1,5 +1,6 @@
 package io.github.pirut.ccagent;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -31,6 +32,40 @@ public final class AgentRunner {
     private static final String TOOL_PREFIX = "mcp__cc-agent__";
 
     /** Where a run's chat lines go: straight to the computer, or back over the relay. */
+    /** Chat settings: model and effort (null for the CLI's own default) and the permission mode. */
+    public record Options(String model, String effort, String mode) {
+        public static final Options DEFAULT = new Options(null, null, "auto");
+
+        static String clean(Object value) {
+            if (value == null) return null;
+            var text = value.toString().trim();
+            return text.isEmpty() || text.equals("default") ? null : text;
+        }
+
+        public static Options of(Object model, Object effort, Object mode) {
+            var m = clean(mode);
+            return new Options(clean(model), clean(effort), m == null ? "auto" : m);
+        }
+
+        public static Options fromJson(com.google.gson.JsonObject json) {
+            if (json == null) return DEFAULT;
+            return of(Json.str(json, "model", null), Json.str(json, "effort", null), Json.str(json, "mode", null));
+        }
+
+        public com.google.gson.JsonObject toJson() {
+            var out = new com.google.gson.JsonObject();
+            if (model != null) out.addProperty("model", model);
+            if (effort != null) out.addProperty("effort", effort);
+            out.addProperty("mode", mode);
+            return out;
+        }
+    }
+
+    /** CC: Agent tools that only look: allowed without asking in the chat's "ask" and "plan" modes. */
+    private static final List<String> LOOK_TOOLS = List.of("list_computers", "computer_info", "read_screen", "get_job",
+        "list_files", "read_file", "list_peripherals", "describe_peripheral", "turtle_inventory", "inspect_block",
+        "scan_area", "watch_events", "cc_help", "ask_player");
+
     public interface Sink {
         void send(int run, String kind, String text);
     }
@@ -46,7 +81,8 @@ public final class AgentRunner {
      * The caller decides whether this machine may run agents at all.
      */
     public static int start(Sink sink, int computerId, String label, String agent, String prompt, String session, int width,
-                            AgentConfig config, String mcpUrl) {
+                            Options options, AgentConfig config, String mcpUrl) {
+        if (options == null) options = Options.DEFAULT;
         if (!config.launchAgents) throw new ToolException("launchAgents=false in config/ccagent.properties");
         for (var run : RUNS.values()) {
             if (run.computerId == computerId) throw new ToolException("this computer already has an agent working");
@@ -66,13 +102,26 @@ public final class AgentRunner {
         try {
             Files.createDirectories(workDir);
             if (claude) {
-                var mcp = workDir.resolve("mcp.json");
+                var mcp = workDir.resolve("mcp-" + computerId + ".json");
                 var servers = new JsonObject();
                 servers.add("cc-agent", Json.obj("type", "http", "url", mcpUrl,
-                    "headers", Json.obj("Authorization", "Bearer " + config.token)));
+                    "headers", Json.obj("Authorization", "Bearer " + config.token, Questions.CHAT_HEADER, String.valueOf(computerId))));
                 Files.writeString(mcp, Json.PRETTY.toJson(Json.obj("mcpServers", servers)));
+                // Only web search among Claude Code's own tools; anything not allowed up front asks the player
+                // through permission_prompt, which shows Allow/Deny buttons in the chat.
+                String allowed = switch (options.mode()) {
+                    case "ask", "plan" -> String.join(",", LOOK_TOOLS.stream().map(t -> TOOL_PREFIX + t).toList()) + ",WebSearch,WebFetch";
+                    default -> TOOL_PREFIX + "*,WebSearch,WebFetch";
+                };
                 cmd.addAll(List.of("-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config",
-                    "--mcp-config", mcp.toString(), "--allowedTools", TOOL_PREFIX + "*,WebSearch,WebFetch"));
+                    "--mcp-config", mcp.toString(),
+                    // Plan mode writes its plan to a file in ~/.claude/plans, then asks with ExitPlanMode.
+                    "--tools", "WebSearch,WebFetch,TodoWrite" + (options.mode().equals("plan") ? ",Write,ExitPlanMode" : ""),
+                    "--allowedTools", allowed + ",TodoWrite",
+                    "--permission-prompt-tool", TOOL_PREFIX + "permission_prompt"));
+                if (options.mode().equals("plan")) cmd.addAll(List.of("--permission-mode", "plan"));
+                if (options.model() != null) cmd.addAll(List.of("--model", options.model()));
+                if (options.effort() != null) cmd.addAll(List.of("--effort", options.effort()));
                 if (session != null) cmd.addAll(List.of("--resume", session));
                 cmd.addAll(split(config.claudeArgs));
             } else {
@@ -81,7 +130,10 @@ public final class AgentRunner {
                     "-c", "mcp_servers.cc-agent.url=" + mcpUrl,
                     "-c", "mcp_servers.cc-agent.bearer_token_env_var=CC_AGENT_TOKEN",
                     // With approval_policy=never Codex refuses MCP calls that need approval: approve ours up front.
-                    "-c", "mcp_servers.cc-agent.default_tools_approval_mode=approve"));
+                    "-c", "mcp_servers.cc-agent.default_tools_approval_mode=approve",
+                    "-c", "mcp_servers.cc-agent.http_headers={\"" + Questions.CHAT_HEADER + "\"=\"" + computerId + "\"}"));
+                if (options.model() != null) cmd.addAll(List.of("-m", options.model()));
+                if (options.effort() != null) cmd.addAll(List.of("-c", "model_reasoning_effort=" + options.effort()));
                 cmd.addAll(split(config.codexArgs));
                 if (session != null) cmd.addAll(List.of("resume", session));
                 cmd.add("-");
@@ -130,7 +182,8 @@ public final class AgentRunner {
         return "[The player is talking to you from inside Minecraft, through the chat program on CC: Tweaked computer #"
             + computerId + label + ". Act in the world with the cc-agent MCP tools. That computer's screen is "
             + "showing this chat: don't use type_text or press_keys on it, and don't reboot or shut it down unless "
-            + "asked; run things on it headless with run_lua/run_shell, or use other computers. When a peripheral "
+            + "asked; run things on it headless with run_lua/run_shell, or use other computers. To ask the player something, "
+            + "use ask_player: it shows your question with buttons on that computer. When a peripheral "
             + "comes from an addon mod, call describe_peripheral and look up that mod's docs online. Your replies "
             + "show on a " + width + "-column screen: keep them short, plain text, no tables or markdown headings.]\n\n";
     }
@@ -203,10 +256,36 @@ public final class AgentRunner {
     private static final class State {
         String session;
         boolean failed;
+        boolean sawText;
+        String model;
+        long context;
 
+        /** "sonnet-5-5, 31k context" for the chat's line after a reply. */
         String footer() {
-            return "";
+            var parts = new ArrayList<String>();
+            if (model != null) parts.add(model.replaceFirst("^claude-", ""));
+            if (context > 0) parts.add(context >= 1000 ? (context + 500) / 1000 + "k context" : context + " context");
+            return String.join(", ", parts);
         }
+    }
+
+    /** A todo list as chat lines: "[x] done", "[>] doing", "[ ] to do". */
+    private static String todos(JsonArray items, String textKey, String statusKey) {
+        var out = new StringBuilder();
+        for (var item : items) {
+            if (!item.isJsonObject()) continue;
+            var o = item.getAsJsonObject();
+            String mark;
+            if (statusKey.equals("completed")) mark = o.has("completed") && o.get("completed").getAsBoolean() ? "x" : " ";
+            else mark = switch (str(o, statusKey)) {
+                case "completed" -> "x";
+                case "in_progress" -> ">";
+                default -> " ";
+            };
+            if (out.length() > 0) out.append('\n');
+            out.append('[').append(mark).append("] ").append(str(o, textKey));
+        }
+        return out.toString();
     }
 
     private static void claudeEvent(Run run, JsonObject event, State state) {
@@ -216,23 +295,48 @@ public final class AgentRunner {
                 if ("init".equals(str(event, "subtype")) && event.has("session_id")) {
                     state.session = str(event, "session_id");
                     send(run, "session", state.session);
+                    if (event.has("model")) state.model = str(event, "model");
                 }
             }
             case "assistant" -> {
                 var message = event.getAsJsonObject("message");
                 if (message == null || !message.has("content")) return;
+                if (message.has("usage") && message.get("usage").isJsonObject()) {
+                    var usage = message.getAsJsonObject("usage");
+                    long context = 0;
+                    for (var key : new String[]{"input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"}) {
+                        if (usage.has(key) && usage.get(key).isJsonPrimitive()) context += usage.get(key).getAsLong();
+                    }
+                    if (context > 0) state.context = context;
+                }
                 for (var part : message.getAsJsonArray("content")) {
                     var p = part.getAsJsonObject();
                     switch (str(p, "type")) {
                         case "text" -> {
                             var text = str(p, "text").trim();
-                            if (!text.isEmpty()) send(run, "text", text);
+                            if (!text.isEmpty()) {
+                                state.sawText = true;
+                                send(run, "text", text);
+                            }
+                        }
+                        case "thinking" -> {
+                            var text = str(p, "thinking").trim();
+                            if (!text.isEmpty()) send(run, "thinking", shorten(firstLine(text), 160));
                         }
                         case "tool_use" -> {
                             var name = str(p, "name");
                             if (name.equals("ToolSearch")) continue;
                             var args = p.has("input") && p.get("input").isJsonObject() ? p.getAsJsonObject("input") : new JsonObject();
-                            send(run, "tool", toolLine(name, args));
+                            var path = Json.str(args, "file_path", "").replace('\\', '/');
+                            if (name.equals("Write") && path.contains("/.claude/plans/")) {
+                                send(run, "plan", Json.str(args, "content", "").trim());
+                            } else if (name.equals("ExitPlanMode") && !Json.str(args, "plan", "").isBlank()) {
+                                send(run, "plan", Json.str(args, "plan", "").trim());
+                            } else if (name.equals("TodoWrite") && args.has("todos") && args.get("todos").isJsonArray()) {
+                                send(run, "todos", todos(args.getAsJsonArray("todos"), "content", "status"));
+                            } else if (!name.equals("ExitPlanMode")) {
+                                send(run, "tool", toolLine(name, args));
+                            }
                         }
                         default -> {
                         }
@@ -258,6 +362,9 @@ public final class AgentRunner {
                 if (event.has("is_error") && event.get("is_error").getAsBoolean()) {
                     state.failed = true;
                     send(run, "error", firstLine(str(event, "result")));
+                } else if (!state.sawText && !str(event, "result").isBlank()) {
+                    // Slash commands like /context answer only in the result.
+                    send(run, "text", str(event, "result").trim());
                 }
             }
             default -> {
@@ -294,6 +401,14 @@ public final class AgentRunner {
                     }
                     case "web_search" -> {
                         if (!done) send(run, "tool", "search " + shorten(str(item, "query"), 80));
+                    }
+                    case "reasoning" -> {
+                        if (done && !str(item, "text").isBlank()) send(run, "thinking", shorten(firstLine(str(item, "text").trim()), 160));
+                    }
+                    case "todo_list" -> {
+                        if (item.has("items") && item.get("items").isJsonArray()) {
+                            send(run, "todos", todos(item.getAsJsonArray("items"), "text", "completed"));
+                        }
                     }
                     case "error" -> send(run, "error", firstLine(str(item, "message")));
                     default -> {

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0
+
+- **The chat now works like the terminal version.**
+  - `/model`, `/effort` and `/mode` open pickers you click (or press a number). Settings are kept per
+    computer.
+  - Modes: **auto** (uses CC tools without asking), **ask** (asks before anything that changes things) and
+    **plan** (plans first, then asks to go ahead). Shift+Tab cycles them.
+  - Permission prompts with **Allow**, **Allow for this chat** and **Deny**. You can also type a reason.
+  - `/resume` goes back to an earlier conversation.
+  - Other slash commands (`/context`, `/compact`, your own) go to the agent.
+  - Tab completes commands. You can type ahead while it works; the message waits its turn.
+  - It shows the agent's todo list and thinking, and after each reply the model and how full the context is.
+- **Agents can ask you questions** with answers to click: the new `ask_player` tool. It works in the chat and
+  from your own terminal (it asks on the computer you name).
+- New docs with screenshots: getting started, the chat, troubleshooting and a testing checklist.
+
 ## 0.4.0
 
 - **The real Claude Code and Codex screens in CC.** `claude --tui` (or `codex --tui`) runs the agent's

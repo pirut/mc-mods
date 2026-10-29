@@ -209,12 +209,13 @@ public final class Relay {
     }
 
     /** Ask a player's client to run Claude Code or Codex for this computer. Returns the chat id. */
-    public static int launch(ServerPlayer player, IComputerSystem computer, String agent, String prompt, String session, int width) {
+    public static int launch(ServerPlayer player, IComputerSystem computer, String agent, String prompt, String session, int width,
+                             AgentRunner.Options options) {
         checkLaunch(player);
         int id = NEXT_ID.getAndIncrement();
         CHATS.put(id, new Chat(id, computer, player.getUUID()));
         var message = obj("type", "launch", "chat", id, "agent", agent, "prompt", prompt, "width", width,
-            "computer", computer.getID());
+            "computer", computer.getID(), "options", options.toJson());
         if (session != null) message.addProperty("session", session);
         if (computer.getLabel() != null) message.addProperty("label", computer.getLabel());
         send(player, message);
@@ -423,7 +424,9 @@ public final class Relay {
                 + (clientConfig == null ? "?" : clientConfig.port) + " busy, or enabled=false)");
             int run = AgentRunner.start(sink, Json.integer(message, "computer", 0), Json.str(message, "label", null),
                 Json.str(message, "agent", "claude"), Json.str(message, "prompt", ""), Json.str(message, "session", null),
-                Json.integer(message, "width", 51), clientConfig, clientConfig.url());
+                Json.integer(message, "width", 51),
+                AgentRunner.Options.fromJson(message.has("options") && message.get("options").isJsonObject()
+                    ? message.getAsJsonObject("options") : null), clientConfig, clientConfig.url());
             CLIENT_RUNS.put(chat, run);
         } catch (ToolException e) {
             sink.send(0, "error", e.getMessage());
@@ -537,6 +540,12 @@ public final class Relay {
 
         @Override
         public JsonObject call(String name, JsonObject args) {
+            // The server answers questions on the computer whose chat this agent runs in.
+            var chat = Questions.CHAT.get();
+            if (chat != null) {
+                args = args.deepCopy();
+                args.addProperty("__chat", chat);
+            }
             return ask(name, args, 660);
         }
 

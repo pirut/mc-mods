@@ -103,6 +103,70 @@ public final class Tools implements McpServer.Backend {
         return Math.max(1, Math.min(Json.integer(args, "timeout_seconds", DEFAULT_TIMEOUT), MAX_TIMEOUT));
     }
 
+    /** The computer named in args, else the one whose chat this request comes from. */
+    private ServerComputer chatComputer(JsonObject args) {
+        if (args.has("computer")) return computer(args);
+        Integer chat = Questions.CHAT.get();
+        if (chat == null && args.has("__chat")) chat = Json.integer(args, "__chat", -1);
+        if (chat == null) throw new ToolException("say which computer to ask on (computer)");
+        return computers.find(new com.google.gson.JsonPrimitive(String.valueOf(chat)));
+    }
+
+    /** Tools the player said yes to for the rest of a chat, per computer. */
+    private final Map<Integer, java.util.Set<String>> alwaysAllowed = new java.util.concurrent.ConcurrentHashMap<>();
+
+    void forgetAllowed(int computerId) {
+        alwaysAllowed.remove(computerId);
+    }
+
+    private String permissionPrompt(JsonObject args) {
+        var c = chatComputer(args);
+        var tool = Json.need(args, "tool_name");
+        var input = args.has("input") && args.get("input").isJsonObject() ? args.getAsJsonObject("input") : new JsonObject();
+        var allowed = alwaysAllowed.computeIfAbsent(c.getID(), k -> java.util.concurrent.ConcurrentHashMap.newKeySet());
+        if (allowed.contains(tool) || allowed.contains("*") && tool.startsWith("mcp__cc-agent__")) return allow(input);
+        // Plan mode's own plan file.
+        if (tool.equals("Write") && Json.str(input, "file_path", "").replace('\\', '/').contains("/.claude/plans/")) return allow(input);
+
+        String answer;
+        if (tool.equals("ExitPlanMode")) {
+            answer = Questions.ask(c, "plan", "Go ahead with the plan above?",
+                List.of(PLAN_AUTO, PLAN_ASK, "No, keep planning"), true, 600);
+            if (answer.equals(PLAN_AUTO)) {
+                allowed.add("*");
+                return allow(input);
+            }
+            if (answer.equals(PLAN_ASK)) return allow(input);
+        } else {
+            var shortName = tool.startsWith("mcp__cc-agent__") ? tool.substring("mcp__cc-agent__".length()) : tool;
+            var detail = summary(shortName, input);
+            var where = Json.str(input, "computer", null);
+            var question = "Allow " + shortName + (where == null ? "" : " on computer " + where) + "?"
+                + (detail == null || detail.isEmpty() ? "" : "\n" + shorten(detail, 300));
+            answer = Questions.ask(c, "permission", question, List.of("Allow", "Allow for this chat", "Deny"), true, 600);
+            if (answer.equals("Allow")) return allow(input);
+            if (answer.equals("Allow for this chat")) {
+                allowed.add(tool);
+                return allow(input);
+            }
+        }
+        var message = answer.equals("Deny") || answer.startsWith("No,") ? "The player said no."
+            : "The player said no: " + answer;
+        return Json.COMPACT.toJson(obj("behavior", "deny", "message", message));
+    }
+
+    // The chat switches its own mode to match when the player picks one of these.
+    static final String PLAN_AUTO = "Yes, and don't ask again";
+    static final String PLAN_ASK = "Yes, ask before each change";
+
+    private static String allow(JsonObject input) {
+        return Json.COMPACT.toJson(obj("behavior", "allow", "updatedInput", input));
+    }
+
+    private static String shorten(String text, int max) {
+        return text.length() <= max ? text : text.substring(0, max - 3) + "...";
+    }
+
     private void register() {
         add("list_computers", "List computers", true, """
                 List every loaded CC: Tweaked computer, turtle and pocket computer: id, label, kind, on/off, \
@@ -318,6 +382,29 @@ public final class Tools implements McpServer.Backend {
                 call.append(")");
                 return computers.lua(computer(args), Lua.packed(call.toString()), timeout(args));
             });
+
+        add("ask_player", "Ask the player", true, """
+                Ask the player a question on their CC computer and wait for the answer. Give 2-6 short options when \
+                there's a choice (they click one); they can also type their own answer unless allow_other is false. \
+                Defaults to the computer the player is chatting from. Waits up to 10 minutes.""",
+            schema(obj("question", prop("string", "The question, short and plain."),
+                "options", obj("type", "array", "items", obj("type", "string"), "description", "Answers to click."),
+                "allow_other", prop("boolean", "Let them type an answer of their own (default true)."),
+                "computer", prop("string", COMPUTER + " Defaults to the player's chat computer.")), "question"),
+            args -> {
+                var options = new ArrayList<String>();
+                for (var item : Json.array(args, "options")) options.add(item.getAsString());
+                if (options.size() > 9) throw new ToolException("at most 9 options");
+                var answer = Questions.ask(chatComputer(args), "question", Json.need(args, "question"), options,
+                    Json.bool(args, "allow_other", true) || options.isEmpty(), 600);
+                return "The player answered: " + answer;
+            });
+
+        add("permission_prompt", "Permission prompt", true, """
+                Used by CC: Agent's in-game chat to ask the player before a tool runs. Don't call it yourself.""",
+            schema(obj("tool_name", prop("string", "Tool."), "input", obj("type", "object"),
+                "computer", prop("string", COMPUTER)), "tool_name"),
+            args -> permissionPrompt(args));
 
         add("describe_peripheral", "Describe a peripheral", true, """
                 One peripheral in depth: its types and methods, the block (or turtle upgrade) behind it, and the mod that \

@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 
 public final class CCAgent {
     public static final String MOD_ID = "ccagent";
-    public static final String VERSION = "0.4.0";
+    public static final String VERSION = "0.5.0";
     public static final Logger LOG = LoggerFactory.getLogger("CC: Agent");
 
     private static Platform platform;
@@ -52,6 +52,7 @@ public final class CCAgent {
     public static void serverStopping() {
         AgentRunner.stopAll();
         TuiSession.stopAll();
+        Questions.cancelAll();
         Relay.serverStopped();
         server = null;
         tools = null;
