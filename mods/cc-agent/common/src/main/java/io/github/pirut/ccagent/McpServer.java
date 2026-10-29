@@ -37,6 +37,8 @@ public final class McpServer {
         into the real shell), then use read_screen and press_keys.
         Lua is CC: Tweaked's (Lua 5.2 style). Long loops must yield (sleep, os.pullEvent) or CC kills them after \
         about 10 s. Turtle moves need fuel. Positions: +x east, +y up, +z south.
+        For a peripheral you don't know (addon mods add many), call describe_peripheral: it names the mod and version \
+        that made it, then look up that mod's docs online rather than guessing arguments.
         Use cc_help for CC's own API docs. Files written here land on the computer at once; nothing restarts \
         unless you reboot it.""";
 
@@ -187,6 +189,13 @@ public final class McpServer {
         var tool = tools.get(name);
         if (tool == null) return toolResult("unknown tool " + name, true);
         var args = params.has("arguments") && params.get("arguments").isJsonObject() ? params.getAsJsonObject("arguments") : new JsonObject();
+        var result = run(tool, name, args);
+        ActivityLog.add(name, Json.str(args, "computer", null), Tools.summary(name, args),
+            !result.get("isError").getAsBoolean());
+        return result;
+    }
+
+    private JsonObject run(Tools.Tool tool, String name, JsonObject args) {
         try {
             var value = tool.handler().call(args);
             if (value instanceof Tools.ToolResult r) return toolResult(r.text(), r.error());

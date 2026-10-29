@@ -3,6 +3,7 @@ package io.github.pirut.ccagent.neoforge;
 import io.github.pirut.ccagent.CCAgent;
 import io.github.pirut.ccagent.Platform;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
@@ -22,8 +23,23 @@ public final class CCAgentNeoForge {
             }
 
             @Override
+            public Path gameDir() {
+                return FMLPaths.GAMEDIR.get();
+            }
+
+            @Override
             public String loader() {
                 return "neoforge";
+            }
+
+            @Override
+            public ModMeta mod(String modId) {
+                return ModList.get().getModContainerById(modId).map(container -> {
+                    var info = container.getModInfo();
+                    var homepage = info.getModURL().map(Object::toString).orElse(null);
+                    var issues = info.getOwningFile().getConfig().<String>getConfigElement("issueTrackerURL").orElse(null);
+                    return new ModMeta(modId, info.getDisplayName(), info.getVersion().toString(), homepage, null, issues);
+                }).orElse(null);
             }
         });
         NeoForge.EVENT_BUS.addListener((ServerStartedEvent e) -> CCAgent.serverStarted(e.getServer()));

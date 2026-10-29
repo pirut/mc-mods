@@ -1,0 +1,9 @@
+claude talks to Claude Code from this computer. It runs on your PC, signed in as you, and works on your CC computers through CC: Agent: writing programs, running them, reading errors, using peripherals and turtles.
+
+ex:
+"claude" opens the chat.
+"claude make a program that shows the time on the left monitor" starts with that request.
+
+In the chat, /new starts a fresh conversation and /exit leaves. Ctrl+T stops a reply that's in progress.
+
+Needs Claude Code installed and signed in on the PC playing singleplayer. See also: codex, agentlog.

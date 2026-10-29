@@ -1,0 +1,9 @@
+codex talks to OpenAI Codex from this computer, the same way the claude program talks to Claude Code. It runs on your PC, signed in as you.
+
+ex:
+"codex" opens the chat.
+"codex write a turtle program that digs a 3x3 tunnel" starts with that request.
+
+In the chat, /new starts a fresh conversation and /exit leaves. Ctrl+T stops a reply that's in progress.
+
+Needs Codex installed and signed in on the PC playing singleplayer. See also: claude, agentlog.

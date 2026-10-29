@@ -9,13 +9,14 @@ import org.slf4j.LoggerFactory;
 
 public final class CCAgent {
     public static final String MOD_ID = "ccagent";
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "0.2.0";
     public static final Logger LOG = LoggerFactory.getLogger("CC: Agent");
 
     private static Platform platform;
     private static AgentConfig config;
     private static McpServer mcp;
     private static String startError;
+    private static MinecraftServer server;
 
     private CCAgent() {
     }
@@ -26,6 +27,7 @@ public final class CCAgent {
     }
 
     public static void serverStarted(MinecraftServer server) {
+        CCAgent.server = server;
         config = AgentConfig.load(platform.configDir());
         startError = null;
         if (!config.enabled) {
@@ -46,6 +48,8 @@ public final class CCAgent {
     }
 
     public static void serverStopping() {
+        AgentRunner.stopAll();
+        server = null;
         if (mcp != null) {
             mcp.stop();
             mcp = null;
@@ -67,6 +71,18 @@ public final class CCAgent {
 
     public static String startError() {
         return startError;
+    }
+
+    public static MinecraftServer server() {
+        return server;
+    }
+
+    public static Platform.ModMeta mod(String modId) {
+        return platform == null ? null : platform.mod(modId);
+    }
+
+    public static java.nio.file.Path gameDir() {
+        return platform.gameDir();
     }
 
     public static String loader() {

@@ -49,6 +49,31 @@ public final class AgentApi implements ILuaAPI {
         Jobs.complete(id, new Jobs.Result(ok, values, output, error, millis));
     }
 
+    /** Start Claude Code or Codex for the chat program: (agent, prompt, session?, width) -> run id, or nil and an error. */
+    @LuaFunction
+    public final Object[] ask(IArguments args) throws LuaException {
+        var agent = args.getString(0);
+        var prompt = LuaStrings.fromLua(args.getString(1));
+        var session = args.optString(2, null);
+        int width = args.optInt(3, 51);
+        try {
+            return new Object[]{AgentRunner.start(system, agent, prompt, session, width)};
+        } catch (ToolException e) {
+            return new Object[]{null, e.getMessage()};
+        }
+    }
+
+    @LuaFunction
+    public final void stop(int run) {
+        AgentRunner.stop(run);
+    }
+
+    /** Agent tool calls after the given entry id, oldest first. */
+    @LuaFunction
+    public final java.util.List<java.util.Map<String, Object>> activity(java.util.Optional<Integer> after) {
+        return ActivityLog.after(after.orElse(0));
+    }
+
     @LuaFunction
     public final String version() {
         return CCAgent.VERSION;

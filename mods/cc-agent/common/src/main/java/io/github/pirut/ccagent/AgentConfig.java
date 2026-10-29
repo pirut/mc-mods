@@ -19,6 +19,11 @@ public final class AgentConfig {
     public String token = "";
     public boolean allowShellAndLua = true;
     public boolean allowFileWrites = true;
+    public boolean launchAgents = true;
+    public String claudeCommand = "claude";
+    public String codexCommand = "codex";
+    public String claudeArgs = "";
+    public String codexArgs = "";
 
     private final Path file;
 
@@ -47,6 +52,11 @@ public final class AgentConfig {
         config.token = props.getProperty("token", "").trim();
         config.allowShellAndLua = bool(props, "allowShellAndLua", config.allowShellAndLua);
         config.allowFileWrites = bool(props, "allowFileWrites", config.allowFileWrites);
+        config.launchAgents = bool(props, "launchAgents", config.launchAgents);
+        config.claudeCommand = props.getProperty("claudeCommand", config.claudeCommand).trim();
+        config.codexCommand = props.getProperty("codexCommand", config.codexCommand).trim();
+        config.claudeArgs = props.getProperty("claudeArgs", config.claudeArgs).trim();
+        config.codexArgs = props.getProperty("codexArgs", config.codexArgs).trim();
         if (config.token.length() < 16) config.token = newToken();
         config.save();
         return config;
@@ -81,7 +91,18 @@ public final class AgentConfig {
             allowShellAndLua=%s
             # Let agents write, move and delete files on computers.
             allowFileWrites=%s
-            """.formatted(enabled, dedicatedServer, host, port, token, allowShellAndLua, allowFileWrites);
+
+            # Let the in-game claude and codex programs start Claude Code / Codex on this machine, signed in as
+            # you. Singleplayer only. They may only use CC: Agent's tools (and web search for docs).
+            launchAgents=%s
+            # The commands to start them. A full path works too, if the game can't find them on its own.
+            claudeCommand=%s
+            codexCommand=%s
+            # Extra arguments, e.g. claudeArgs=--model sonnet or codexArgs=-m gpt-5-codex
+            claudeArgs=%s
+            codexArgs=%s
+            """.formatted(enabled, dedicatedServer, host, port, token, allowShellAndLua, allowFileWrites,
+            launchAgents, esc(claudeCommand), esc(codexCommand), esc(claudeArgs), esc(codexArgs));
         try {
             Files.createDirectories(file.getParent());
             try (Writer out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
@@ -90,6 +111,11 @@ public final class AgentConfig {
         } catch (IOException e) {
             CCAgent.LOG.warn("Couldn't write {}", file, e);
         }
+    }
+
+    /** Properties files treat backslashes as escapes (Windows paths). */
+    private static String esc(String value) {
+        return value.replace("\\", "\\\\");
     }
 
     private static boolean bool(Properties props, String key, boolean fallback) {

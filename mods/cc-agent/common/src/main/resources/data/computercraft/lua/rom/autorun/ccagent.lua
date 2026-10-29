@@ -27,6 +27,9 @@ if job_multishell then
     end
 end
 
+-- Programs get require from the shell; give jobs one too.
+local make_require = require and require("cc.require").make
+
 local native_pull = os.pullEventRaw
 local backlog = {}  -- events that arrived while a job ran, for the program that was waiting
 local active = nil  -- the job being resumed right now
@@ -90,6 +93,7 @@ end
 
 local function start(id, kind, code, as_json)
     local env = setmetatable({ shell = job_shell, multishell = job_multishell }, { __index = _G })
+    if make_require then env.require, env.package = make_require(env, "/") end
     local fn, err
     if kind == "shell" then
         fn = function()

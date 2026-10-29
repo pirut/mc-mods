@@ -19,8 +19,23 @@ public final class CCAgentFabric implements ModInitializer {
             }
 
             @Override
+            public Path gameDir() {
+                return FabricLoader.getInstance().getGameDir();
+            }
+
+            @Override
             public String loader() {
                 return "fabric";
+            }
+
+            @Override
+            public ModMeta mod(String modId) {
+                return FabricLoader.getInstance().getModContainer(modId).map(container -> {
+                    var meta = container.getMetadata();
+                    var contact = meta.getContact();
+                    return new ModMeta(modId, meta.getName(), meta.getVersion().getFriendlyString(),
+                        contact.get("homepage").orElse(null), contact.get("sources").orElse(null), contact.get("issues").orElse(null));
+                }).orElse(null);
             }
         });
         ServerLifecycleEvents.SERVER_STARTED.register(CCAgent::serverStarted);

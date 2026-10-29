@@ -288,6 +288,14 @@ public final class Tools {
                 return computers.lua(computer(args), Lua.packed(call.toString()), timeout(args));
             });
 
+        add("describe_peripheral", "Describe a peripheral", true, """
+                One peripheral in depth: its types and methods, the block (or turtle upgrade) behind it, and the mod that \
+                added it with that mod's version and links. CC only reports method names, so for anything you don't \
+                already know, search the web for that mod's ComputerCraft docs for this exact version before calling it.""",
+            schema(obj("computer", prop("string", COMPUTER), "peripheral", prop("string", "Side or network name.")),
+                "computer", "peripheral"),
+            args -> describePeripheral(computer(args), Json.need(args, "peripheral")));
+
         add("turtle", "Drive a turtle", false, """
                 Run turtle actions in order, each "function arg ..." from CC's turtle API, e.g. "forward", "turnLeft", \
                 "dig", "digUp", "place", "select 2", "refuel 1", "drop 16", "inspect", "getItemDetail 3", "transferTo 5 10", \
@@ -358,6 +366,129 @@ public final class Tools {
                 var result = computers.lua(computer(args), Lua.help(topic), DEFAULT_TIMEOUT);
                 return result.isJsonPrimitive() ? result.getAsString() : result;
             });
+    }
+
+    private static final String[] SIDES = {"bottom", "top", "back", "front", "right", "left"};
+
+    private JsonObject describePeripheral(ServerComputer computer, String name) {
+        var info = computers.lua(computer, "local n = " + LuaStrings.quote(name) + "\n" + """
+            if not peripheral.isPresent(n) then error("no peripheral called " .. n .. " (see list_peripherals)", 0) end
+            local methods = peripheral.getMethods(n) or {}
+            table.sort(methods)
+            return { types = { peripheral.getType(n) }, methods = #methods > 0 and methods or textutils.empty_json_array }
+            """, DEFAULT_TIMEOUT).getAsJsonObject();
+        var out = obj("peripheral", name);
+        out.add("types", info.get("types"));
+        out.add("methods", info.get("methods"));
+
+        String blockId = null;
+        var side = java.util.Arrays.asList(SIDES).indexOf(name.toLowerCase(Locale.ROOT));
+        if (side >= 0) {
+            var found = computers.onServer(() -> sideSource(computer, dan200.computercraft.core.computer.ComputerSide.valueOf(side)));
+            if (found != null) {
+                for (var e : found.entrySet()) out.add(e.getKey(), e.getValue());
+                if (found.has("block")) blockId = found.get("block").getAsString();
+                else if (found.has("upgrade_item")) blockId = found.get("upgrade_item").getAsString();
+            }
+        } else {
+            // Wired-modem names are "<block id>_<n>" for most blocks.
+            var m = java.util.regex.Pattern.compile("^([a-z0-9_.-]+:[a-z0-9_./-]+)_\\d+$").matcher(name);
+            if (m.matches()) {
+                blockId = m.group(1);
+                out.addProperty("block", blockId);
+                out.addProperty("connection", "wired modem network");
+            } else {
+                out.addProperty("connection", "wired modem network (the name doesn't say which block it is)");
+            }
+        }
+
+        var modId = blockId != null && blockId.contains(":") ? blockId.substring(0, blockId.indexOf(':')) : null;
+        if (modId != null) {
+            var meta = CCAgent.mod(modId);
+            if (meta != null) {
+                var mod = obj("id", meta.id(), "name", meta.name(), "version", meta.version(),
+                    "homepage", meta.homepage(), "sources", meta.sources(), "issues", meta.issues());
+                out.add("mod", mod);
+            } else {
+                out.addProperty("mod_id", modId);
+            }
+        }
+        var type = info.get("types").getAsJsonArray().size() > 0 ? info.get("types").getAsJsonArray().get(0).getAsString() : name;
+        var modName = out.has("mod") ? out.getAsJsonObject("mod").get("name").getAsString() + " "
+            + out.getAsJsonObject("mod").get("version").getAsString() : modId != null ? modId : "";
+        out.addProperty("docs_search", (modName + " ComputerCraft peripheral \"" + type + "\" methods").trim());
+        out.addProperty("note", "Method names only come from CC. Look up the arguments in the mod's docs (search above, "
+            + "or the mod's homepage/sources) for this version, or test carefully with call_peripheral.");
+        return out;
+    }
+
+    /** What sits on one side of a computer or turtle: a neighbouring block, or a turtle upgrade. */
+    private JsonObject sideSource(ServerComputer computer, dan200.computercraft.core.computer.ComputerSide side) {
+        var level = computer.getLevel();
+        var pos = computer.getPosition();
+        if (!level.isLoaded(pos)) return null;
+        var be = level.getBlockEntity(pos);
+        Direction front;
+        boolean swapSides = false;
+        if (be instanceof dan200.computercraft.shared.turtle.blocks.TurtleBlockEntity turtle) {
+            var access = turtle.getAccess();
+            front = access.getDirection();
+            var turtleSide = side == dan200.computercraft.core.computer.ComputerSide.LEFT ? dan200.computercraft.api.turtle.TurtleSide.LEFT
+                : side == dan200.computercraft.core.computer.ComputerSide.RIGHT ? dan200.computercraft.api.turtle.TurtleSide.RIGHT : null;
+            if (turtleSide != null && access.getUpgrade(turtleSide) != null) {
+                var upgrade = access.getUpgrade(turtleSide);
+                var item = upgrade.getCraftingItem();
+                var out = obj("connection", "turtle upgrade", "upgrade", upgrade.getAdjective().getString());
+                if (!item.isEmpty()) out.addProperty("upgrade_item", net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item.getItem()).toString());
+                return out;
+            }
+        } else if (be instanceof dan200.computercraft.shared.computer.blocks.ComputerBlockEntity block) {
+            front = block.getDirection();
+            // CC computers swap left and right: their front faces the player, a turtle's faces away.
+            swapSides = true;
+        } else {
+            return obj("connection", "attached to a " + kind(computer) + " (no fixed position)");
+        }
+        var want = !swapSides ? side : side == dan200.computercraft.core.computer.ComputerSide.LEFT
+            ? dan200.computercraft.core.computer.ComputerSide.RIGHT
+            : side == dan200.computercraft.core.computer.ComputerSide.RIGHT ? dan200.computercraft.core.computer.ComputerSide.LEFT : side;
+        for (var dir : Direction.values()) {
+            if (dan200.computercraft.shared.util.DirectionUtil.toLocal(front, dir) != want) continue;
+            var at = pos.relative(dir);
+            var state = level.getBlockState(at);
+            return obj("connection", "adjacent block", "block",
+                net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString(),
+                "x", at.getX(), "y", at.getY(), "z", at.getZ());
+        }
+        return null;
+    }
+
+    private String kind(ServerComputer computer) {
+        return computers.kind(computer).replace('_', ' ');
+    }
+
+    /** One line about a tool call, for the activity log. */
+    public static String summary(String tool, JsonObject args) {
+        String text = switch (tool) {
+            case "run_lua" -> Json.str(args, "code", "");
+            case "run_shell" -> Json.str(args, "command", "");
+            case "write_file", "read_file", "edit_file", "delete_file", "make_dir", "list_files" -> Json.str(args, "path", "/");
+            case "move_file" -> Json.str(args, "from", "") + " -> " + Json.str(args, "to", "");
+            case "call_peripheral" -> Json.str(args, "peripheral", "") + "." + Json.str(args, "method", "") + "()";
+            case "describe_peripheral" -> Json.str(args, "peripheral", "");
+            case "turtle" -> String.join(", ", java.util.stream.StreamSupport.stream(Json.array(args, "actions").spliterator(), false)
+                .map(JsonElement::getAsString).toList());
+            case "type_text" -> Json.str(args, "text", "");
+            case "press_keys" -> String.join(" ", java.util.stream.StreamSupport.stream(Json.array(args, "keys").spliterator(), false)
+                .map(JsonElement::getAsString).toList());
+            case "power" -> Json.str(args, "action", "");
+            case "queue_event" -> Json.str(args, "name", "");
+            case "cc_help" -> Json.str(args, "topic", "topics");
+            case "get_job", "cancel_job" -> "job " + Json.str(args, "job_id", "?");
+            default -> "";
+        };
+        text = text.replaceAll("\\s+", " ").trim();
+        return text.length() > 120 ? text.substring(0, 117) + "..." : text;
     }
 
     private record Place(net.minecraft.server.level.ServerLevel level, BlockPos pos) {

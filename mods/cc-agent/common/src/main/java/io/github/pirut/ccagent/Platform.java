@@ -6,5 +6,13 @@ import java.nio.file.Path;
 public interface Platform {
     Path configDir();
 
+    Path gameDir();
+
     String loader();
+
+    /** A loaded mod's name, version and links, or null if no such mod. */
+    ModMeta mod(String modId);
+
+    record ModMeta(String id, String name, String version, String homepage, String sources, String issues) {
+    }
 }
