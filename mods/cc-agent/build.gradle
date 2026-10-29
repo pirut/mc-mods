@@ -1,0 +1,45 @@
+subprojects {
+    apply plugin: 'java'
+
+    version = mod_version
+    group = mod_group
+
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(21)
+        withSourcesJar()
+    }
+
+    repositories {
+        maven {
+            url = 'https://maven.squiddev.cc'
+            content { includeGroup 'cc.tweaked' }
+        }
+        maven {
+            url = 'https://maven.parchmentmc.org'
+            content { includeGroup 'org.parchmentmc.data' }
+        }
+    }
+
+    sourceSets.main {
+        java.srcDir rootProject.file('common/src/main/java')
+        resources.srcDir rootProject.file('common/src/main/resources')
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 21
+    }
+
+    tasks.named('jar') {
+        from(rootProject.file('COPYING')) { rename { 'LICENSE_ccagent' } }
+        from(rootProject.file('COPYING.LESSER')) { rename { 'LICENSE_ccagent_LESSER' } }
+    }
+
+    def props = [mod_id: mod_id, mod_name: mod_name, mod_version: mod_version, mod_license: mod_license,
+                 mod_description: mod_description, minecraft_version: minecraft_version,
+                 neo_version_range: neo_version_range, cc_version_min: cc_version_min, loader_version: loader_version]
+    tasks.named('processResources') {
+        inputs.properties props
+        filesMatching(['META-INF/neoforge.mods.toml', 'fabric.mod.json']) { expand props }
+    }
+}
