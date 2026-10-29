@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.1
+
+- **Scroll back through the chat** with the mouse wheel or Page Up/Down (the last 1000 messages). New
+  messages don't pull you down while you read; sending one jumps back to the bottom.
+- **Scroll in the full screen too**: the mouse wheel on the computer screen scrolls Claude Code's own
+  conversation view, and clicks (on the computer screen, or touching the monitor) go to it as mouse clicks.
+  Programs that don't use the mouse get a 2000-line scrollback instead (also Shift+Page Up/Down).
+- Ctrl/Shift/Alt with Home, End, Page Up/Down and Delete reach the TUI (Ctrl+End jumps to the bottom in
+  Claude Code).
+
 ## 0.5.0
 
 - **The chat now works like the terminal version.**

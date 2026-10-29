@@ -69,7 +69,9 @@ Things to try next:
    comfortable text size; 4 wide by 3 tall works with small text.
 2. Right-click the computer and type `claude --tui`.
 3. Stand back. Type on the computer screen; it shows the part around the prompt, the wall shows everything.
-4. Hold **Ctrl+T** for a second to quit, or type `/exit` in Claude Code.
+4. Scroll back with the mouse wheel on the computer screen (Claude Code's own scrolling; Ctrl+End jumps
+   back down). Clicking on the computer screen, or touching the monitor, clicks in Claude Code.
+5. Hold **Ctrl+T** for a second to quit, or type `/exit` in Claude Code.
 
 ![Claude Code on a monitor wall](images/tui-monitor-wall.jpg)
 

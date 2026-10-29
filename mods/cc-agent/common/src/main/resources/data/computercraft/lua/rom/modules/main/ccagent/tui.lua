@@ -108,7 +108,7 @@ local function run(agent, side)
         screen.setBackgroundColour(mirror and FG or colours.white)
         screen.setTextColour(mirror and BG or colours.black)
         screen.clearLine()
-        screen.write((" " .. NAMES[agent] .. " on " .. monitor_name .. "  hold Ctrl+T to quit"):sub(1, sw))
+        screen.write((" " .. NAMES[agent] .. " on " .. monitor_name .. "  wheel scrolls, hold Ctrl+T quits"):sub(1, sw))
         screen.setBackgroundColour(mirror and BG or colours.black)
     end
 
@@ -192,6 +192,16 @@ local function run(agent, side)
                     code, exit_error = event[4], event[5]
                     return
                 end
+            elseif name == "mouse_scroll" or name == "mouse_click" then
+                -- Mouse on this screen: where it lands in the terminal. The wheel scrolls (Claude Code's
+                -- own scrolling, or the lines that scrolled off the top); clicks go to the program.
+                local tx, ty = event[3], event[4]
+                if monitor then tx, ty = view_x + tx - 1, view_y + ty - 1 - status end
+                if ty >= 1 then
+                    ccagent.tuiInput(id, name == "mouse_scroll" and "scroll" or "click", event[2], tx, ty)
+                end
+            elseif name == "monitor_touch" and event[2] == monitor_name then
+                ccagent.tuiInput(id, "click", 1, event[3], event[4])
             elseif name == "char" or name == "key" or name == "key_up" or name == "paste" then
                 ccagent.tuiInput(id, name, event[2])
             elseif name == "terminate" then

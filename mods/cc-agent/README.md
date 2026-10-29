@@ -44,7 +44,8 @@ and you click the answer (or press its number, or type your own).
 
 It has the same controls as the terminal version: `/model`, `/effort`, `/mode` (or Shift+Tab), `/resume`,
 `/new`, the agent's own commands like `/context` and `/compact`, a todo list while it works, and you can type
-your next message while it's busy. See [Using the chat](docs/chat.md).
+your next message while it's busy, and the mouse wheel scrolls back through the conversation. See
+[Using the chat](docs/chat.md).
 
 ![Picking a model with /model](docs/images/chat-model-picker.jpg)
 

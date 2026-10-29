@@ -22,6 +22,7 @@ Setup: [Getting started](getting-started.md). Note your **loader** (NeoForge or 
 - [ ] Ctrl+T (hold) stops a reply; Ctrl+T again leaves
 - [ ] `/context` shows the agent's context usage; `/compact` works
 - [ ] `/resume` lists earlier conversations and goes back to one
+- [ ] Mouse wheel and Page Up/Down scroll the conversation; the "more below" marker shows
 - [ ] `/new`, `/clear`, `/status`, `/help`, Tab completion
 - [ ] The same with `codex` (if you have Codex)
 
@@ -30,6 +31,8 @@ Setup: [Getting started](getting-started.md). Note your **loader** (NeoForge or 
 - [ ] On a monitor wall: the real Claude Code screen appears, readable
 - [ ] Typing on the computer works, including Enter, arrows, backspace, Ctrl+C
 - [ ] The computer's screen follows the prompt
+- [ ] The mouse wheel on the computer screen scrolls back through the conversation; Ctrl+End goes back down
+- [ ] Touching the monitor or clicking the computer screen clicks in Claude Code
 - [ ] Slash commands and permission prompts work inside it
 - [ ] Hold Ctrl+T quits and the monitor is cleared
 - [ ] `claude --tui term` on a computer without a monitor

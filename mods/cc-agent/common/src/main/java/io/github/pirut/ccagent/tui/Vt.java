@@ -29,6 +29,8 @@ public final class Vt {
     private boolean cursorVisible = true;
     private boolean appCursorKeys;
     private boolean bracketedPaste;
+    private boolean mouseTracking;
+    private boolean sgrMouse;
 
     private final Consumer<byte[]> reply;
     private final Palette palette = new Palette(this::colorsInUse);
@@ -95,7 +97,42 @@ public final class Vt {
     }
 
     public synchronized boolean cursorVisible() {
-        return cursorVisible;
+        return cursorVisible && view == 0;
+    }
+
+    // ---- Scrollback ----
+
+    private static final int MAX_HISTORY = 2000;
+    private final java.util.ArrayList<int[][]> history = new java.util.ArrayList<>();
+    private int view; // lines scrolled back; 0 shows the live screen
+    private boolean viewDirty;
+
+    private void keep(int[] chars, int[] fgs, int[] bgs) {
+        history.add(new int[][]{chars.clone(), fgs.clone(), bgs.clone()});
+        if (history.size() > MAX_HISTORY) history.remove(0);
+        else if (view > 0) view++; // keep the lines being read where they are
+        if (view > 0) view = Math.min(view, history.size());
+    }
+
+    private void setView(int lines) {
+        int next = Math.max(0, Math.min(lines, history.size()));
+        if (next == view) return;
+        view = next;
+        viewDirty = true;
+        if (view == 0) java.util.Arrays.fill(screen.dirty, true);
+    }
+
+    /** Scroll back (positive) or forward through the scrollback. */
+    public synchronized void scrollView(int lines) {
+        if (screen == main) setView(view + lines);
+    }
+
+    public synchronized boolean scrolledBack() {
+        return view > 0;
+    }
+
+    public synchronized void scrollToBottom() {
+        setView(0);
     }
 
     public synchronized boolean appCursorKeys() {
@@ -143,16 +180,43 @@ public final class Vt {
      */
     public synchronized java.util.Map<Integer, String[]> takeDirty(java.util.Map<Integer, Integer> paletteChanges) {
         var out = new java.util.LinkedHashMap<Integer, String[]>();
+        if (view > 0) {
+            // Scrolled back: show scrollback then the screen, and only redraw when the view moves.
+            if (!viewDirty) return out;
+            viewDirty = false;
+            int start = history.size() - view;
+            for (int y = 0; y < rows; y++) {
+                int line = start + y;
+                int[][] row = line < history.size() ? history.get(line)
+                    : new int[][]{screen.chars[line - history.size()], screen.fgs[line - history.size()], screen.bgs[line - history.size()]};
+                out.put(y, blit(row[0], row[1], row[2], paletteChanges));
+            }
+            return out;
+        }
+        viewDirty = false;
         for (int y = 0; y < rows; y++) {
             if (!screen.dirty[y]) continue;
             screen.dirty[y] = false;
+            out.put(y, blit(screen.chars[y], screen.fgs[y], screen.bgs[y], paletteChanges));
+        }
+        return out;
+    }
+
+    private String[] blit(int[] chars, int[] fgs, int[] bgs, java.util.Map<Integer, Integer> paletteChanges) {
+        {
             var text = new StringBuilder(cols);
             var f = new StringBuilder(cols);
             var b = new StringBuilder(cols);
             for (int x = 0; x < cols; x++) {
-                int glyph = Glyphs.cc(screen.chars[y][x]);
-                int fc = palette.slot(screen.fgs[y][x], paletteChanges);
-                int bc = palette.slot(screen.bgs[y][x], paletteChanges);
+                if (x >= chars.length) {
+                    text.append(' ');
+                    f.append(Character.forDigit(palette.slot(DEFAULT_FG, paletteChanges), 16));
+                    b.append(Character.forDigit(palette.slot(DEFAULT_BG, paletteChanges), 16));
+                    continue;
+                }
+                int glyph = Glyphs.cc(chars[x]);
+                int fc = palette.slot(fgs[x], paletteChanges);
+                int bc = palette.slot(bgs[x], paletteChanges);
                 if ((glyph & Glyphs.INVERT) != 0) {
                     int t = fc;
                     fc = bc;
@@ -162,9 +226,8 @@ public final class Vt {
                 f.append(Character.forDigit(fc, 16));
                 b.append(Character.forDigit(bc, 16));
             }
-            out.put(y, new String[]{text.toString(), f.toString(), b.toString()});
+            return new String[]{text.toString(), f.toString(), b.toString()};
         }
-        return out;
     }
 
     /** Every palette slot in use, for a screen that was just (re)connected. */
@@ -297,6 +360,8 @@ public final class Vt {
             var c = screen.chars[top];
             var f = screen.fgs[top];
             var b = screen.bgs[top];
+            // Lines leaving the top of the main screen go to the scrollback, like a terminal.
+            if (screen == main && top == 0) keep(c, f, b);
             for (int y = top; y < bottom; y++) {
                 screen.chars[y] = screen.chars[y + 1];
                 screen.fgs[y] = screen.fgs[y + 1];
@@ -531,6 +596,8 @@ public final class Vt {
                     }
                 }
                 case 2004 -> bracketedPaste = on;
+                case 1000, 1002, 1003 -> mouseTracking = on;
+                case 1006 -> sgrMouse = on;
                 default -> {
                 }
             }
@@ -555,6 +622,10 @@ public final class Vt {
             }
             default -> {
                 for (int y = 0; y < rows; y++) screen.clearRow(y, 0, cols, DEFAULT_FG, bg);
+                if (mode == 3) {
+                    history.clear();
+                    setView(0);
+                }
             }
         }
     }
@@ -663,11 +734,11 @@ public final class Vt {
             case 264 -> cursor('B', ctrl, alt, shift);
             case 262 -> cursor('C', ctrl, alt, shift);
             case 263 -> cursor('D', ctrl, alt, shift);
-            case 268 -> "\u001b[H";
-            case 269 -> "\u001b[F";
-            case 266 -> "\u001b[5~";
-            case 267 -> "\u001b[6~";
-            case 261 -> "\u001b[3~";
+            case 268 -> modified("H", ctrl, alt, shift);
+            case 269 -> modified("F", ctrl, alt, shift);
+            case 266 -> tilde(5, ctrl, alt, shift);
+            case 267 -> tilde(6, ctrl, alt, shift);
+            case 261 -> tilde(3, ctrl, alt, shift);
             case 260 -> "\u001b[2~";
             case 290 -> "\u001bOP";
             case 291 -> "\u001bOQ";
@@ -692,10 +763,44 @@ public final class Vt {
         return seq == null ? null : seq.getBytes(StandardCharsets.UTF_8);
     }
 
+    private static int modifiers(boolean ctrl, boolean alt, boolean shift) {
+        return 1 + (shift ? 1 : 0) + (alt ? 2 : 0) + (ctrl ? 4 : 0);
+    }
+
+    /** Home and End: ESC [ H, or ESC [ 1 ; mod H with modifiers (Ctrl+End jumps to the bottom in Claude Code). */
+    private static String modified(String fin, boolean ctrl, boolean alt, boolean shift) {
+        int mod = modifiers(ctrl, alt, shift);
+        return mod > 1 ? "\u001b[1;" + mod + fin : "\u001b[" + fin;
+    }
+
+    private static String tilde(int n, boolean ctrl, boolean alt, boolean shift) {
+        int mod = modifiers(ctrl, alt, shift);
+        return mod > 1 ? "\u001b[" + n + ";" + mod + "~" : "\u001b[" + n + "~";
+    }
+
     private String cursor(char dir, boolean ctrl, boolean alt, boolean shift) {
         int mod = 1 + (shift ? 1 : 0) + (alt ? 2 : 0) + (ctrl ? 4 : 0);
         if (mod > 1) return "\u001b[1;" + mod + dir;
         return (appCursorKeys() ? "\u001bO" : "\u001b[") + dir;
+    }
+
+    /** Whether the program asked for mouse events (Claude Code's full screen scrolls and clicks with them). */
+    public synchronized boolean mouseTracking() {
+        return mouseTracking;
+    }
+
+    /**
+     * A mouse event as the program asked for it. button 0 = left, 64/65 = wheel up/down; x, y from 0.
+     * Null when the program doesn't track the mouse.
+     */
+    public synchronized byte[] mouse(int button, int x, int y, boolean press) {
+        if (!mouseTracking) return null;
+        x = Math.max(0, Math.min(x, cols - 1)) + 1;
+        y = Math.max(0, Math.min(y, rows - 1)) + 1;
+        if (sgrMouse) return ("\u001b[<" + button + ";" + x + ";" + y + (press ? "M" : "m")).getBytes(StandardCharsets.UTF_8);
+        // X10 encoding: release is button 3; coordinates offset by 32.
+        int b = (press ? button : 3) + 32;
+        return new byte[]{0x1b, '[', 'M', (byte) b, (byte) Math.min(255, x + 32), (byte) Math.min(255, y + 32)};
     }
 
     public byte[] paste(String text) {

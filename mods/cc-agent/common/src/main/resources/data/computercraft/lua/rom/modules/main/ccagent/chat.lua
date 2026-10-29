@@ -35,6 +35,7 @@ local HELP = {
     "/new      start a new conversation",
     "/clear    clear the screen",
     "/exit     leave (or Ctrl+T)",
+    "Scroll the history with the mouse wheel or Page Up/Down.",
     "Other /commands (/context, /compact, your own) go to the agent. Tab completes commands. You can type while it works: your message waits its turn.",
 }
 local COMMANDS = { "model", "effort", "mode", "permissions", "resume", "status", "new", "clear", "exit", "help",
@@ -53,7 +54,68 @@ local function run(agent, ...)
     local colour = native.isColour()
     local function c(colourful, plain) return colour and colourful or plain end
 
-    local log = window.create(native, 1, 2, w, h - 2)
+    -- The chat history: every message, wrapped to the screen, scrollable with the mouse wheel and
+    -- Page Up/Down. It's drawn in rows 2 .. log_rows + 1, above the question panel and the input line.
+    local MAX_ENTRIES = 1000
+    local entries, lines = {}, {}
+    local log_rows = h - 2
+    local scroll = 0 -- lines scrolled up from the bottom
+
+    local function wrap_entry(e)
+        local out = {}
+        local first = true
+        for part in (e.text .. "\n"):gmatch("(.-)\n") do
+            local full = (first and e.prefix or (e.prefix ~= "" and (" "):rep(#e.prefix) or "")) .. part
+            local wrapped = full == "" and { "" } or strings.wrap(full, w)
+            for i, line in ipairs(wrapped) do
+                local fg = colours.toBlit(e.fg):rep(#line)
+                if first and i == 1 and e.prefix ~= "" then
+                    local n = math.min(#e.prefix, #line)
+                    fg = colours.toBlit(c(colours.grey, colours.lightGrey)):rep(n) .. fg:sub(n + 1)
+                end
+                out[#out + 1] = { line, fg }
+            end
+            first = false
+        end
+        return out
+    end
+
+    local function draw_log()
+        local bottom = #lines - scroll
+        for row = 1, log_rows do
+            native.setCursorPos(1, row + 1)
+            native.setBackgroundColour(colours.black)
+            native.clearLine()
+            local line = lines[bottom - log_rows + row]
+            if line then native.blit(line[1], line[2], ("f"):rep(#line[1])) end
+        end
+        if scroll > 0 then
+            local note = (" %d more below: scroll down or PgDn "):format(scroll)
+            native.setCursorPos(math.max(1, w - #note + 1), log_rows + 1)
+            native.setBackgroundColour(c(colours.grey, colours.white))
+            native.setTextColour(c(colours.white, colours.black))
+            native.write(note:sub(1, w))
+            native.setBackgroundColour(colours.black)
+        end
+    end
+
+    local function scroll_by(n)
+        scroll = math.max(0, math.min(scroll + n, #lines - log_rows))
+        draw_log()
+    end
+
+    local function rewrap()
+        lines = {}
+        for _, e in ipairs(entries) do
+            for _, line in ipairs(wrap_entry(e)) do lines[#lines + 1] = line end
+        end
+        scroll = math.max(0, math.min(scroll, #lines - log_rows))
+    end
+
+    local function clear_log()
+        entries, lines, scroll = {}, {}, 0
+        draw_log()
+    end
     local session, run_id, started = nil, nil, nil
     local spinner, spin = { "|", "/", "-", "\\" }, 1
     local timer
@@ -97,12 +159,17 @@ local function run(agent, ...)
     end
 
     local function add(fg, prefix, text)
-        local previous = term.redirect(log)
-        term.setTextColour(prefix == "" and fg or c(colours.grey, colours.lightGrey))
-        if prefix ~= "" then write(prefix) end
-        term.setTextColour(fg)
-        print(text)
-        term.redirect(previous)
+        local e = { fg = fg, prefix = prefix, text = tostring(text) }
+        entries[#entries + 1] = e
+        local new = wrap_entry(e)
+        for _, line in ipairs(new) do lines[#lines + 1] = line end
+        if #entries > MAX_ENTRIES then
+            table.remove(entries, 1)
+            rewrap()
+        end
+        -- Reading back up: stay where you are.
+        if scroll > 0 then scroll = scroll + #new end
+        draw_log()
     end
     local function info(text) add(c(colours.lightGrey, colours.white), "", text) end
     local function warn(text) add(c(colours.red, colours.white), "! ", text) end
@@ -132,17 +199,14 @@ local function run(agent, ...)
         native.setCursorBlink(true)
     end
 
-    -- Keep the chat's newest lines in view above the panel: shrink the log, scrolling it up first.
-    local log_rows = h - 2
+    -- The history shrinks above the panel, keeping its newest lines in view.
     local function fit_log(rows)
         rows = math.max(1, rows)
-        if rows < log_rows then
-            local cx, cy = log.getCursorPos()
-            log.scroll(log_rows - rows)
-            log.setCursorPos(cx, math.max(1, cy - (log_rows - rows)))
+        if rows ~= log_rows then
+            log_rows = rows
+            scroll = math.max(0, math.min(scroll, #lines - log_rows))
+            draw_log()
         end
-        log.reposition(1, 2, w, rows)
-        log_rows = rows
     end
 
     local function draw_panel()
@@ -197,7 +261,7 @@ local function run(agent, ...)
         native.setBackgroundColour(colours.black)
         native.clear()
         header()
-        log.redraw()
+        draw_log()
         draw_panel()
         draw_input()
     end
@@ -315,8 +379,7 @@ local function run(agent, ...)
                 for i, label in ipairs(shown) do
                     if label == answer then
                         session, session_title = list[i].id, list[i].title
-                        log.clear()
-                        log.setCursorPos(1, 1)
+                        clear_log()
                         info("Back in: " .. list[i].title)
                     end
                 end
@@ -335,13 +398,11 @@ local function run(agent, ...)
         new = function()
             session = nil
             ccagent.resetPermissions()
-            log.clear()
-            log.setCursorPos(1, 1)
+            clear_log()
             info("New conversation.")
         end,
         clear = function()
-            log.clear()
-            log.setCursorPos(1, 1)
+            clear_log()
         end,
     }
     commands.permissions = commands.mode
@@ -426,6 +487,9 @@ local function run(agent, ...)
                 draw_input()
                 timer = os.startTimer(0.25)
             end
+        elseif name == "mouse_scroll" then
+            scroll_by(-e[2] * 3)
+            refresh()
         elseif name == "mouse_click" then
             local option = buttons[e[4]]
             if option and questions[1] then close_question(questions[1].options[option]) end
@@ -474,7 +538,11 @@ local function run(agent, ...)
                     refresh()
                 end
                 draw_input()
+            elseif key == keys.pageUp or key == keys.pageDown then
+                scroll_by((key == keys.pageUp and 1 or -1) * math.max(1, log_rows - 1))
+                refresh()
             elseif key == keys.enter or key == keys.numPadEnter then
+                if scroll > 0 then scroll = 0 draw_log() end
                 local line = buffer
                 buffer, cursor, history_at = "", 0, nil
                 if not submit(line) then break end
@@ -524,7 +592,7 @@ local function run(agent, ...)
         elseif name == "term_resize" then
             w, h = native.getSize()
             log_rows = h - 2
-            log.reposition(1, 2, w, h - 2)
+            rewrap()
             redraw()
         end
     end

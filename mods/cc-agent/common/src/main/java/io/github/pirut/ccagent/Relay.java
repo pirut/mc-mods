@@ -484,13 +484,16 @@ public final class Relay {
                 var kind = Json.str(message, "kind", "");
                 Object value = kind.equals("char") || kind.equals("paste") ? Json.str(message, "value", "")
                     : (Object) Json.integer(message, "value", 0);
-                session.input(kind, value);
+                session.input(kind, value, Json.integer(message, "x", 0), Json.integer(message, "y", 0));
             }
             case "resize" -> {
                 if (session != null) session.resize(Json.integer(message, "cols", 80), Json.integer(message, "rows", 24));
             }
             case "redraw" -> {
                 if (session != null) session.redraw();
+            }
+            case "scroll" -> {
+                if (session != null) session.scroll(Json.integer(message, "lines", 0));
             }
             case "stop" -> {
                 CLIENT_TUIS.remove(tui);

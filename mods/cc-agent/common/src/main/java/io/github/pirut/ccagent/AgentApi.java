@@ -139,7 +139,7 @@ public final class AgentApi implements ILuaAPI {
         }
     }
 
-    /** Keyboard input for a TUI session: (id, "char"|"key"|"key_up"|"paste", value). */
+    /** Input for a TUI session: (id, "char"|"key"|"key_up"|"paste"|"scroll"|"click", value, x?, y?), x and y from 1. */
     @LuaFunction
     public final void tuiInput(IArguments args) throws LuaException {
         int id = args.getInt(0);
@@ -149,13 +149,14 @@ public final class AgentApi implements ILuaAPI {
             case "char", "paste" -> args.getString(2);
             default -> args.getInt(2);
         };
+        int x = args.optInt(3, 1) - 1, y = args.optInt(4, 1) - 1;
         if (Relay.isRelayTui(id, system.getID())) {
-            Relay.tuiControl(id, Json.obj("action", "input", "kind", kind, "value", value));
+            Relay.tuiControl(id, Json.obj("action", "input", "kind", kind, "value", value, "x", x, "y", y));
             return;
         }
         var session = session(id);
         try {
-            session.input(kind, value);
+            session.input(kind, value, x, y);
         } catch (ToolException e) {
             throw new LuaException(e.getMessage());
         }
@@ -165,6 +166,13 @@ public final class AgentApi implements ILuaAPI {
     public final void tuiResize(int id, int cols, int rows) throws LuaException {
         if (Relay.isRelayTui(id, system.getID())) Relay.tuiControl(id, Json.obj("action", "resize", "cols", cols, "rows", rows));
         else session(id).resize(cols, rows);
+    }
+
+    /** Scroll a TUI back (positive) or forward through its scrollback. */
+    @LuaFunction
+    public final void tuiScroll(int id, int lines) throws LuaException {
+        if (Relay.isRelayTui(id, system.getID())) Relay.tuiControl(id, Json.obj("action", "scroll", "lines", lines));
+        else session(id).scroll(lines);
     }
 
     @LuaFunction

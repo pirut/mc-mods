@@ -22,6 +22,10 @@ starts with that request. The agent runs on the PC of the player at the computer
 
 Tab completes a command. Up and down go through what you typed before. Settings are kept per computer.
 
+**Scrolling:** the mouse wheel or Page Up / Page Down scroll back through the conversation (the last 1000
+messages). A "more below" marker shows while you're scrolled up; new messages don't pull you down, and
+sending a message jumps back to the bottom.
+
 ## Modes
 
 | Mode | What happens |

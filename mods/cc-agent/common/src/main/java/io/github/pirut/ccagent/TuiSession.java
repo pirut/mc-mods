@@ -48,6 +48,7 @@ public final class TuiSession {
 
     private static final int LEFT_SHIFT = 340, LEFT_CTRL = 341, LEFT_ALT = 342;
     private static final int RIGHT_SHIFT = 344, RIGHT_CTRL = 345, RIGHT_ALT = 346;
+    private static final int PAGE_UP = 266, PAGE_DOWN = 267;
 
     public final int id;
     public final int computerId;
@@ -264,28 +265,76 @@ public final class TuiSession {
         process.setWinSize(new WinSize(cols, rows));
     }
 
+    public void input(String kind, Object a) {
+        input(kind, a, 0, 0);
+    }
+
+    /** Scroll back (positive lines) or forward through what scrolled off the top. */
+    public void scroll(int lines) {
+        vt.scrollView(lines);
+    }
+
     public void redraw() {
         vt.markAllDirty();
         fullPalette = true;
         lastX = -1;
     }
 
-    /** A CC input event: char, key (a = code), key_up (a = code), paste (a = text). */
-    public void input(String kind, Object a) {
+    /**
+     * A CC input event: char, key (a = code), key_up (a = code), paste (a = text), or from the mouse:
+     * scroll (a = 1 down / -1 up) and click (a = button), at terminal cell x, y counted from 0.
+     */
+    public void input(String kind, Object a, int x, int y) {
         switch (kind) {
+            case "scroll" -> {
+                int dir = ((Number) a).intValue();
+                // The program's own scrolling if it takes the mouse (Claude Code's full screen),
+                // else the lines that scrolled off the top.
+                var wheel = vt.mouse(dir < 0 ? 64 : 65, x, y, true);
+                if (wheel != null) {
+                    for (int i = 0; i < 3; i++) write(wheel);
+                } else {
+                    vt.scrollView(-dir * 3);
+                }
+            }
+            case "click" -> {
+                int button = Math.max(0, Math.min(2, ((Number) a).intValue() - 1)); // CC: 1 left, 2 right, 3 middle
+                if (button == 1) button = 2;
+                else if (button == 2) button = 1;
+                var press = vt.mouse(button, x, y, true);
+                if (press != null) {
+                    write(press);
+                    write(vt.mouse(button, x, y, false));
+                }
+            }
             case "char" -> {
                 if (ctrl) return;
+                vt.scrollToBottom();
                 var text = String.valueOf(a);
                 write((alt ? "\u001b" + text : text).getBytes(StandardCharsets.UTF_8));
             }
-            case "paste" -> write(vt.paste(String.valueOf(a)));
+            case "paste" -> {
+                vt.scrollToBottom();
+                write(vt.paste(String.valueOf(a)));
+            }
             case "key" -> {
                 int code = ((Number) a).intValue();
                 switch (code) {
                     case LEFT_CTRL, RIGHT_CTRL -> ctrl = true;
                     case LEFT_ALT, RIGHT_ALT -> alt = true;
                     case LEFT_SHIFT, RIGHT_SHIFT -> shift = true;
-                    default -> write(vt.key(code, ctrl, alt, shift));
+                    // Shift+Page Up/Down scroll back through what scrolled off, like a terminal.
+                    case PAGE_UP, PAGE_DOWN -> {
+                        if (shift) vt.scrollView((code == PAGE_UP ? 1 : -1) * Math.max(1, vt.rows() - 2));
+                        else {
+                            vt.scrollToBottom();
+                            write(vt.key(code, ctrl, alt, shift));
+                        }
+                    }
+                    default -> {
+                        vt.scrollToBottom();
+                        write(vt.key(code, ctrl, alt, shift));
+                    }
                 }
             }
             case "key_up" -> {
