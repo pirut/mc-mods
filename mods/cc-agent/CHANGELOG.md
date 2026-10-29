@@ -1,11 +1,26 @@
 # Changelog
 
+## 0.3.0
+
+- **Multiplayer.** With CC: Agent on both the server and your game, everything works on servers: the
+  in-game `claude`/`codex` programs and agents you drive from your own terminal. The agent always runs on
+  your own PC with your own login; your game forwards its tool calls to the server, which runs them with
+  limits. Same setup as singleplayer (same address and token).
+- Server owners: `relay`, `relayOpsOnly`, `relayRange` (default 128 blocks from the player; operators have
+  no limit) and `relayCallsPerMinute` (default 240) in `config/ccagent.properties`. Command computers are
+  operators only. Players only see their own jobs.
+- Fixed: Codex refused every CC: Agent tool ("requires approval, but approval policy is never"). The in-game
+  codex program now approves CC: Agent's tools, and `/ccagent codex` adds
+  `default_tools_approval_mode = "approve"` for terminal use.
+- Fixed: "couldn't find codex/claude" when the game doesn't get your terminal's PATH. It now also looks in
+  winget, scoop, nvm, Volta, pnpm and the Codex app's folders, and asks your login shell on macOS/Linux.
+
 ## 0.2.0
 
 - **Talk to Claude Code or Codex from any CC computer.** Type `claude` or `codex` at the shell (or
   `claude <request>`). The agent runs on your PC, signed in as you, and the conversation streams onto the
   CC screen with a line for each step it takes. Follow-ups continue the conversation; `/new` starts over,
-  Ctrl+T stops a reply. Singleplayer only, and the agent only gets CC: Agent's tools plus web search.
+  Ctrl+T stops a reply. The agent only gets CC: Agent's tools plus web search.
   `launchAgents`, `claudeCommand`, `codexCommand`, `claudeArgs` and `codexArgs` in the config.
 - **`agentlog`** shows every tool call agents make, live, on the computer or a monitor (`agentlog right`).
 - **`describe_peripheral`** tool: a peripheral's methods, the block or turtle upgrade behind it, and the

@@ -19,7 +19,7 @@ import static io.github.pirut.ccagent.Json.prop;
 import static io.github.pirut.ccagent.Json.schema;
 
 /** Every MCP tool the mod offers. */
-public final class Tools {
+public final class Tools implements McpServer.Backend {
     public interface Handler {
         Object call(JsonObject args) throws Exception;
     }
@@ -46,6 +46,37 @@ public final class Tools {
         files = new FileAccess(server);
         world = new WorldAccess(computers);
         register();
+    }
+
+    @Override
+    public JsonArray tools() {
+        var list = new JsonArray();
+        for (var tool : tools.values()) list.add(tool.listing());
+        return list;
+    }
+
+    @Override
+    public JsonObject call(String name, JsonObject args) {
+        var tool = tools.get(name);
+        if (tool == null) return McpServer.toolResult("unknown tool " + name, true);
+        var result = run(tool, args);
+        var who = Access.current() == null ? "" : Access.current().player().getGameProfile().getName() + ": ";
+        ActivityLog.add(name, Json.str(args, "computer", null), who + summary(name, args), !result.get("isError").getAsBoolean());
+        return result;
+    }
+
+    private static JsonObject run(Tool tool, JsonObject args) {
+        try {
+            var value = tool.handler().call(args);
+            if (value instanceof ToolResult r) return McpServer.toolResult(r.text(), r.error());
+            if (value instanceof JsonElement json) return McpServer.toolResult(Json.PRETTY.toJson(json), false);
+            return McpServer.toolResult(String.valueOf(value), false);
+        } catch (ToolException e) {
+            return McpServer.toolResult(e.getMessage(), true);
+        } catch (Exception e) {
+            CCAgent.LOG.warn("Tool {} failed", tool.name(), e);
+            return McpServer.toolResult(tool.name() + " failed: " + e, true);
+        }
     }
 
     public List<Tool> all() {
@@ -151,7 +182,7 @@ public final class Tools {
                 "wait_seconds", prop("integer", "How long to wait for it, 0-600 (default 30).")), "job_id"),
             args -> {
                 var job = Jobs.get(Json.integer(args, "job_id", -1));
-                if (job == null) throw new ToolException("no such job (only the last 200 are kept)");
+                if (job == null || !Jobs.visible(job)) throw new ToolException("no such job (only the last 200 are kept)");
                 int wait = Math.max(0, Math.min(Json.integer(args, "wait_seconds", DEFAULT_TIMEOUT), MAX_TIMEOUT));
                 return formatJob(job, Computers.await(job, wait), wait);
             });
@@ -160,7 +191,7 @@ public final class Tools {
             schema(obj("job_id", prop("integer", "The job id.")), "job_id"),
             args -> {
                 var job = Jobs.get(Json.integer(args, "job_id", -1));
-                if (job == null) throw new ToolException("no such job");
+                if (job == null || !Jobs.visible(job)) throw new ToolException("no such job");
                 if (job.future.isDone()) return "job " + job.id + " already finished";
                 for (var c : computers.all()) {
                     if (c.getID() == job.computerId) c.queueEvent("ccagent_cancel", new Object[]{job.id});
@@ -499,7 +530,9 @@ public final class Tools {
         if (args.has("x") && args.has("y") && args.has("z")) {
             var dim = Json.str(args, "dimension", null);
             var level = dim != null ? world.level(dim) : c != null ? c.getLevel() : world.level(null);
-            return new Place(level, new BlockPos(Json.integer(args, "x", 0), Json.integer(args, "y", 0), Json.integer(args, "z", 0)));
+            var at = new BlockPos(Json.integer(args, "x", 0), Json.integer(args, "y", 0), Json.integer(args, "z", 0));
+            Access.check(level, at);
+            return new Place(level, at);
         }
         if (c == null) throw new ToolException("give x, y and z, or a computer");
         var pos = c.getPosition();

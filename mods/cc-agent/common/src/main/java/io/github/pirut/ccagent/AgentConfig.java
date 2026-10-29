@@ -24,6 +24,10 @@ public final class AgentConfig {
     public String codexCommand = "codex";
     public String claudeArgs = "";
     public String codexArgs = "";
+    public boolean relay = true;
+    public boolean relayOpsOnly = false;
+    public int relayRange = 128;
+    public int relayCallsPerMinute = 240;
 
     private final Path file;
 
@@ -57,6 +61,10 @@ public final class AgentConfig {
         config.codexCommand = props.getProperty("codexCommand", config.codexCommand).trim();
         config.claudeArgs = props.getProperty("claudeArgs", config.claudeArgs).trim();
         config.codexArgs = props.getProperty("codexArgs", config.codexArgs).trim();
+        config.relay = bool(props, "relay", config.relay);
+        config.relayOpsOnly = bool(props, "relayOpsOnly", config.relayOpsOnly);
+        config.relayRange = integer(props, "relayRange", config.relayRange);
+        config.relayCallsPerMinute = integer(props, "relayCallsPerMinute", config.relayCallsPerMinute);
         if (config.token.length() < 16) config.token = newToken();
         config.save();
         return config;
@@ -101,8 +109,19 @@ public final class AgentConfig {
             # Extra arguments, e.g. claudeArgs=--model sonnet or codexArgs=-m gpt-5-codex
             claudeArgs=%s
             codexArgs=%s
+
+            # Multiplayer (server side). Players with CC: Agent in their own game run agents on their own PC;
+            # their tool calls come to the server, which runs them with these limits.
+            relay=%s
+            # Only operators may use it.
+            relayOpsOnly=%s
+            # Players' agents can only reach computers and blocks this close to them (0 = anywhere loaded).
+            # Operators have no limit. Command computers are operators only.
+            relayRange=%d
+            relayCallsPerMinute=%d
             """.formatted(enabled, dedicatedServer, host, port, token, allowShellAndLua, allowFileWrites,
-            launchAgents, esc(claudeCommand), esc(codexCommand), esc(claudeArgs), esc(codexArgs));
+            launchAgents, esc(claudeCommand), esc(codexCommand), esc(claudeArgs), esc(codexArgs),
+            relay, relayOpsOnly, relayRange, relayCallsPerMinute);
         try {
             Files.createDirectories(file.getParent());
             try (Writer out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
@@ -116,6 +135,14 @@ public final class AgentConfig {
     /** Properties files treat backslashes as escapes (Windows paths). */
     private static String esc(String value) {
         return value.replace("\\", "\\\\");
+    }
+
+    private static int integer(Properties props, String key, int fallback) {
+        try {
+            return Integer.parseInt(props.getProperty(key, Integer.toString(fallback)).trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private static boolean bool(Properties props, String key, boolean fallback) {

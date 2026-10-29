@@ -40,7 +40,10 @@ Paste the block `/ccagent codex` copied into `~/.codex/config.toml`:
 [mcp_servers.cc-agent]
 url = "http://127.0.0.1:25599/mcp"
 http_headers = { "Authorization" = "Bearer YOUR_TOKEN" }
+default_tools_approval_mode = "approve"
 ```
+
+The last line lets Codex use CC: Agent's tools without asking each time; leave it out to approve each call.
 
 Or keep the token out of the file: `export CC_AGENT_TOKEN=YOUR_TOKEN`, then
 `codex mcp add cc-agent --url http://127.0.0.1:25599/mcp --bearer-token-env-var CC_AGENT_TOKEN`.
@@ -51,11 +54,19 @@ Every computer also has `claude` and `codex` programs. Type `claude` (or `claude
 time`) and talk to Claude Code right on the CC screen: the agent runs on your PC, signed in as you, and each
 step it takes shows as a line while it works. Follow-ups continue the conversation, `/new` starts over,
 `/exit` leaves, Ctrl+T stops a reply. It needs Claude Code or Codex installed and signed in once in a
-terminal, and works in singleplayer only. The agent gets CC: Agent's tools plus web search, nothing else on
+terminal, and works in singleplayer and on servers (see Multiplayer). The agent gets CC: Agent's tools plus web search, nothing else on
 your PC.
 
 `agentlog` shows every tool call agents make, live, on the computer or on a monitor (`agentlog right`), so you
 can watch an agent you're driving from your terminal work in the world.
+
+### Multiplayer
+
+Put CC: Agent on the server and in your own game. Then `claude`/`codex` on the server's computers and your
+terminal agent both work there, with the same setup as singleplayer. The agent runs on your PC with your
+login; your game forwards each tool call to the server, which runs it with the server's limits: by default
+computers and blocks within 128 blocks of you (`relayRange`), 240 calls a minute, command computers for
+operators only. `relayOpsOnly=true` limits it to operators, `relay=false` turns it off.
 
 ### Other MCP clients
 
@@ -111,9 +122,8 @@ with `reboot` starts fresh. To keep agents away from one computer, run
 - It's off on dedicated servers unless you set `dedicatedServer=true`. Anyone with the token controls every
   loaded computer on the server, so only do that on a server you run, and keep `host=127.0.0.1` unless you
   know what you're opening.
-- The `claude` and `codex` programs start the agent on the machine running the world, signed in as that
-  player, and only in singleplayer. On a LAN world, guests at a computer could use it too.
-  `launchAgents=false` turns them off.
+- The `claude` and `codex` programs start the agent on the PC of the player using the computer, signed in as
+  them; a server never runs agents. `launchAgents=false` turns them off on your PC.
 - `/ccagent` (which shows the token) works for the singleplayer host and level 4 operators only.
 - `allowShellAndLua=false` or `allowFileWrites=false` in `config/ccagent.properties` turn off running code
   or changing files. Delete the `token=` line to make a new token.
@@ -137,6 +147,10 @@ in the world a computer couldn't.
 | `launchAgents` | `true` | Let the in-game `claude`/`codex` programs start the CLIs (singleplayer) |
 | `claudeCommand`, `codexCommand` | `claude`, `codex` | How to start them; a full path works if the game can't find them |
 | `claudeArgs`, `codexArgs` | empty | Extra arguments, e.g. `--model sonnet` |
+| `relay` | `true` | Server: accept tool calls from players' own agents |
+| `relayOpsOnly` | `false` | Server: only operators may |
+| `relayRange` | `128` | Server: how far from the player their agent can reach (0 = anywhere loaded; ops unlimited) |
+| `relayCallsPerMinute` | `240` | Server: per-player rate limit |
 
 ## Building
 

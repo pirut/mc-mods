@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 
 public final class CCAgent {
     public static final String MOD_ID = "ccagent";
-    public static final String VERSION = "0.2.0";
+    public static final String VERSION = "0.3.0";
     public static final Logger LOG = LoggerFactory.getLogger("CC: Agent");
 
     private static Platform platform;
@@ -17,6 +17,7 @@ public final class CCAgent {
     private static McpServer mcp;
     private static String startError;
     private static MinecraftServer server;
+    private static Tools tools;
 
     private CCAgent() {
     }
@@ -29,6 +30,7 @@ public final class CCAgent {
     public static void serverStarted(MinecraftServer server) {
         CCAgent.server = server;
         config = AgentConfig.load(platform.configDir());
+        tools = new Tools(server);
         startError = null;
         if (!config.enabled) {
             LOG.info("MCP server is off (enabled=false in ccagent.properties)");
@@ -39,7 +41,7 @@ public final class CCAgent {
             return;
         }
         try {
-            mcp = McpServer.start(server, config);
+            mcp = McpServer.start(tools, config);
             LOG.info("MCP server listening on {} (run /ccagent in game for setup)", config.url());
         } catch (Exception e) {
             startError = e.toString();
@@ -49,7 +51,9 @@ public final class CCAgent {
 
     public static void serverStopping() {
         AgentRunner.stopAll();
+        Relay.serverStopped();
         server = null;
+        tools = null;
         if (mcp != null) {
             mcp.stop();
             mcp = null;
@@ -71,6 +75,14 @@ public final class CCAgent {
 
     public static String startError() {
         return startError;
+    }
+
+    public static Platform platform() {
+        return platform;
+    }
+
+    public static Tools tools() {
+        return tools;
     }
 
     public static MinecraftServer server() {

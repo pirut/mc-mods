@@ -18,6 +18,8 @@ public final class Jobs {
         public final String kind;
         public final long started = System.currentTimeMillis();
         public final CompletableFuture<Result> future = new CompletableFuture<>();
+        /** The relay player whose agent sent it, or null for this machine's own agents. */
+        public final java.util.UUID owner = Access.current() == null ? null : Access.current().player().getUUID();
 
         Job(int id, int computerId, String kind) {
             this.id = id;
@@ -60,6 +62,12 @@ public final class Jobs {
             FINISHED.put(id, job);
         }
         job.future.complete(result);
+    }
+
+    /** Relay players only see their own jobs. */
+    public static boolean visible(Job job) {
+        var access = Access.current();
+        return access == null || access.op() || access.player().getUUID().equals(job.owner);
     }
 
     public static boolean isReady(int computerId) {

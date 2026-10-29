@@ -36,7 +36,9 @@ public final class Computers {
     public <T> T onServer(Supplier<T> task) {
         if (server.isSameThread()) return task.get();
         try {
-            return CompletableFuture.supplyAsync(task, server).get(20, TimeUnit.SECONDS);
+            // Carry the relay player's limits over to the server thread.
+            var access = Access.current();
+            return CompletableFuture.supplyAsync(() -> Access.with(access, task), server).get(20, TimeUnit.SECONDS);
         } catch (java.util.concurrent.ExecutionException e) {
             var cause = e.getCause();
             if (cause instanceof RuntimeException r) throw r;
@@ -52,6 +54,7 @@ public final class Computers {
     public List<ServerComputer> all() {
         return onServer(() -> {
             var list = new ArrayList<>(ServerContext.get(server).registry().getComputers());
+            list.removeIf(c -> !Access.allows(c));
             list.sort(Comparator.comparingInt(ServerComputer::getID));
             return list;
         });
@@ -78,7 +81,8 @@ public final class Computers {
                             var chunk = level.getChunkSource().getChunkNow(x, z);
                             if (chunk == null) continue;
                             for (var be : chunk.getBlockEntities().values()) {
-                                if (be instanceof AbstractComputerBlockEntity computer && computer.getServerComputer() == null) {
+                                if (be instanceof AbstractComputerBlockEntity computer && computer.getServerComputer() == null
+                                    && Access.allows(level, be.getBlockPos())) {
                                     found.add(new Dormant(level, be.getBlockPos(), computer));
                                 }
                             }
@@ -129,8 +133,11 @@ public final class Computers {
     private ServerComputer at(BlockPos pos) {
         return onServer(() -> {
             for (var level : server.getAllLevels()) {
-                if (level.isLoaded(pos) && level.getBlockEntity(pos) instanceof AbstractComputerBlockEntity computer) {
-                    return computer.createServerComputer();
+                if (level.isLoaded(pos) && level.getBlockEntity(pos) instanceof AbstractComputerBlockEntity computer
+                    && Access.allows(level, pos)) {
+                    var started = computer.createServerComputer();
+                    if (!Access.allows(started)) throw new ToolException("you can't use that computer over the relay");
+                    return started;
                 }
             }
             throw new ToolException("no computer block at " + pos.toShortString() + " in a loaded chunk");

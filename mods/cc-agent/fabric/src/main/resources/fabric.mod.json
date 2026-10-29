@@ -13,7 +13,8 @@
   "license": "${mod_license}",
   "environment": "*",
   "entrypoints": {
-    "main": ["io.github.pirut.ccagent.fabric.CCAgentFabric"]
+    "main": ["io.github.pirut.ccagent.fabric.CCAgentFabric"],
+    "client": ["io.github.pirut.ccagent.fabric.CCAgentFabricClient"]
   },
   "depends": {
     "fabricloader": ">=${loader_version}",

@@ -13,6 +13,11 @@ public interface Platform {
     /** A loaded mod's name, version and links, or null if no such mod. */
     ModMeta mod(String modId);
 
+    void sendToPlayer(net.minecraft.server.level.ServerPlayer player, RelayPayload payload);
+
+    /** Whether this player's game has CC: Agent too. */
+    boolean hasRelay(net.minecraft.server.level.ServerPlayer player);
+
     record ModMeta(String id, String name, String version, String homepage, String sources, String issues) {
     }
 }

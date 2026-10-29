@@ -3,7 +3,6 @@ package io.github.pirut.ccagent;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import dan200.computercraft.api.lua.IComputerSystem;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -31,22 +30,26 @@ public final class AgentRunner {
     private static final Map<Integer, Run> RUNS = new ConcurrentHashMap<>();
     private static final String TOOL_PREFIX = "mcp__cc-agent__";
 
-    private record Run(int id, int computerId, Process process) {
+    /** Where a run's chat lines go: straight to the computer, or back over the relay. */
+    public interface Sink {
+        void send(int run, String kind, String text);
+    }
+
+    private record Run(int id, int computerId, Process process, Sink sink) {
     }
 
     private AgentRunner() {
     }
 
-    /** Start a turn. Returns the run id; events follow on the computer. */
-    public static int start(IComputerSystem computer, String agent, String prompt, String session, int width) {
-        var config = CCAgent.config();
-        var server = CCAgent.server();
-        if (config == null || server == null) throw new ToolException("no world is open");
-        if (server.isDedicatedServer()) throw new ToolException("the claude and codex programs only work in singleplayer");
+    /**
+     * Start a turn on this machine. Returns the run id; chat lines follow on the sink.
+     * The caller decides whether this machine may run agents at all.
+     */
+    public static int start(Sink sink, int computerId, String label, String agent, String prompt, String session, int width,
+                            AgentConfig config, String mcpUrl) {
         if (!config.launchAgents) throw new ToolException("launchAgents=false in config/ccagent.properties");
-        if (!CCAgent.running()) throw new ToolException("CC: Agent's MCP server isn't running (see /ccagent)");
         for (var run : RUNS.values()) {
-            if (run.computerId == computer.getID()) throw new ToolException("this computer already has an agent working");
+            if (run.computerId == computerId) throw new ToolException("this computer already has an agent working");
         }
 
         boolean claude = agent.equals("claude");
@@ -54,7 +57,8 @@ public final class AgentRunner {
         var exe = find(claude ? config.claudeCommand : config.codexCommand);
         if (exe == null) {
             throw new ToolException("couldn't find " + (claude ? config.claudeCommand : config.codexCommand)
-                + ". Install it, or set " + agent + "Command in config/ccagent.properties to its full path.");
+                + ". Run \"" + (windows() ? "where " : "which ") + agent + "\" in a terminal and put that path in "
+                + agent + "Command= in config/ccagent.properties (forward slashes), then reopen the world.");
         }
 
         var workDir = CCAgent.gameDir().resolve("ccagent").resolve("workspace");
@@ -64,7 +68,7 @@ public final class AgentRunner {
             if (claude) {
                 var mcp = workDir.resolve("mcp.json");
                 var servers = new JsonObject();
-                servers.add("cc-agent", Json.obj("type", "http", "url", config.url(),
+                servers.add("cc-agent", Json.obj("type", "http", "url", mcpUrl,
                     "headers", Json.obj("Authorization", "Bearer " + config.token)));
                 Files.writeString(mcp, Json.PRETTY.toJson(Json.obj("mcpServers", servers)));
                 cmd.addAll(List.of("-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config",
@@ -74,8 +78,10 @@ public final class AgentRunner {
             } else {
                 cmd.addAll(List.of("exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only",
                     "-c", "approval_policy=never",
-                    "-c", "mcp_servers.cc-agent.url=" + config.url(),
-                    "-c", "mcp_servers.cc-agent.bearer_token_env_var=CC_AGENT_TOKEN"));
+                    "-c", "mcp_servers.cc-agent.url=" + mcpUrl,
+                    "-c", "mcp_servers.cc-agent.bearer_token_env_var=CC_AGENT_TOKEN",
+                    // With approval_policy=never Codex refuses MCP calls that need approval: approve ours up front.
+                    "-c", "mcp_servers.cc-agent.default_tools_approval_mode=approve"));
                 cmd.addAll(split(config.codexArgs));
                 if (session != null) cmd.addAll(List.of("resume", session));
                 cmd.add("-");
@@ -96,10 +102,10 @@ public final class AgentRunner {
             throw new ToolException("couldn't start " + exe + ": " + e.getMessage());
         }
 
-        var run = new Run(NEXT_ID.getAndIncrement(), computer.getID(), process);
+        var run = new Run(NEXT_ID.getAndIncrement(), computerId, process, sink);
         RUNS.put(run.id, run);
-        var text = session == null ? context(computer, width) + prompt : prompt;
-        var thread = new Thread(() -> pump(run, computer, claude, text), "CC: Agent " + agent + " " + run.id);
+        var text = session == null ? context(computerId, label, width) + prompt : prompt;
+        var thread = new Thread(() -> pump(run, claude, text), "CC: Agent " + agent + " " + run.id);
         thread.setDaemon(true);
         thread.start();
         return run.id;
@@ -119,22 +125,22 @@ public final class AgentRunner {
         process.destroyForcibly();
     }
 
-    private static String context(IComputerSystem computer, int width) {
-        var label = computer.getLabel() == null ? "" : " (label \"" + computer.getLabel() + "\")";
+    private static String context(int computerId, String computerLabel, int width) {
+        var label = computerLabel == null ? "" : " (label \"" + computerLabel + "\")";
         return "[The player is talking to you from inside Minecraft, through the chat program on CC: Tweaked computer #"
-            + computer.getID() + label + ". Act in the world with the cc-agent MCP tools. That computer's screen is "
+            + computerId + label + ". Act in the world with the cc-agent MCP tools. That computer's screen is "
             + "showing this chat: don't use type_text or press_keys on it, and don't reboot or shut it down unless "
             + "asked; run things on it headless with run_lua/run_shell, or use other computers. When a peripheral "
             + "comes from an addon mod, call describe_peripheral and look up that mod's docs online. Your replies "
             + "show on a " + width + "-column screen: keep them short, plain text, no tables or markdown headings.]\n\n";
     }
 
-    private static void pump(Run run, IComputerSystem computer, boolean claude, String prompt) {
+    private static void pump(Run run, boolean claude, String prompt) {
         var process = run.process;
         try (OutputStream in = process.getOutputStream()) {
             in.write(prompt.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
-            send(computer, run, "error", "couldn't send the prompt: " + e.getMessage());
+            send(run, "error", "couldn't send the prompt: " + e.getMessage());
         }
         // Keep the last lines of stderr for error messages.
         var errors = new StringBuilder();
@@ -164,13 +170,13 @@ public final class AgentRunner {
                     continue;
                 }
                 if (!json.isJsonObject()) continue;
-                if (claude) claudeEvent(computer, run, json.getAsJsonObject(), state);
-                else codexEvent(computer, run, json.getAsJsonObject(), state);
+                if (claude) claudeEvent(run, json.getAsJsonObject(), state);
+                else codexEvent(run, json.getAsJsonObject(), state);
             }
             int code = process.waitFor();
             errThread.join(1000);
             if (!RUNS.containsKey(run.id)) {
-                send(computer, run, "done", "stopped");
+                send(run, "done", "stopped");
                 return;
             }
             if (code != 0 && !state.failed) {
@@ -180,14 +186,14 @@ public final class AgentRunner {
                 }
                 var lines = tail.split("\n");
                 var last = lines.length == 0 ? "" : lines[lines.length - 1];
-                send(computer, run, "error", "exited with code " + code + (last.isEmpty() ? "" : ": " + last)
+                send(run, "error", "exited with code " + code + (last.isEmpty() ? "" : ": " + last)
                     + (tail.toLowerCase(Locale.ROOT).contains("login") || tail.toLowerCase(Locale.ROOT).contains("auth")
                     ? " (sign in once in a terminal first)" : ""));
             }
-            send(computer, run, "done", state.footer());
+            send(run, "done", state.footer());
         } catch (IOException | InterruptedException e) {
-            send(computer, run, "error", e.toString());
-            send(computer, run, "done", "");
+            send(run, "error", e.toString());
+            send(run, "done", "");
         } finally {
             RUNS.remove(run.id);
             if (process.isAlive()) kill(process);
@@ -203,13 +209,13 @@ public final class AgentRunner {
         }
     }
 
-    private static void claudeEvent(IComputerSystem computer, Run run, JsonObject event, State state) {
+    private static void claudeEvent(Run run, JsonObject event, State state) {
         var type = str(event, "type");
         switch (type) {
             case "system" -> {
                 if ("init".equals(str(event, "subtype")) && event.has("session_id")) {
                     state.session = str(event, "session_id");
-                    send(computer, run, "session", state.session);
+                    send(run, "session", state.session);
                 }
             }
             case "assistant" -> {
@@ -220,13 +226,13 @@ public final class AgentRunner {
                     switch (str(p, "type")) {
                         case "text" -> {
                             var text = str(p, "text").trim();
-                            if (!text.isEmpty()) send(computer, run, "text", text);
+                            if (!text.isEmpty()) send(run, "text", text);
                         }
                         case "tool_use" -> {
                             var name = str(p, "name");
                             if (name.equals("ToolSearch")) continue;
                             var args = p.has("input") && p.get("input").isJsonObject() ? p.getAsJsonObject("input") : new JsonObject();
-                            send(computer, run, "tool", toolLine(name, args));
+                            send(run, "tool", toolLine(name, args));
                         }
                         default -> {
                         }
@@ -240,18 +246,18 @@ public final class AgentRunner {
                     if (!part.isJsonObject()) continue;
                     var p = part.getAsJsonObject();
                     if ("tool_result".equals(str(p, "type")) && p.has("is_error") && p.get("is_error").getAsBoolean()) {
-                        send(computer, run, "tool_error", firstLine(contentText(p.get("content"))));
+                        send(run, "tool_error", firstLine(contentText(p.get("content"))));
                     }
                 }
             }
             case "result" -> {
                 if (event.has("session_id")) {
                     state.session = str(event, "session_id");
-                    send(computer, run, "session", state.session);
+                    send(run, "session", state.session);
                 }
                 if (event.has("is_error") && event.get("is_error").getAsBoolean()) {
                     state.failed = true;
-                    send(computer, run, "error", firstLine(str(event, "result")));
+                    send(run, "error", firstLine(str(event, "result")));
                 }
             }
             default -> {
@@ -259,12 +265,12 @@ public final class AgentRunner {
         }
     }
 
-    private static void codexEvent(IComputerSystem computer, Run run, JsonObject event, State state) {
+    private static void codexEvent(Run run, JsonObject event, State state) {
         var type = str(event, "type");
         switch (type) {
             case "thread.started" -> {
                 state.session = str(event, "thread_id");
-                send(computer, run, "session", state.session);
+                send(run, "session", state.session);
             }
             case "item.started", "item.completed" -> {
                 var item = event.getAsJsonObject("item");
@@ -273,23 +279,23 @@ public final class AgentRunner {
                 boolean done = type.equals("item.completed");
                 switch (kind) {
                     case "agent_message" -> {
-                        if (done && !str(item, "text").isBlank()) send(computer, run, "text", str(item, "text").trim());
+                        if (done && !str(item, "text").isBlank()) send(run, "text", str(item, "text").trim());
                     }
                     case "mcp_tool_call" -> {
                         if (!done) {
                             var args = item.has("arguments") && item.get("arguments").isJsonObject() ? item.getAsJsonObject("arguments") : new JsonObject();
-                            send(computer, run, "tool", toolLine(TOOL_PREFIX + str(item, "tool"), args));
+                            send(run, "tool", toolLine(TOOL_PREFIX + str(item, "tool"), args));
                         } else if ("failed".equals(str(item, "status"))) {
-                            send(computer, run, "tool_error", firstLine(item.has("error") ? item.get("error").toString() : "failed"));
+                            send(run, "tool_error", firstLine(item.has("error") ? item.get("error").toString() : "failed"));
                         }
                     }
                     case "command_execution" -> {
-                        if (!done) send(computer, run, "tool", "$ " + shorten(str(item, "command"), 80));
+                        if (!done) send(run, "tool", "$ " + shorten(str(item, "command"), 80));
                     }
                     case "web_search" -> {
-                        if (!done) send(computer, run, "tool", "search " + shorten(str(item, "query"), 80));
+                        if (!done) send(run, "tool", "search " + shorten(str(item, "query"), 80));
                     }
-                    case "error" -> send(computer, run, "error", firstLine(str(item, "message")));
+                    case "error" -> send(run, "error", firstLine(str(item, "message")));
                     default -> {
                     }
                 }
@@ -297,11 +303,11 @@ public final class AgentRunner {
             case "turn.failed" -> {
                 state.failed = true;
                 var error = event.getAsJsonObject("error");
-                send(computer, run, "error", firstLine(error == null ? "turn failed" : str(error, "message")));
+                send(run, "error", firstLine(error == null ? "turn failed" : str(error, "message")));
             }
             case "error" -> {
                 state.failed = true;
-                send(computer, run, "error", firstLine(str(event, "message")));
+                send(run, "error", firstLine(str(event, "message")));
             }
             default -> {
             }
@@ -331,8 +337,8 @@ public final class AgentRunner {
         return content.toString();
     }
 
-    private static void send(IComputerSystem computer, Run run, String kind, String text) {
-        computer.queueEvent("ccagent_chat", run.id, kind, LuaStrings.toLua(text == null ? "" : text));
+    private static void send(Run run, String kind, String text) {
+        run.sink.send(run.id, kind, text == null ? "" : text);
     }
 
     private static String str(JsonObject o, String key) {
@@ -395,8 +401,24 @@ public final class AgentRunner {
         dirs.add(Path.of("/opt/homebrew/bin"));
         dirs.add(Path.of("/usr/local/bin"));
         dirs.add(Path.of("/usr/bin"));
+        dirs.add(Path.of("/Applications/Codex.app/Contents/Resources"));
+        dirs.add(home.resolve("Applications/Codex.app/Contents/Resources"));
         var appData = System.getenv("APPDATA");
         if (appData != null) dirs.add(Path.of(appData, "npm"));
+        var localAppData = System.getenv("LOCALAPPDATA");
+        if (localAppData != null) {
+            dirs.add(Path.of(localAppData, "Microsoft", "WinGet", "Links"));
+            dirs.add(Path.of(localAppData, "Programs", "claude"));
+            dirs.add(Path.of(localAppData, "pnpm"));
+        }
+        var nvmSymlink = System.getenv("NVM_SYMLINK");
+        if (nvmSymlink != null) dirs.add(Path.of(nvmSymlink));
+        dirs.add(Path.of("C:/nvm4w/nodejs"));
+        var programFiles = System.getenv("ProgramFiles");
+        if (programFiles != null) dirs.add(Path.of(programFiles, "nodejs"));
+        dirs.add(home.resolve("scoop/shims"));
+        dirs.add(home.resolve("AppData/Local/Volta/bin"));
+        dirs.addAll(SHELL_PATH.get());
         var nvm = home.resolve(".nvm/versions/node");
         if (Files.isDirectory(nvm)) {
             try (var versions = Files.list(nvm)) {
@@ -405,6 +427,47 @@ public final class AgentRunner {
             }
         }
         return new ArrayList<>(dirs);
+    }
+
+    /**
+     * The PATH a login shell would give (macOS and Linux): apps started from the Dock or a launcher
+     * don't get the PATH set up in .zshrc or .bashrc, which is where node version managers live.
+     */
+    private static final java.util.function.Supplier<List<Path>> SHELL_PATH = memoize(() -> {
+        var out = new ArrayList<Path>();
+        if (windows()) return out;
+        var shell = System.getenv("SHELL");
+        if (shell == null || shell.isBlank()) shell = Files.isExecutable(Path.of("/bin/zsh")) ? "/bin/zsh" : "/bin/bash";
+        try {
+            var process = new ProcessBuilder(shell, "-ilc", "echo __CCAGENT__$PATH").redirectErrorStream(true).start();
+            process.getOutputStream().close();
+            // A shell that hangs (a prompt asking for input) must not hang the game.
+            if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return out;
+            }
+            var text = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            int at = text.lastIndexOf("__CCAGENT__");
+            if (at >= 0) {
+                var line = text.substring(at + "__CCAGENT__".length()).split("\\R", 2)[0];
+                for (var part : line.split(":")) if (!part.isBlank()) out.add(Path.of(part.trim()));
+            }
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            CCAgent.LOG.debug("Couldn't ask the login shell for PATH", e);
+        }
+        return out;
+    });
+
+    private static <T> java.util.function.Supplier<T> memoize(java.util.function.Supplier<T> supplier) {
+        return new java.util.function.Supplier<>() {
+            private volatile T value;
+
+            @Override
+            public synchronized T get() {
+                if (value == null) value = supplier.get();
+                return value;
+            }
+        };
     }
 
     private static Path find(String command) {

@@ -57,15 +57,34 @@ public final class AgentApi implements ILuaAPI {
         var session = args.optString(2, null);
         int width = args.optInt(3, 51);
         try {
-            return new Object[]{AgentRunner.start(system, agent, prompt, session, width)};
+            return new Object[]{startAgent(agent, prompt, session, width)};
         } catch (ToolException e) {
             return new Object[]{null, e.getMessage()};
         }
     }
 
+    private int startAgent(String agent, String prompt, String session, int width) {
+        var server = CCAgent.server();
+        var config = CCAgent.config();
+        if (server == null || config == null) throw new ToolException("no world is open");
+        var player = Relay.interactingPlayer(system.getID());
+        // Someone else's game: their own PC runs the agent.
+        if (player != null && !server.isSingleplayerOwner(player.getGameProfile())) {
+            return Relay.launch(player, system, agent, prompt, session, width);
+        }
+        if (server.isDedicatedServer()) {
+            throw new ToolException("open this computer's screen in the game to use " + agent
+                + " (it runs on your PC, with CC: Agent installed there too)");
+        }
+        if (!CCAgent.running()) throw new ToolException("CC: Agent's MCP server isn't running (see /ccagent)");
+        AgentRunner.Sink sink = (run, kind, text) -> system.queueEvent("ccagent_chat", run, kind, LuaStrings.toLua(text));
+        return AgentRunner.start(sink, system.getID(), system.getLabel(), agent, prompt, session, width, config, config.url());
+    }
+
     @LuaFunction
     public final void stop(int run) {
-        AgentRunner.stop(run);
+        if (Relay.isRelayChat(run)) Relay.stopChat(run);
+        else AgentRunner.stop(run);
     }
 
     /** Agent tool calls after the given entry id, oldest first. */

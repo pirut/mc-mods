@@ -2,7 +2,13 @@ package io.github.pirut.ccagent.fabric;
 
 import io.github.pirut.ccagent.CCAgent;
 import io.github.pirut.ccagent.Platform;
+import io.github.pirut.ccagent.Relay;
+import io.github.pirut.ccagent.RelayPayload;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.server.level.ServerPlayer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -29,6 +35,16 @@ public final class CCAgentFabric implements ModInitializer {
             }
 
             @Override
+            public void sendToPlayer(ServerPlayer player, RelayPayload payload) {
+                ServerPlayNetworking.send(player, payload);
+            }
+
+            @Override
+            public boolean hasRelay(ServerPlayer player) {
+                return ServerPlayNetworking.canSend(player, RelayPayload.TYPE);
+            }
+
+            @Override
             public ModMeta mod(String modId) {
                 return FabricLoader.getInstance().getModContainer(modId).map(container -> {
                     var meta = container.getMetadata();
@@ -38,6 +54,11 @@ public final class CCAgentFabric implements ModInitializer {
                 }).orElse(null);
             }
         });
+        PayloadTypeRegistry.playC2S().register(RelayPayload.TYPE, RelayPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(RelayPayload.TYPE, RelayPayload.CODEC);
+        ServerPlayNetworking.registerGlobalReceiver(RelayPayload.TYPE, (payload, context) -> Relay.serverReceive(context.player(), payload));
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> Relay.playerJoined(handler.player));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> Relay.playerLeft(handler.player));
         ServerLifecycleEvents.SERVER_STARTED.register(CCAgent::serverStarted);
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> CCAgent.serverStopping());
         CommandRegistrationCallback.EVENT.register((dispatcher, registries, environment) -> CCAgent.registerCommands(dispatcher));

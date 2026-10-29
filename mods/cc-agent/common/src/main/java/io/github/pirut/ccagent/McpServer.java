@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import net.minecraft.server.MinecraftServer;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -42,19 +41,27 @@ public final class McpServer {
         Use cc_help for CC's own API docs. Files written here land on the computer at once; nothing restarts \
         unless you reboot it.""";
 
+    /** Where tool calls go: this game's own server, or the multiplayer server through the relay. */
+    public interface Backend {
+        JsonArray tools();
+
+        /** A tools/call result: {content, isError}. */
+        JsonObject call(String name, JsonObject args);
+    }
+
     private final HttpServer http;
     private final ExecutorService pool;
-    private final Tools tools;
+    private final Backend tools;
     private final AgentConfig config;
 
-    private McpServer(HttpServer http, ExecutorService pool, Tools tools, AgentConfig config) {
+    private McpServer(HttpServer http, ExecutorService pool, Backend tools, AgentConfig config) {
         this.http = http;
         this.pool = pool;
         this.tools = tools;
         this.config = config;
     }
 
-    public static McpServer start(MinecraftServer server, AgentConfig config) throws IOException {
+    public static McpServer start(Backend backend, AgentConfig config) throws IOException {
         var http = HttpServer.create(new InetSocketAddress(config.host, config.port), 16);
         var count = new AtomicInteger();
         var pool = Executors.newFixedThreadPool(8, r -> {
@@ -62,7 +69,7 @@ public final class McpServer {
             t.setDaemon(true);
             return t;
         });
-        var mcp = new McpServer(http, pool, new Tools(server), config);
+        var mcp = new McpServer(http, pool, backend, config);
         http.setExecutor(pool);
         http.createContext("/mcp", mcp::handle);
         http.createContext("/", exchange -> mcp.send(exchange, 404, "text/plain", "CC: Agent: the MCP endpoint is /mcp\n"));
@@ -179,37 +186,16 @@ public final class McpServer {
     }
 
     private JsonObject toolsList() {
-        var list = new JsonArray();
-        for (var tool : tools.all()) list.add(tool.listing());
-        return obj("tools", list);
+        return obj("tools", tools.tools());
     }
 
     private JsonObject call(JsonObject params) {
         var name = params.has("name") ? params.get("name").getAsString() : "";
-        var tool = tools.get(name);
-        if (tool == null) return toolResult("unknown tool " + name, true);
         var args = params.has("arguments") && params.get("arguments").isJsonObject() ? params.getAsJsonObject("arguments") : new JsonObject();
-        var result = run(tool, name, args);
-        ActivityLog.add(name, Json.str(args, "computer", null), Tools.summary(name, args),
-            !result.get("isError").getAsBoolean());
-        return result;
+        return tools.call(name, args);
     }
 
-    private JsonObject run(Tools.Tool tool, String name, JsonObject args) {
-        try {
-            var value = tool.handler().call(args);
-            if (value instanceof Tools.ToolResult r) return toolResult(r.text(), r.error());
-            if (value instanceof JsonElement json) return toolResult(Json.PRETTY.toJson(json), false);
-            return toolResult(String.valueOf(value), false);
-        } catch (ToolException e) {
-            return toolResult(e.getMessage(), true);
-        } catch (Exception e) {
-            CCAgent.LOG.warn("Tool {} failed", name, e);
-            return toolResult(name + " failed: " + e, true);
-        }
-    }
-
-    private static JsonObject toolResult(String text, boolean isError) {
+    static JsonObject toolResult(String text, boolean isError) {
         var content = new JsonArray();
         content.add(obj("type", "text", "text", text));
         return obj("content", content, "isError", isError);

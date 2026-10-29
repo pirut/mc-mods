@@ -62,7 +62,7 @@ final class AgentCommand {
     private static int codex(CommandSourceStack source) {
         var config = CCAgent.config();
         var toml = "[mcp_servers.cc-agent]\nurl = \"" + config.url() + "\"\nhttp_headers = { \"Authorization\" = \"Bearer "
-            + config.token + "\" }\n";
+            + config.token + "\" }\ndefault_tools_approval_mode = \"approve\"\n";
         source.sendSystemMessage(Component.literal("Add this to ~/.codex/config.toml (click to copy):"));
         source.sendSystemMessage(copyable("[copy Codex config]", toml));
         if (source.getPlayer() == null) source.sendSystemMessage(Component.literal(toml));
