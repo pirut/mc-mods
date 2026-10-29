@@ -24,4 +24,10 @@ neoForge {
 
 dependencies {
     implementation "cc.tweaked:cc-tweaked-${minecraft_version}-forge:${cc_version}"
+
+    // A real terminal for the agents' TUIs. Minecraft already ships JNA.
+    jarJar(implementation("org.jetbrains.pty4j:pty4j:${pty4j_version}")) { transitive = false }
+    jarJar(implementation("org.jetbrains.kotlin:kotlin-stdlib:${kotlin_stdlib_version}")) { transitive = false }
+    additionalRuntimeClasspath "org.jetbrains.pty4j:pty4j:${pty4j_version}"
+    additionalRuntimeClasspath "org.jetbrains.kotlin:kotlin-stdlib:${kotlin_stdlib_version}"
 }

@@ -358,7 +358,7 @@ public final class AgentRunner {
         return t.length() > max ? t.substring(0, max - 3) + "..." : t;
     }
 
-    private static List<String> split(String args) {
+    static List<String> split(String args) {
         var out = new ArrayList<String>();
         if (args == null || args.isBlank()) return out;
         var m = java.util.regex.Pattern.compile("\"([^\"]*)\"|(\\S+)").matcher(args);
@@ -366,12 +366,12 @@ public final class AgentRunner {
         return out;
     }
 
-    private static boolean windows() {
+    static boolean windows() {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
     /** npm installs .cmd shims on Windows, which only cmd.exe can start. */
-    private static List<String> launcher(Path exe) {
+    static List<String> launcher(Path exe) {
         var name = exe.getFileName().toString().toLowerCase(Locale.ROOT);
         var out = new ArrayList<String>();
         if (windows() && (name.endsWith(".cmd") || name.endsWith(".bat"))) out.addAll(List.of("cmd.exe", "/c"));
@@ -470,7 +470,7 @@ public final class AgentRunner {
         };
     }
 
-    private static Path find(String command) {
+    static Path find(String command) {
         if (command.isBlank()) return null;
         var direct = Path.of(command);
         if (direct.isAbsolute()) return Files.isRegularFile(direct) ? direct : null;
@@ -485,7 +485,7 @@ public final class AgentRunner {
     }
 
     /** PATH for the child: its own folder first (node shims sit next to node), then the usual folders. */
-    private static String searchPath(Path exe) {
+    static String searchPath(Path exe) {
         var parts = new ArrayList<String>();
         if (exe.getParent() != null) parts.add(exe.getParent().toString());
         for (var dir : searchDirs()) parts.add(dir.toString());

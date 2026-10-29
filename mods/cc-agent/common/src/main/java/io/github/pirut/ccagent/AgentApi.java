@@ -30,6 +30,12 @@ public final class AgentApi implements ILuaAPI {
     @Override
     public void shutdown() {
         Jobs.computerStopped(system.getID());
+        try {
+            TuiSession.stopComputer(system.getID());
+            Relay.stopTuis(system.getID());
+        } catch (RuntimeException e) {
+            CCAgent.LOG.warn("Couldn't stop computer #{}'s TUI", system.getID(), e);
+        }
     }
 
     @LuaFunction
@@ -85,6 +91,97 @@ public final class AgentApi implements ILuaAPI {
     public final void stop(int run) {
         if (Relay.isRelayChat(run)) Relay.stopChat(run);
         else AgentRunner.stop(run);
+    }
+
+    /**
+     * Start Claude Code's or Codex's own TUI in a terminal cols x rows: (agent, cols, rows, monitorName?) -> session id,
+     * or nil and an error. Frames arrive as ccagent_tui events.
+     */
+    @LuaFunction
+    public final Object[] tui(String agent, int cols, int rows, java.util.Optional<String> monitor) {
+        try {
+            var server = CCAgent.server();
+            var config = CCAgent.config();
+            if (server == null || config == null) throw new ToolException("no world is open");
+            cols = Math.max(20, cols);
+            rows = Math.max(5, rows);
+            var player = Relay.interactingPlayer(system.getID());
+            // Someone else's game: their own PC runs the agent.
+            if (player != null && !server.isSingleplayerOwner(player.getGameProfile())) {
+                return new Object[]{Relay.launchTui(player, system, agent, cols, rows, monitor.orElse(null))};
+            }
+            if (server.isDedicatedServer()) {
+                throw new ToolException("open this computer's screen in the game to use " + agent
+                    + " (it runs on your PC, with CC: Agent installed there too)");
+            }
+            if (!CCAgent.running()) throw new ToolException("CC: Agent's MCP server isn't running (see /ccagent)");
+            TuiSession.Sink sink = new TuiSession.Sink() {
+                @Override
+                public void frame(int id, java.util.Map<Integer, String[]> frameRows, java.util.Map<Integer, Integer> palette,
+                                  int x, int y, boolean visible) {
+                    system.queueEvent("ccagent_tui", id, "frame", TuiSession.luaRows(frameRows), palette, x + 1, y + 1, visible);
+                }
+
+                @Override
+                public void exit(int id, int code) {
+                    system.queueEvent("ccagent_tui", id, "exit", code);
+                }
+            };
+            return new Object[]{TuiSession.start(sink, system.getID(), system.getLabel(), agent, cols, rows,
+                monitor.orElse(null), config, config.url())};
+        } catch (ToolException e) {
+            return new Object[]{null, e.getMessage()};
+        }
+    }
+
+    /** Keyboard input for a TUI session: (id, "char"|"key"|"key_up"|"paste", value). */
+    @LuaFunction
+    public final void tuiInput(IArguments args) throws LuaException {
+        int id = args.getInt(0);
+        var kind = args.getString(1);
+        Object value = switch (kind) {
+            // CC's char and paste events carry Latin-1 text, which is what Lua strings map to.
+            case "char", "paste" -> args.getString(2);
+            default -> args.getInt(2);
+        };
+        if (Relay.isRelayTui(id, system.getID())) {
+            Relay.tuiControl(id, Json.obj("action", "input", "kind", kind, "value", value));
+            return;
+        }
+        var session = session(id);
+        try {
+            session.input(kind, value);
+        } catch (ToolException e) {
+            throw new LuaException(e.getMessage());
+        }
+    }
+
+    @LuaFunction
+    public final void tuiResize(int id, int cols, int rows) throws LuaException {
+        if (Relay.isRelayTui(id, system.getID())) Relay.tuiControl(id, Json.obj("action", "resize", "cols", cols, "rows", rows));
+        else session(id).resize(cols, rows);
+    }
+
+    @LuaFunction
+    public final void tuiRedraw(int id) throws LuaException {
+        if (Relay.isRelayTui(id, system.getID())) Relay.tuiControl(id, Json.obj("action", "redraw"));
+        else session(id).redraw();
+    }
+
+    @LuaFunction
+    public final void tuiStop(int id) {
+        if (Relay.isRelayTui(id, system.getID())) {
+            Relay.tuiControl(id, Json.obj("action", "stop"));
+            return;
+        }
+        var session = TuiSession.get(id);
+        if (session != null && session.computerId == system.getID()) TuiSession.stop(id);
+    }
+
+    private TuiSession session(int id) throws LuaException {
+        var session = TuiSession.get(id);
+        if (session == null || session.computerId != system.getID()) throw new LuaException("no such session");
+        return session;
     }
 
     /** Agent tool calls after the given entry id, oldest first. */

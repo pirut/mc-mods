@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0
+
+- **The real Claude Code and Codex screens in CC.** `claude --tui` (or `codex --tui`) runs the agent's
+  own full-screen terminal UI on your PC and draws it on the biggest advanced monitor attached to the
+  computer, at the largest text size that still fits 80x24. Type on the computer: its screen shows the
+  part you're working in, following the prompt. `claude --tui left` picks a monitor, `claude --tui term`
+  uses the computer's own screen. Hold Ctrl+T to quit, or use the agent's own exit.
+- Colors are matched per session, so Claude Code's orange stays orange; box drawing and blocks use CC's
+  teletext characters.
+- Works in multiplayer the same way as the chat: the TUI runs on the player's PC and the screen is relayed
+  to the server's computer.
+- Bundles pty4j (EPL-1.0) and the Kotlin standard library (Apache-2.0) for the terminal; the jars are
+  about 4.5 MB now.
+
 ## 0.3.0
 
 - **Multiplayer.** With CC: Agent on both the server and your game, everything works on servers: the

@@ -123,12 +123,27 @@ public final class Relay {
 
     public static void playerLeft(ServerPlayer player) {
         CHATS.values().removeIf(chat -> chat.player.equals(player.getUUID()));
+        for (var tui : List.copyOf(TUIS.values())) {
+            if (tui.player.equals(player.getUUID())) {
+                TUIS.remove(tui.id);
+                tui.computer.queueEvent("ccagent_tui", tui.id, "exit", -1);
+            }
+        }
         CALLS.remove(player.getUUID());
     }
 
     public static void serverReceive(ServerPlayer player, RelayPayload payload) {
         var message = assemble(player.getUUID().toString(), payload);
         if (message == null) return;
+        // Frames must stay in order, and only queue an event: handle them here.
+        if (Json.str(message, "type", "").startsWith("tui_")) {
+            try {
+                serverTui(player, message);
+            } catch (RuntimeException e) {
+                CCAgent.LOG.warn("Relay TUI message from {} failed", player.getGameProfile().getName(), e);
+            }
+            return;
+        }
         POOL.execute(() -> {
             try {
                 serverHandle(player, message);
@@ -195,6 +210,98 @@ public final class Relay {
 
     /** Ask a player's client to run Claude Code or Codex for this computer. Returns the chat id. */
     public static int launch(ServerPlayer player, IComputerSystem computer, String agent, String prompt, String session, int width) {
+        checkLaunch(player);
+        int id = NEXT_ID.getAndIncrement();
+        CHATS.put(id, new Chat(id, computer, player.getUUID()));
+        var message = obj("type", "launch", "chat", id, "agent", agent, "prompt", prompt, "width", width,
+            "computer", computer.getID());
+        if (session != null) message.addProperty("session", session);
+        if (computer.getLabel() != null) message.addProperty("label", computer.getLabel());
+        send(player, message);
+        return id;
+    }
+
+    // ---- Server side: full-screen TUIs ----
+
+    private record Tui(int id, IComputerSystem computer, UUID player) {
+    }
+
+    private static final Map<Integer, Tui> TUIS = new ConcurrentHashMap<>();
+
+    /** Ask a player's client to run an agent's TUI for this computer. Returns the session id. */
+    public static int launchTui(ServerPlayer player, IComputerSystem computer, String agent, int cols, int rows, String monitor) {
+        checkLaunch(player);
+        int id = NEXT_ID.getAndIncrement();
+        TUIS.put(id, new Tui(id, computer, player.getUUID()));
+        var message = obj("type", "tui_launch", "tui", id, "agent", agent, "cols", cols, "rows", rows,
+            "computer", computer.getID());
+        if (monitor != null) message.addProperty("monitor", monitor);
+        if (computer.getLabel() != null) message.addProperty("label", computer.getLabel());
+        send(player, message);
+        return id;
+    }
+
+    /** Whether this is a relayed TUI session running for that computer. */
+    public static boolean isRelayTui(int id, int computerId) {
+        var tui = TUIS.get(id);
+        return tui != null && tui.computer.getID() == computerId;
+    }
+
+    /** Pass keys, a resize, a redraw or a stop on to the player running the TUI. */
+    public static void tuiControl(int id, JsonObject message) {
+        var tui = TUIS.get(id);
+        var server = CCAgent.server();
+        if (tui == null || server == null) return;
+        if (Json.str(message, "action", "").equals("stop")) TUIS.remove(id);
+        var player = server.getPlayerList().getPlayer(tui.player);
+        if (player == null) return;
+        message.addProperty("type", "tui_ctl");
+        message.addProperty("tui", id);
+        send(player, message);
+    }
+
+    public static void stopTuis(int computerId) {
+        for (var tui : List.copyOf(TUIS.values())) {
+            if (tui.computer.getID() == computerId) tuiControl(tui.id, obj("action", "stop"));
+        }
+    }
+
+    private static void serverTui(ServerPlayer player, JsonObject message) {
+        var tui = TUIS.get(Json.integer(message, "tui", -1));
+        if (tui == null || !tui.player.equals(player.getUUID())) return;
+        switch (Json.str(message, "type", "")) {
+            case "tui_frame" -> {
+                var rows = new java.util.HashMap<Integer, List<String>>();
+                if (message.has("rows") && message.get("rows").isJsonObject()) {
+                    for (var e : message.getAsJsonObject("rows").entrySet()) {
+                        if (!e.getValue().isJsonArray() || e.getValue().getAsJsonArray().size() != 3) continue;
+                        var line = e.getValue().getAsJsonArray();
+                        rows.put(Integer.parseInt(e.getKey()) + 1, new ArrayList<>(List.of(
+                            line.get(0).getAsString(), line.get(1).getAsString(), line.get(2).getAsString())));
+                    }
+                }
+                var palette = new java.util.HashMap<Integer, Integer>();
+                if (message.has("palette") && message.get("palette").isJsonObject()) {
+                    for (var e : message.getAsJsonObject("palette").entrySet()) {
+                        int slot = Integer.parseInt(e.getKey());
+                        if (slot >= 0 && slot < 16) palette.put(slot, e.getValue().getAsInt() & 0xFFFFFF);
+                    }
+                }
+                tui.computer.queueEvent("ccagent_tui", tui.id, "frame", rows, palette,
+                    Json.integer(message, "x", 0) + 1, Json.integer(message, "y", 0) + 1,
+                    message.has("visible") && message.get("visible").getAsBoolean());
+            }
+            case "tui_exit" -> {
+                TUIS.remove(tui.id);
+                tui.computer.queueEvent("ccagent_tui", tui.id, "exit", Json.integer(message, "code", 0),
+                    message.has("error") ? LuaStrings.toLua(Json.str(message, "error", "")) : null);
+            }
+            default -> {
+            }
+        }
+    }
+
+    private static void checkLaunch(ServerPlayer player) {
         var config = CCAgent.config();
         if (!serverEnabled()) throw new ToolException("this server has CC: Agent's relay turned off (relay=false)");
         if (config.relayOpsOnly && !player.hasPermissions(2)) throw new ToolException("on this server only operators can use CC: Agent");
@@ -205,14 +312,6 @@ public final class Relay {
         if (serverComputer != null && serverComputer.getFamily() == ComputerFamily.COMMAND && !player.hasPermissions(2)) {
             throw new ToolException("only operators can use agents on command computers");
         }
-        int id = NEXT_ID.getAndIncrement();
-        CHATS.put(id, new Chat(id, computer, player.getUUID()));
-        var message = obj("type", "launch", "chat", id, "agent", agent, "prompt", prompt, "width", width,
-            "computer", computer.getID());
-        if (session != null) message.addProperty("session", session);
-        if (computer.getLabel() != null) message.addProperty("label", computer.getLabel());
-        send(player, message);
-        return id;
     }
 
     private static dan200.computercraft.shared.computer.core.ServerComputer interactingComputer(ServerPlayer player) {
@@ -233,6 +332,7 @@ public final class Relay {
 
     static void serverStopped() {
         CHATS.clear();
+        TUIS.clear();
         CALLS.clear();
     }
 
@@ -259,6 +359,15 @@ public final class Relay {
     public static void clientReceive(RelayPayload payload) {
         var message = assemble("server", payload);
         if (message == null) return;
+        // Keys must reach the TUI in order.
+        if (Json.str(message, "type", "").equals("tui_ctl")) {
+            try {
+                tuiControlHere(message);
+            } catch (RuntimeException e) {
+                CCAgent.LOG.warn("Relay TUI input from the server failed", e);
+            }
+            return;
+        }
         POOL.execute(() -> {
             try {
                 clientHandle(message);
@@ -276,6 +385,7 @@ public final class Relay {
                 if (future != null && message.has("result")) future.complete(message.getAsJsonObject("result"));
             }
             case "launch" -> launchHere(message);
+            case "tui_launch" -> launchTuiHere(message);
             case "stop" -> {
                 var run = CLIENT_RUNS.remove(Json.integer(message, "chat", -1));
                 if (run != null) AgentRunner.stop(run);
@@ -321,8 +431,85 @@ public final class Relay {
         }
     }
 
+    private static final Map<Integer, Integer> CLIENT_TUIS = new ConcurrentHashMap<>();
+
+    private static void launchTuiHere(JsonObject message) {
+        int tui = Json.integer(message, "tui", -1);
+        TuiSession.Sink sink = new TuiSession.Sink() {
+            @Override
+            public void frame(int id, Map<Integer, String[]> rows, Map<Integer, Integer> palette, int x, int y, boolean visible) {
+                var lines = new JsonObject();
+                for (var e : rows.entrySet()) {
+                    var line = new JsonArray();
+                    for (var part : e.getValue()) line.add(part);
+                    lines.add(String.valueOf(e.getKey()), line);
+                }
+                var colors = new JsonObject();
+                for (var e : palette.entrySet()) colors.addProperty(String.valueOf(e.getKey()), e.getValue());
+                trySend(obj("type", "tui_frame", "tui", tui, "rows", lines, "palette", colors, "x", x, "y", y,
+                    "visible", visible));
+            }
+
+            @Override
+            public void exit(int id, int code) {
+                CLIENT_TUIS.remove(tui);
+                trySend(obj("type", "tui_exit", "tui", tui, "code", code));
+            }
+        };
+        try {
+            startClientMcp();
+            if (clientMcp == null) throw new ToolException("CC: Agent's MCP server isn't running on your PC (port "
+                + (clientConfig == null ? "?" : clientConfig.port) + " busy, or enabled=false)");
+            int session = TuiSession.start(sink, Json.integer(message, "computer", 0), Json.str(message, "label", null),
+                Json.str(message, "agent", "claude"), Json.integer(message, "cols", 80), Json.integer(message, "rows", 24),
+                Json.str(message, "monitor", null), clientConfig, clientConfig.url());
+            CLIENT_TUIS.put(tui, session);
+        } catch (ToolException e) {
+            CCAgent.LOG.warn("Couldn't start a TUI for the server: {}", e.getMessage());
+            trySend(obj("type", "tui_exit", "tui", tui, "code", -1, "error", e.getMessage()));
+        }
+    }
+
+    private static void tuiControlHere(JsonObject message) {
+        int tui = Json.integer(message, "tui", -1);
+        var local = CLIENT_TUIS.get(tui);
+        if (local == null) return;
+        var session = TuiSession.get(local);
+        switch (Json.str(message, "action", "")) {
+            case "input" -> {
+                if (session == null) return;
+                var kind = Json.str(message, "kind", "");
+                Object value = kind.equals("char") || kind.equals("paste") ? Json.str(message, "value", "")
+                    : (Object) Json.integer(message, "value", 0);
+                session.input(kind, value);
+            }
+            case "resize" -> {
+                if (session != null) session.resize(Json.integer(message, "cols", 80), Json.integer(message, "rows", 24));
+            }
+            case "redraw" -> {
+                if (session != null) session.redraw();
+            }
+            case "stop" -> {
+                CLIENT_TUIS.remove(tui);
+                TuiSession.stop(local);
+            }
+            default -> {
+            }
+        }
+    }
+
+    private static void trySend(JsonObject message) {
+        try {
+            sendToServer(message);
+        } catch (ToolException ignored) {
+            // Disconnected; the TUI is stopped with the connection.
+        }
+    }
+
     public static synchronized void clientDisconnected() {
         clientSender = null;
+        for (var session : CLIENT_TUIS.values()) TuiSession.stop(session);
+        CLIENT_TUIS.clear();
         for (var run : CLIENT_RUNS.values()) AgentRunner.stop(run);
         CLIENT_RUNS.clear();
         for (var future : PENDING.values()) future.complete(McpServer.toolResult("disconnected from the server", true));

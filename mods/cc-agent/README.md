@@ -57,6 +57,13 @@ step it takes shows as a line while it works. Follow-ups continue the conversati
 terminal, and works in singleplayer and on servers (see Multiplayer). The agent gets CC: Agent's tools plus web search, nothing else on
 your PC.
 
+`claude --tui` and `codex --tui` run the agent's own full-screen terminal UI instead, the same one you'd
+see in a terminal, drawn on the biggest advanced monitor attached to the computer (text size picked so it
+fits at least 80x24; an 8x6 wall gives 82x40). You type on the computer, whose screen shows the part around
+the prompt. `claude --tui left` picks a monitor, `claude --tui term` uses the computer's own screen. Hold
+Ctrl+T to quit. Slash commands, permission prompts and everything else work as in a terminal. This also
+works on servers.
+
 `agentlog` shows every tool call agents make, live, on the computer or on a monitor (`agentlog right`), so you
 can watch an agent you're driving from your terminal work in the world.
 
@@ -163,5 +170,6 @@ folder adds only its entry point. `./gradlew :neoforge:runClient` or `:fabric:ru
 
 ## License
 
-LGPL-3.0-only. See `COPYING` and `COPYING.LESSER`. CC: Tweaked is by SquidDev and contributors (MPL-2.0 and
+LGPL-3.0-only. See `COPYING` and `COPYING.LESSER`. The jars bundle [pty4j](https://github.com/JetBrains/pty4j)
+(EPL-1.0) and the Kotlin standard library (Apache-2.0) for the terminal behind `--tui`. CC: Tweaked is by SquidDev and contributors (MPL-2.0 and
 others); this mod is not affiliated with it.

@@ -6,4 +6,6 @@ ex:
 
 In the chat, /new starts a fresh conversation and /exit leaves. Ctrl+T stops a reply that's in progress.
 
-Needs Codex installed and signed in on the PC playing singleplayer. See also: claude, agentlog.
+"codex --tui" runs Codex's own full screen instead, on the biggest advanced monitor attached (or this screen if there's none). Type on this computer; its screen follows the prompt. "codex --tui left" picks a monitor, "codex --tui term" uses this screen. Hold Ctrl+T to quit.
+
+Needs Codex installed and signed in on your PC, and CC: Agent in your game (on servers too). See also: claude, agentlog.
