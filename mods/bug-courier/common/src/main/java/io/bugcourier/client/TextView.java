@@ -24,9 +24,10 @@ final class TextView extends AbstractScrollWidget {
     void setText(String text) {
         lines.clear();
         String[] raw = text.split("\\R", -1);
-        for (String line : raw) {
+        for (int i = 0; i < raw.length; i++) {
+            String line = raw[i];
             if (lines.size() >= MAX_LINES) {
-                lines.add(Component.literal("[... " + (raw.length - MAX_LINES) + " more lines in the zip ...]").getVisualOrderText());
+                lines.add(Component.translatable("bugcourier.preview.more_lines", raw.length - i).getVisualOrderText());
                 break;
             }
             if (line.isEmpty()) {

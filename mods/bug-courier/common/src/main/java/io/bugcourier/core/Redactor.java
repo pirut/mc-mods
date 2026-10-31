@@ -1,8 +1,9 @@
 package io.bugcourier.core;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -29,34 +30,49 @@ public final class Redactor {
             "(?<![\\d.])((?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3})(?::\\d{1,5})?(?![\\d.])");
     private static final Pattern IPV6 = Pattern.compile("(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}(?![0-9A-Fa-f:])");
 
-    private final List<String> literals = new ArrayList<>();
+    private final List<Pattern> literals = new ArrayList<>();
+    private final Set<String> kept = new HashSet<>();
 
-    /** Also hides these exact strings, such as the player's name and UUID when the player keeps them off. */
+    /**
+     * Also hides these exact strings, such as the player's name and UUID when the player keeps them off. Only whole
+     * words match, so a player called "Dev" doesn't turn "device" into "<hidden>ice".
+     */
     public Redactor hide(String literal) {
-        if (literal != null && literal.length() >= 3) literals.add(literal);
+        if (literal != null && literal.length() >= 3) {
+            literals.add(Pattern.compile("(?<![A-Za-z0-9_])" + Pattern.quote(literal) + "(?![A-Za-z0-9_])", Pattern.CASE_INSENSITIVE));
+        }
+        return this;
+    }
+
+    /**
+     * Never hides this string as an address. For version numbers with four parts, such as a mod at "1.0.0.0",
+     * which look exactly like an IP address. Only the address-like part of the version is kept.
+     */
+    public Redactor keep(String version) {
+        if (version == null) return this;
+        // The address-like part of versions such as "1.0.0.0-beta" or "mc1.21-2.0.1.3".
+        Matcher m = IPV4.matcher(version);
+        while (m.find()) kept.add(m.group(1));
         return this;
     }
 
     public String apply(String text) {
         if (text == null || text.isEmpty()) return text;
         String out = text;
-        for (String literal : literals) {
-            out = Pattern.compile(Pattern.quote(literal), Pattern.CASE_INSENSITIVE).matcher(out).replaceAll(Matcher.quoteReplacement(HIDDEN));
-        }
+        for (Pattern literal : literals) out = literal.matcher(out).replaceAll(Matcher.quoteReplacement(HIDDEN));
         out = ACCESS_TOKEN_ARG.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(HIDDEN));
         out = TOKEN_ASSIGN.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(HIDDEN));
         out = JWT.matcher(out).replaceAll(Matcher.quoteReplacement(HIDDEN));
         out = WINDOWS_HOME.matcher(out).replaceAll(m -> Matcher.quoteReplacement(m.group(1) + "<user>"));
         out = UNIX_HOME.matcher(out).replaceAll(m -> Matcher.quoteReplacement(m.group(1) + "<user>"));
         out = EMAIL.matcher(out).replaceAll("<email>");
-        out = IPV4.matcher(out).replaceAll(m -> keepIp(m.group(1)) ? m.group() : "<ip>");
+        out = IPV4.matcher(out).replaceAll(m -> keepIp(m.group(1)) ? Matcher.quoteReplacement(m.group()) : "<ip>");
         out = IPV6.matcher(out).replaceAll("<ip>");
         return out;
     }
 
     // Loopback and the unspecified address say nothing about the player and help reading logs.
-    private static boolean keepIp(String ip) {
-        String lower = ip.toLowerCase(Locale.ROOT);
-        return lower.startsWith("127.") || lower.equals("0.0.0.0");
+    private boolean keepIp(String ip) {
+        return ip.startsWith("127.") || ip.equals("0.0.0.0") || kept.contains(ip);
     }
 }

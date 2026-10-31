@@ -5,8 +5,10 @@ import io.bugcourier.BugCourier;
 import io.bugcourier.api.ReportConfig;
 import io.bugcourier.core.Attachment;
 import io.bugcourier.core.CrashReports;
+import io.bugcourier.core.IssueBody;
 import io.bugcourier.core.Redactor;
 import io.bugcourier.core.Report;
+import io.bugcourier.platform.Platform;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
@@ -19,22 +21,24 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
-import io.bugcourier.platform.Platform;
 
 /** Gathers what a report can carry. Every text passes through the redactor before anyone sees it. */
 final class Collectors {
-    static final String LOG = "latest.log";
-    static final String CRASH = "crash-report.txt";
-    static final String MODS = "mods.txt";
+    private static final String LOG = IssueBody.LOG_FILE;
+    private static final String CRASH = IssueBody.CRASH_FILE;
+    private static final String MODS = "mods.txt";
     private static final int LOG_TAIL_BYTES = 256 * 1024;
     private static final int FILE_MAX_BYTES = 128 * 1024;
-    private static final Duration RECENT_CRASH = Duration.ofDays(3);
+    /** How old a crash report may be and still be offered, after a crash or in a report made by hand. */
+    static final Duration RECENT_CRASH = Duration.ofDays(3);
 
     private Collectors() {
     }
 
     static Redactor redactor(boolean includePlayer) {
         Redactor r = new Redactor();
+        // Four-part versions look like IP addresses; keep every installed mod's so the mod list stays readable.
+        for (Platform.ModEntry mod : Platform.get().allMods()) r.keep(mod.version());
         if (!includePlayer) {
             var user = Minecraft.getInstance().getUser();
             r.hide(user.getName());

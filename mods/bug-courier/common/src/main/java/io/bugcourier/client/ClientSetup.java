@@ -4,11 +4,11 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import io.bugcourier.BugCourier;
 import io.bugcourier.platform.Platform;
 import io.github.pirut.mcmods.lib.PropertiesFile;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.List;
 import java.util.Properties;
 import java.util.function.Consumer;
@@ -30,7 +30,8 @@ import net.minecraft.network.chat.Component;
  */
 public final class ClientSetup {
     public static final KeyMapping OPEN = new KeyMapping("key.bugcourier.open", InputConstants.UNKNOWN.getValue(), "key.categories.bugcourier");
-    private static final Duration CRASH_PROMPT_AGE = Duration.ofDays(3);
+    private static final DynamicCommandExceptionType UNKNOWN_MOD =
+            new DynamicCommandExceptionType(id -> Component.translatable("bugcourier.command.unknown_mod", id));
     private static boolean crashChecked;
 
     private ClientSetup() {
@@ -51,7 +52,10 @@ public final class ClientSetup {
                 .then(RequiredArgumentBuilder.<S, String>argument("mod", StringArgumentType.word())
                         .suggests((c, b) -> SharedSuggestionProvider.suggest(ReportTargets.all().stream().map(ReportTarget::modId), b))
                         .executes(c -> {
-                            ReportTargets.openScreen(StringArgumentType.getString(c, "mod"), null);
+                            String modId = StringArgumentType.getString(c, "mod");
+                            // Thrown, not sent: the source type differs per loader, and both show a command error in red.
+                            if (ReportTargets.find(modId).isEmpty()) throw UNKNOWN_MOD.create(modId);
+                            ReportTargets.openScreen(modId, null);
                             return 1;
                         }));
     }
@@ -92,7 +96,7 @@ public final class ClientSetup {
 
     // The game is gone when it crashes, so the offer comes on the next start, once per crash report.
     private static void offerCrashReport() {
-        Collectors.newestCrash(CRASH_PROMPT_AGE).ifPresent(crash -> {
+        Collectors.newestCrash(Collectors.RECENT_CRASH).ifPresent(crash -> {
             Properties state = loadState();
             String seen = state.getProperty("lastCrashSeen", "");
             String name = crash.getFileName().toString();

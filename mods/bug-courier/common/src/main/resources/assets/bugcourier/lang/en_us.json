@@ -1,7 +1,8 @@
 {
   "bugcourier.button": "Report a mod bug",
-  "key.bugcourier.open": "Report a bug",
   "key.categories.bugcourier": "Bug Courier",
+  "key.bugcourier.open": "Report a bug",
+  "bugcourier.command.unknown_mod": "No installed mod called \"%s\" takes bug reports. Run /bugreport to pick from the list.",
   "bugcourier.screen.title": "Report a bug",
   "bugcourier.screen.mod": "Mod",
   "bugcourier.screen.goes_to": "Goes to %s",
@@ -11,10 +12,12 @@
   "bugcourier.screen.description.hint": "What did you do, what did you expect, and what happened instead?",
   "bugcourier.screen.include_player": "Include my player name",
   "bugcourier.screen.preview": "Preview report",
+  "bugcourier.screen.need_title": "Give the report a title first",
   "bugcourier.screen.need_more": "Write at least %s characters about what happened",
   "bugcourier.screen.no_mods": "None of your mods list an issue tracker yet.",
   "bugcourier.preview.title": "This is exactly what will be sent",
   "bugcourier.preview.attachment": "%s (%s)",
+  "bugcourier.preview.more_lines": "[... %s more lines, all of them in the zip ...]",
   "bugcourier.preview.send": "Open issue page",
   "bugcourier.preview.wait": "Wait %s:%s",
   "bugcourier.preview.copy": "Copy report",
@@ -28,6 +31,5 @@
   "bugcourier.crash.title": "The game crashed last time",
   "bugcourier.crash.body": "Want to send the crash report to the mod that caused it? You'll see everything before it's sent.",
   "bugcourier.crash.report": "Report it",
-  "bugcourier.crash.later": "Not now",
-  "bugcourier.screen.need_title": "Give the report a title first"
+  "bugcourier.crash.later": "Not now"
 }

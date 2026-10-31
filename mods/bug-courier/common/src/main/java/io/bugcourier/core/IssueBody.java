@@ -2,6 +2,7 @@ package io.bugcourier.core;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -12,8 +13,9 @@ import java.util.Map;
 public final class IssueBody {
     public static final int MIN_DESCRIPTION = 20;
     private static final int[] EXCERPT_LINES = {40, 20, 10, 0};
-    private static final String CRASH_FILE = "crash-report.txt";
-    private static final String LOG_FILE = "latest.log";
+    /** File names the short body looks for when it adds excerpts. */
+    public static final String CRASH_FILE = "crash-report.txt";
+    public static final String LOG_FILE = "latest.log";
 
     private IssueBody() {
     }
@@ -112,13 +114,13 @@ public final class IssueBody {
     static String head(String text, int lines) {
         String[] all = text.split("\\R", -1);
         if (all.length <= lines) return text;
-        return String.join("\n", java.util.Arrays.copyOfRange(all, 0, lines)) + "\n...";
+        return String.join("\n", Arrays.copyOfRange(all, 0, lines)) + "\n...";
     }
 
     static String tail(String text, int lines) {
         String[] all = text.stripTrailing().split("\\R", -1);
         if (all.length <= lines) return text;
-        return "...\n" + String.join("\n", java.util.Arrays.copyOfRange(all, all.length - lines, all.length));
+        return "...\n" + String.join("\n", Arrays.copyOfRange(all, all.length - lines, all.length));
     }
 
     private static String cut(String s, int max) {
