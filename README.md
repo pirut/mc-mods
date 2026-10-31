@@ -9,6 +9,7 @@ own version and changelog, and is released on its own.
 | --- | --- | --- | --- |
 | [CC: Agent](mods/cc-agent) | Lets Claude Code, Codex or any MCP client write programs for and drive CC: Tweaked computers and turtles. | NeoForge, Fabric | [Releases](https://github.com/pirut/mc-mods/releases?q=cc-agent) |
 | [Bug Courier](mods/bug-courier) | A clear in-game way for players to report bugs to the mods they play. | NeoForge | [Releases](https://github.com/pirut/mc-mods/releases?q=bug-courier) |
+| [Seaworthy](mods/seaworthy) | Watertight hulls for Create Aeronautics and Sable ships: dry hulls below the waterline, displacement buoyancy, and compartments that flood through holes. | NeoForge, Fabric | [Releases](https://github.com/pirut/mc-mods/releases?q=seaworthy) |
 | [Earth Platform](https://github.com/pirut/earth-platform) | The real Earth in Minecraft at true scale, with real terrain and climate and a far view to the horizon. Lives in its own repo. | NeoForge, Fabric | [Modrinth](https://modrinth.com/mod/earth-platform) |
 
 All mods are for Minecraft 1.21.1. Issues for any mod in this repo go to

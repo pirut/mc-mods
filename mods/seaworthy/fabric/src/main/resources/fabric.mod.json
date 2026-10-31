@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "${mod_description}",
+  "authors": ["${mod_authors}"],
+  "contact": {
+    "homepage": "https://github.com/pirut/mc-mods/tree/main/mods/seaworthy",
+    "sources": "https://github.com/pirut/mc-mods/tree/main/mods/seaworthy",
+    "issues": "https://github.com/pirut/mc-mods/issues"
+  },
+  "license": "${mod_license}",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["io.github.pirut.seaworthy.fabric.SeaworthyFabric"],
+    "client": ["io.github.pirut.seaworthy.fabric.SeaworthyFabricClient"]
+  },
+  "mixins": ["seaworthy.mixins.json"],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "sable": ">=${sable_version_min}",
+    "java": ">=21"
+  }
+}
