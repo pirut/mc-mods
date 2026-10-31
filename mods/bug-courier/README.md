@@ -1,6 +1,6 @@
 # Bug Courier
 
-A small NeoForge library (Fabric to follow) that gives players a clear in-game way to report bugs to the mods they play.
+A small library for NeoForge and Fabric that gives players a clear in-game way to report bugs to the mods they play.
 
 The player picks the mod, writes what happened, and sees exactly what will be sent. Then the mod's issue page
 opens in their browser with the report filled in, the full logs are copied to the clipboard, and a zip of the
@@ -22,12 +22,14 @@ clipboard to paste.
 
 ### No code
 
-If your `neoforge.mods.toml` has an `issueTrackerURL`, Bug Courier already offers reports for your mod. That
-covers every installed mod, even ones that don't know Bug Courier exists.
+If your mod declares an issue link, Bug Courier already offers reports for it: `issueTrackerURL` in
+`neoforge.mods.toml`, or `contact.issues` in `fabric.mod.json`. That covers every installed mod, even ones that
+don't know Bug Courier exists. On Fabric, mods nested inside another mod's jar (such as Fabric API's modules) are
+left out; reports go to the mod that carries them.
 
 ### A few lines of config
 
-Add labels, or point reports somewhere other than `issueTrackerURL`:
+Add labels, or point reports somewhere other than your issue link. On NeoForge:
 
 ```toml
 [modproperties.yourmodid]
@@ -36,12 +38,21 @@ bugcourier_labels = "bug,player-report"
 # bugcourier_disabled = true                 # leave your mod out of the list
 ```
 
+On Fabric, the same keys go in `fabric.mod.json`:
+
+```json
+"custom": {
+  "bugcourier_tracker": "github:you/your-mod",
+  "bugcourier_labels": "bug,player-report"
+}
+```
+
 ### Java API
 
 For your own "Report a bug" button, or extra context and files. Keep the dependency optional:
 
 ```java
-if (ModList.get().isLoaded("bugcourier")) {
+if (ModList.get().isLoaded("bugcourier")) {   // Fabric: FabricLoader.getInstance().isModLoaded("bugcourier")
     BugReports.register("yourmodid", cfg -> cfg
             .tracker("github:you/your-mod")
             .labels("bug", "player-report")
@@ -61,7 +72,7 @@ Each part has its own checkbox on the preview screen:
 - the game log (the last 256 KB of `latest.log`)
 - the newest crash report: ticked when the player came from the crash prompt, unticked otherwise
 - the mod list with versions
-- versions of the game, NeoForge, Java and the OS, the CPU and GPU, and memory
+- versions of the game, the loader (NeoForge or Fabric), Java and the OS, the CPU and GPU, and memory
 - whatever the mod adds through the API
 
 Before the preview, Bug Courier hides launcher access tokens and session ids, the user name in home folder
@@ -76,7 +87,7 @@ are easy to search for.
 
 ```
 ./gradlew :bug-courier:build                 # from the mc-mods root; the core package's tests run on plain JUnit
-./gradlew :bug-courier:neoforge:runClient
+./gradlew :bug-courier:neoforge:runClient    # or :bug-courier:fabric:runClient
 ```
 
 ## License

@@ -14,7 +14,7 @@ import java.time.format.DateTimeFormatter;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
-import net.neoforged.fml.ModList;
+import io.bugcourier.platform.Platform;
 
 /**
  * The browser handoff: save the zip, copy the full report, open the tracker's new-issue page filled in.
@@ -32,7 +32,7 @@ final class Sender {
     }
 
     static String libraryVersion() {
-        return ModList.get().getModContainerById(BugCourier.MOD_ID).map(c -> c.getModInfo().getVersion().toString()).orElse("?");
+        return Platform.get().mod(BugCourier.MOD_ID).map(Platform.ModEntry::version).orElse("?");
     }
 
     static Screen send(Screen preview, Screen form, ReportTarget target, Report report, String full) {
