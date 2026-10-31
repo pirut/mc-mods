@@ -19,10 +19,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
-import net.neoforged.fml.ModList;
-import net.neoforged.fml.loading.FMLLoader;
-import net.neoforged.fml.loading.FMLPaths;
-import net.neoforged.neoforgespi.language.IModInfo;
+import io.bugcourier.platform.Platform;
 
 /** Gathers what a report can carry. Every text passes through the redactor before anyone sees it. */
 final class Collectors {
@@ -58,9 +55,10 @@ final class Collectors {
         var env = report.environment();
         env.put(target.name(), target.version());
         env.put("Minecraft", SharedConstants.getCurrentVersion().getName());
-        env.put("NeoForge", FMLLoader.versionInfo().neoForgeVersion());
-        env.put("Bug Courier", ModList.get().getModContainerById(BugCourier.MOD_ID).map(c -> c.getModInfo().getVersion().toString()).orElse("?"));
-        env.put("Mods installed", Integer.toString(ModList.get().size()));
+        Platform platform = Platform.get();
+        env.put(platform.loaderName(), platform.loaderVersion());
+        env.put("Bug Courier", Sender.libraryVersion());
+        env.put("Mods installed", Integer.toString(platform.allMods().size()));
         env.put("OS", System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")");
         env.put("Java", System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ")");
         env.put("CPU", GlUtil.getCpuInfo() + ", " + Runtime.getRuntime().availableProcessors() + " threads");
@@ -76,7 +74,8 @@ final class Collectors {
                 }
             }
         }
-        env.replaceAll((k, v) -> redact.apply(v));
+        // The rows above come from the game and the system, not the player; context rows were redacted one by one.
+        // (Redacting them all hid four-part Java versions such as 21.0.12.1 as IP addresses.)
 
         // Opened from the crash prompt: that crash is the report. Opened by hand: offer a recent crash, unticked.
         boolean fromCrash = crashText != null;
@@ -123,13 +122,13 @@ final class Collectors {
     }
 
     static Path gameDir() {
-        return FMLPaths.GAMEDIR.get();
+        return Platform.get().gameDir();
     }
 
     private static String modList() {
         StringBuilder b = new StringBuilder();
-        ModList.get().getMods().stream().sorted(Comparator.comparing(IModInfo::getModId)).forEach(m -> b.append(m.getModId()).append(' ')
-                .append(m.getVersion()).append("  (").append(m.getOwningFile().getFile().getFileName()).append(")\n"));
+        Platform.get().allMods().stream().sorted(Comparator.comparing(Platform.ModEntry::id)).forEach(m -> b.append(m.id()).append(' ')
+                .append(m.version()).append("  (").append(m.file()).append(")\n"));
         return b.toString();
     }
 

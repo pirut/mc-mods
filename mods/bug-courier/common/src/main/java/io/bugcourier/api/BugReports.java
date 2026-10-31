@@ -5,13 +5,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.loading.FMLEnvironment;
+import io.bugcourier.platform.Platform;
 
 /**
- * The library's front door for other mods. Most mods need none of this: an {@code issueTrackerURL} in
- * neoforge.mods.toml is enough. Call it to add labels, extra context or files, or to open the report screen
- * from your own button. Guard calls with {@code ModList.get().isLoaded("bugcourier")} to keep it optional.
+ * The library's front door for other mods. Most mods need none of this: the issue link the mod already
+ * declares (issueTrackerURL in neoforge.mods.toml, contact.issues in fabric.mod.json) is enough. Call it to add labels, extra context or files, or to open the report screen
+ * from your own button. Guard calls with a check that the
+ * bugcourier mod is loaded to keep it optional.
  */
 public final class BugReports {
     private static final Map<String, ReportConfig> REGISTERED = new ConcurrentHashMap<>();
@@ -32,6 +32,6 @@ public final class BugReports {
 
     /** Opens the report screen with {@code modId} picked. Does nothing on a dedicated server. */
     public static void open(String modId) {
-        if (FMLEnvironment.dist == Dist.CLIENT) ReportTargets.openScreen(modId, null);
+        if (Platform.get().isClient()) ReportTargets.openScreen(modId, null);
     }
 }

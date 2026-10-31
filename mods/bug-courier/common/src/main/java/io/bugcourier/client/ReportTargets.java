@@ -11,22 +11,20 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforgespi.language.IModInfo;
+import io.bugcourier.platform.Platform;
+import io.bugcourier.platform.Platform.ModEntry;
 
 /**
- * Finds every installed mod that takes bug reports. In order: what the mod registered in code, its
- * {@code [modproperties.<modid>]} keys, then the {@code issueTrackerURL} NeoForge mods already declare.
+ * Finds every installed mod that takes bug reports. In order: what the mod registered in code, its bugcourier_*
+ * keys ({@code [modproperties.<modid>]} on NeoForge, {@code "custom"} in fabric.mod.json on Fabric), then the issue
+ * link the mod already declares ({@code issueTrackerURL} / {@code contact.issues}).
  */
 public final class ReportTargets {
     public static final String PROP_TRACKER = "bugcourier_tracker";
     public static final String PROP_LABELS = "bugcourier_labels";
     public static final String PROP_OFF = "bugcourier_disabled";
-    // Bugs in the game or the loader itself belong upstream, not in a player report from a modpack.
-    private static final Set<String> SKIP = Set.of("minecraft", "neoforge");
 
     private static volatile List<ReportTarget> cache;
 
@@ -37,9 +35,8 @@ public final class ReportTargets {
         List<ReportTarget> found = cache;
         if (found != null) return found;
         found = new ArrayList<>();
-        for (IModInfo mod : ModList.get().getMods()) {
-            if (SKIP.contains(mod.getModId())) continue;
-            target(mod).ifPresent(found::add);
+        for (ModEntry mod : Platform.get().allMods()) {
+            if (mod.reportable()) target(mod).ifPresent(found::add);
         }
         found.sort(Comparator.comparing(t -> t.name().toLowerCase(java.util.Locale.ROOT)));
         cache = found = List.copyOf(found);
@@ -59,25 +56,24 @@ public final class ReportTargets {
         });
     }
 
-    private static Optional<ReportTarget> target(IModInfo mod) {
-        Map<String, Object> props = mod.getModProperties();
+    private static Optional<ReportTarget> target(ModEntry mod) {
+        Map<String, Object> props = mod.properties();
         if (truthy(props.get(PROP_OFF))) return Optional.empty();
-        ReportConfig config = BugReports.registered(mod.getModId()).orElse(null);
+        ReportConfig config = BugReports.registered(mod.id()).orElse(null);
         Tracker tracker = config == null ? null : config.tracker();
         List<String> labels = new ArrayList<>(config == null ? List.of() : config.labels());
         if (tracker == null && props.get(PROP_TRACKER) instanceof String spec) {
             tracker = Trackers.parse(spec).orElse(null);
-            if (tracker == null) BugCourier.LOG.warn("{} declares an issue tracker Bug Courier can't read: {}", mod.getModId(), spec);
+            if (tracker == null) BugCourier.LOG.warn("{} declares an issue tracker Bug Courier can't read: {}", mod.id(), spec);
         }
         if (labels.isEmpty() && props.get(PROP_LABELS) instanceof String list) {
             Arrays.stream(list.split(",")).map(String::strip).filter(s -> !s.isEmpty()).forEach(labels::add);
         }
-        if (tracker == null) {
-            Optional<Object> issues = mod.getOwningFile().getConfig().getConfigElement("issueTrackerURL");
-            if (issues.isPresent()) tracker = Trackers.parse(issues.get().toString()).orElse(null);
+        if (tracker == null && mod.issueTracker() != null && !mod.issueTracker().isBlank()) {
+            tracker = Trackers.parse(mod.issueTracker()).orElse(null);
         }
         if (tracker == null) return Optional.empty();
-        return Optional.of(new ReportTarget(mod.getModId(), mod.getDisplayName(), mod.getVersion().toString(), tracker, List.copyOf(labels),
+        return Optional.of(new ReportTarget(mod.id(), mod.name(), mod.version(), tracker, List.copyOf(labels),
                 config));
     }
 
