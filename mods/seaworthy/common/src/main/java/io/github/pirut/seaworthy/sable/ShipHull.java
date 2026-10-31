@@ -70,6 +70,10 @@ final class ShipHull {
     private long lastRegionBuild = Long.MIN_VALUE / 2;
     private boolean regionsStale;
 
+    private double[] lumpVolume = new double[0];
+    private long lastLumpBuild = Long.MIN_VALUE / 2;
+    private boolean lumpsStale;
+
     private float[] sent = new float[0];
     private long lastSync;
 
@@ -154,13 +158,19 @@ final class ShipHull {
 
         if (config.flooding() && now % FLOOD_INTERVAL == phase) flood(s, config, FLOOD_INTERVAL / 20.0);
 
+        long cooldown = s.grid().volume() > 2_000_000 ? 40 : 10;
         if (regionsStale || wetChanged(s)) {
-            long cooldown = s.grid().volume() > 2_000_000 ? 40 : 10;
             if (regionsStale || now - lastRegionBuild >= cooldown) {
                 rebuild(s, config);
                 lastRegionBuild = now;
                 regionsStale = false;
             }
+        }
+
+        if (!client && (lumpsStale || (lumpsChanged(s) && now - lastLumpBuild >= cooldown))) {
+            rebuildLumps(s, config);
+            lastLumpBuild = now;
+            lumpsStale = false;
         }
 
         if (!client) {
@@ -181,20 +191,22 @@ final class ShipHull {
         if (old != null) {
             HullGrid og = old.grid(), ng = next.grid();
             BlockPos shift = old.origin().subtract(next.origin());
+            float[] wet = new float[og.volume()];
             for (int k = 0; k < old.result().compartments().size(); k++) {
                 Compartment c = old.result().compartments().get(k);
-                int wet = Flooding.wetCells(c, old.volume()[k]);
-                for (int w = 0; w < wet; w++) {
-                    int i = c.cells()[w];
+                Flooding.wetness(c, old.volume()[k], wet);
+                for (int i : c.cells()) {
+                    if (wet[i] <= 0) continue;
                     int x = og.x(i) + shift.getX(), y = og.y(i) + shift.getY(), z = og.z(i) + shift.getZ();
                     if (!ng.inBounds(x, y, z)) continue;
                     int comp = next.result().compartmentOf()[ng.index(x, y, z)];
-                    if (comp >= 0) next.volume()[comp] += 1;
+                    if (comp >= 0) next.volume()[comp] += wet[i];
                 }
             }
         }
         scan = next;
         regionsStale = true;
+        lumpsStale = true;
     }
 
     private void flood(Scan s, SeaworthyConfig config, double seconds) {
@@ -234,18 +246,34 @@ final class ShipHull {
         return false;
     }
 
-    /** Re-registers the dry spaces with Sable and, on the server, regathers the air for buoyancy. */
+    /** Whether the water has moved by a block's worth in any compartment since the air was last gathered. */
+    private boolean lumpsChanged(Scan s) {
+        if (lumpVolume.length != s.volume().length) return true;
+        for (int k = 0; k < lumpVolume.length; k++) {
+            if (Math.abs(s.volume()[k] - lumpVolume[k]) >= 1) return true;
+        }
+        return false;
+    }
+
+    /** Regathers the hull's dry air and floodwater for buoyancy, with the filling layer spread evenly. */
+    private void rebuildLumps(Scan s, SeaworthyConfig config) {
+        float[] wet = new float[s.grid().volume()];
+        List<Compartment> compartments = s.result().compartments();
+        for (int k = 0; k < compartments.size(); k++) Flooding.wetness(compartments.get(k), s.volume()[k], wet);
+        lumpVolume = s.volume().clone();
+        lumps = Lumps.build(s.result(), wet, Lumps.sizeFor(s.result().interiorCells(), config.maxLumps()));
+    }
+
+    /** Re-registers the dry spaces with Sable. */
     private void rebuild(Scan s, SeaworthyConfig config) {
         HullGrid g = s.grid();
         BlockPos o = s.origin();
         List<Compartment> compartments = s.result().compartments();
-        boolean[] wet = new boolean[g.volume()];
         regionWet = new int[compartments.size()];
         for (int k = 0; k < compartments.size(); k++) {
             Compartment c = compartments.get(k);
             int n = Flooding.wetCells(c, s.volume()[k]);
             regionWet[k] = n;
-            for (int w = 0; w < n; w++) wet[c.cells()[w]] = true;
         }
 
         WaterOcclusionContainer<?> occlusion = WaterOcclusionContainer.getContainer(level);
@@ -278,10 +306,6 @@ final class ShipHull {
                 }
                 regions.add(occlusion.addRegion(volume));
             }
-        }
-
-        if (!client) {
-            lumps = Lumps.build(s.result(), wet, Lumps.sizeFor(s.result().interiorCells(), config.maxLumps()));
         }
     }
 
@@ -340,6 +364,7 @@ final class ShipHull {
         if (occlusion != null) removeRegions(occlusion);
         scan = null;
         regionWet = new int[0];
+        lumpVolume = new double[0];
         lumps = Lumps.NONE;
         sample = Buoyancy.Sample.NONE;
     }

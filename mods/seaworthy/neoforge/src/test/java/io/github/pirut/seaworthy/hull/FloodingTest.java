@@ -52,6 +52,42 @@ class FloodingTest {
     }
 
     @Test
+    void waterShowsALayerAtATime() {
+        HullGrid g = new HullGrid(9, 9, 9);
+        HullAnalysisTest.box(g, 1, 1, 1, 7, 7, 7, true);
+        HullAnalysisTest.clear(g, 4, 1, 4);
+        Compartment c = HullAnalysis.analyze(g, 2).compartments().get(0);
+        float[] wet = new float[g.volume()];
+        for (double v = 0; v <= c.size(); v += 0.37) {
+            int shown = Flooding.wetCells(c, v);
+            assertTrue(Arrays.binarySearch(c.groupStart(), shown) >= 0 || shown == c.size(),
+                    "only whole layers show as water: " + shown + " at " + v);
+            assertTrue(Math.abs(shown - v) <= 0.5 * maxGroup(c) + 1e-9, "the shown water is within half a layer of the real water");
+            Arrays.fill(wet, 0);
+            Flooding.wetness(c, v, wet);
+            double sum = 0;
+            for (int i : c.cells()) sum += wet[i];
+            assertEquals(v, sum, 1e-3, "buoyancy sees exactly the water that came in");
+        }
+        // The 5x5 floor is one layer: two blocks of water show nothing, and the layer is evenly damp.
+        int floor = -1;
+        for (int k = 0; k < c.groupStart().length; k++) if (c.groupEnd(k) - c.groupStart()[k] == 25) { floor = k; break; }
+        assertTrue(floor >= 0);
+        double v = c.groupStart()[floor] + 2;
+        assertEquals(c.groupStart()[floor], Flooding.wetCells(c, v));
+        Arrays.fill(wet, 0);
+        Flooding.wetness(c, v, wet);
+        for (int w = c.groupStart()[floor]; w < c.groupEnd(floor); w++) assertEquals(2f / 25, wet[c.cells()[w]], 1e-6);
+        assertEquals(c.groupEnd(floor), Flooding.wetCells(c, c.groupStart()[floor] + 13));
+    }
+
+    static int maxGroup(Compartment c) {
+        int m = 0;
+        for (int k = 0; k < c.groupStart().length; k++) m = Math.max(m, c.groupEnd(k) - c.groupStart()[k]);
+        return m;
+    }
+
+    @Test
     void sealedCompartmentsNeverFlood() {
         HullGrid g = new HullGrid(7, 7, 7);
         HullAnalysisTest.box(g, 1, 1, 1, 5, 5, 5, true);
@@ -66,7 +102,7 @@ class FloodingTest {
         HullGrid g = new HullGrid(7, 7, 7);
         HullAnalysisTest.box(g, 1, 1, 1, 5, 5, 5, true);
         HullAnalysis.Result r = HullAnalysis.analyze(g, 2);
-        Lumps l = Lumps.build(r, new boolean[g.volume()], 2);
+        Lumps l = Lumps.build(r, new float[g.volume()], 2);
         float air = 0;
         for (int i = 0; i < l.count; i++) air += l.air[i];
         assertEquals(27f, air, 1e-4);

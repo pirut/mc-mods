@@ -34,13 +34,18 @@ public record Compartment(int anchor, int[] cells, int[] groupStart, int[] group
         if (cells.length == 0) return 0;
         if (volume <= 0) return groupY[0];
         if (volume >= cells.length) return groupY[groupY.length - 1] + 1.0;
-        int g = group((int) volume);
+        int g = groupAt((int) volume);
         int start = groupStart[g];
-        int end = g + 1 < groupStart.length ? groupStart[g + 1] : cells.length;
-        return groupY[g] + (volume - start) / (end - start);
+        return groupY[g] + (volume - start) / (groupEnd(g) - start);
     }
 
-    private int group(int index) {
+    /** Where run {@code g} ends in {@link #cells} (exclusive). */
+    public int groupEnd(int g) {
+        return g + 1 < groupStart.length ? groupStart[g + 1] : cells.length;
+    }
+
+    /** The run that the cell at {@code index} in {@link #cells} belongs to. */
+    public int groupAt(int index) {
         int lo = 0, hi = groupStart.length - 1;
         while (lo < hi) {
             int mid = (lo + hi + 1) >>> 1;

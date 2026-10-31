@@ -39,9 +39,9 @@ public final class Lumps {
     }
 
     /**
-     * @param wet which cells are flooded; the rest of each compartment is dry air
+     * @param wet how much of each cell is flooded, 0 to 1 (see {@link Flooding#wetness}); the rest is dry air
      */
-    public static Lumps build(HullAnalysis.Result result, boolean[] wet, int size) {
+    public static Lumps build(HullAnalysis.Result result, float[] wet, int size) {
         HullGrid g = result.grid();
         int lx = (g.sx + size - 1) / size, ly = (g.sy + size - 1) / size, lz = (g.sz + size - 1) / size;
         int cells = lx * ly * lz;
@@ -51,14 +51,15 @@ public final class Lumps {
             for (int i : c.cells()) {
                 int x = g.x(i), y = g.y(i), z = g.z(i);
                 int l = ((y / size) * lz + z / size) * lx + x / size;
-                if (wet[i]) {
-                    bx[l] += x + 0.5;
-                    by[l] += y + 0.5;
-                    bz[l] += z + 0.5;
-                    bv[l] += 1;
-                } else {
-                    double a = g.air(i);
-                    if (a <= 0) continue;
+                double w = wet[i];
+                if (w > 0) {
+                    bx[l] += (x + 0.5) * w;
+                    by[l] += (y + 0.5) * w;
+                    bz[l] += (z + 0.5) * w;
+                    bv[l] += w;
+                }
+                double a = g.air(i) * (1 - w);
+                if (a > 0) {
                     ax[l] += (x + 0.5) * a;
                     ay[l] += (y + 0.5) * a;
                     az[l] += (z + 0.5) * a;

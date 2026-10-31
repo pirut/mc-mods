@@ -46,8 +46,34 @@ public final class Flooding {
         return volume;
     }
 
-    /** How many of the compartment's cells are under water at this volume (they fill in {@link Compartment#cells} order). */
+    /**
+     * How many of the compartment's cells show as water at this volume (they fill in {@link Compartment#cells} order).
+     *
+     * <p>Minecraft water is a whole block or nothing, so the water is shown a layer at a time: a layer appears all
+     * at once when it is half full, instead of block by block across the floor. That keeps the surface level.
+     */
     public static int wetCells(Compartment c, double volume) {
-        return (int) Math.max(0, Math.min(c.size(), Math.round(volume)));
+        int size = c.size();
+        if (volume <= 0 || size == 0) return 0;
+        if (volume >= size) return size;
+        int g = c.groupAt((int) volume);
+        int start = c.groupStart()[g], end = c.groupEnd(g);
+        return (volume - start) * 2 >= end - start ? end : start;
+    }
+
+    /**
+     * How much of each cell is under water, from 0 to 1, at this volume: full layers are 1, the layer the surface is
+     * in is evenly part full, and the rest are 0. Buoyancy uses this, so a filling layer weighs the same all across.
+     *
+     * @param out indexed by grid cell; only the compartment's own cells are written
+     */
+    public static void wetness(Compartment c, double volume, float[] out) {
+        int[] cells = c.cells();
+        int[] groupStart = c.groupStart();
+        for (int g = 0; g < groupStart.length; g++) {
+            int start = groupStart[g], end = c.groupEnd(g);
+            float f = (float) Math.max(0, Math.min(1, (volume - start) / (end - start)));
+            for (int w = start; w < end; w++) out[cells[w]] = f;
+        }
     }
 }

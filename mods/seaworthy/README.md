@@ -9,7 +9,8 @@ Watertight hulls for [Create Aeronautics](https://modrinth.com/mod/create-aerona
   real one, and sits deeper as you load it.
 - **Flooding.** A hole below the waterline lets water into the compartment behind it, and it fills from the bottom up
   over time: faster for a bigger or deeper hole, slower as the water inside rises toward the waterline. Bulkheads
-  keep the water in one compartment until it tops them. Patch the hole and the leak stops. Lift the ship out of the
+  keep the water in one compartment until it tops them. The water inside stays level: Minecraft water comes in
+  whole blocks, so it rises a layer at a time across the whole floor rather than in patches. Patch the hole and the leak stops. Lift the ship out of the
   water and it drains.
 - **Big ships.** The hull is worked out off the game thread, and buoyancy is spread over at most a few thousand
   points however big the ship gets.
