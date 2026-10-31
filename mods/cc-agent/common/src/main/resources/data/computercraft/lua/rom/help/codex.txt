@@ -1,0 +1,11 @@
+codex talks to OpenAI Codex from this computer, the same way the claude program talks to Claude Code. It runs on your PC, signed in as you.
+
+ex:
+"codex" opens the chat.
+"codex write a turtle program that digs a 3x3 tunnel" starts with that request.
+
+In the chat: /model, /effort and /mode (Shift+Tab) change how it works, /resume goes back to an earlier conversation, /new starts over, /help lists everything, /exit leaves. Other /commands go to the agent. Click answers when it asks you something. Hold Ctrl+T to stop a reply.
+
+"codex --tui" runs Codex's own full screen instead, on the biggest advanced monitor attached (or this screen if there's none). Type on this computer; its screen follows the prompt. "codex --tui left" picks a monitor, "codex --tui term" uses this screen. Hold Ctrl+T to quit.
+
+Needs Codex installed and signed in on your PC, and CC: Agent in your game (on servers too). See also: claude, agentlog.

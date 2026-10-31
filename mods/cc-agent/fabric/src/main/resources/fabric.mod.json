@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "${mod_description}",
+  "authors": ["JR Bussard"],
+  "contact": {
+    "homepage": "https://github.com/pirut/cc-agent",
+    "sources": "https://github.com/pirut/cc-agent",
+    "issues": "https://github.com/pirut/cc-agent/issues"
+  },
+  "license": "${mod_license}",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["io.github.pirut.ccagent.fabric.CCAgentFabric"],
+    "client": ["io.github.pirut.ccagent.fabric.CCAgentFabricClient"]
+  },
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "computercraft": ">=${cc_version_min}",
+    "java": ">=21"
+  }
+}

@@ -1,0 +1,60 @@
+name: Release
+
+# Every push to main releases the version in gradle.properties, once: a GitHub release with both jars.
+# Bump mod_version and add its section to CHANGELOG.md to release again.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: v
+        run: |
+          version=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
+          mc=$(grep '^minecraft_version=' gradle.properties | cut -d= -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "mc=$mc" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+          # This version's section of CHANGELOG.md
+          awk -v v="$version" '$0 == "## " v {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "CHANGELOG.md has no '## $version' section"; exit 1; fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: actions/setup-java@v4
+        if: steps.v.outputs.exists == 'false'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.v.outputs.exists == 'false'
+
+      - name: Build
+        if: steps.v.outputs.exists == 'false'
+        run: ./gradlew build
+
+      - name: GitHub release
+        if: steps.v.outputs.exists == 'false'
+        run: |
+          v=${{ steps.v.outputs.version }}; mc=${{ steps.v.outputs.mc }}
+          neo=neoforge/build/libs/ccagent-neoforge-$mc-$v.jar
+          fab=fabric/build/libs/ccagent-fabric-$mc-$v.jar
+          sha256sum "$neo" "$fab" | sed 's#  .*/#  #' > SHA256SUMS.txt
+          gh release create "v$v" "$neo" "$fab" SHA256SUMS.txt --title "CC: Agent $v" --notes-file notes.md --target "$GITHUB_SHA"
+        env:
+          GH_TOKEN: ${{ github.token }}
