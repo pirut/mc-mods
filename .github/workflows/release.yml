@@ -1,0 +1,86 @@
+name: Release
+
+# Each mod releases on its own, as the tag <folder>-v<mod_version> (for example cc-agent-v0.5.1), with its jars
+# and the notes from its CHANGELOG.md section. Only the mods being released are built.
+#
+# - Push to main: every mod whose current mod_version has no release yet. So bumping mod_version and adding a
+#   '## <version>' section to the mod's CHANGELOG.md releases it on merge.
+# - Push a tag <folder>-v<version> by hand: that mod (the version must match its gradle.properties).
+# - Run this workflow from the Actions tab with a mod folder: that mod's current version (also retries a
+#   failed Modrinth upload).
+#
+# Mods with a modrinth_project_id in their gradle.properties are also uploaded to Modrinth. That needs the
+# MODRINTH_TOKEN secret (a Modrinth personal access token with "Create versions").
+
+on:
+  push:
+    branches: [main]
+    tags: ['*-v*']
+  workflow_dispatch:
+    inputs:
+      mod:
+        description: Mod folder in mods/ (for example cc-agent)
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick the mods to release
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_MOD: ${{ inputs.mod }}
+        run: |
+          mods=()
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            mods=("$INPUT_MOD")
+          elif [ "$GITHUB_REF_TYPE" = tag ]; then
+            mod=${GITHUB_REF_NAME%-v*}; version=${GITHUB_REF_NAME##*-v}
+            have=$(grep '^mod_version=' "mods/$mod/gradle.properties" | cut -d= -f2)
+            if [ "$have" != "$version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME says $version, but mods/$mod/gradle.properties has $have"; exit 1
+            fi
+            mods=("$mod")
+          else
+            for d in mods/*/; do
+              mod=$(basename "$d"); [ -f "$d/gradle.properties" ] || continue
+              version=$(grep '^mod_version=' "$d/gradle.properties" | cut -d= -f2)
+              gh release view "$mod-v$version" >/dev/null 2>&1 || mods+=("$mod")
+            done
+          fi
+          for m in "${mods[@]}"; do
+            [ -f "mods/$m/gradle.properties" ] || { echo "::error::No mod folder mods/$m"; exit 1; }
+          done
+          echo "mods=${mods[*]}" >> "$GITHUB_OUTPUT"
+          echo "Releasing: ${mods[*]:-nothing}"
+
+      - uses: actions/setup-java@v4
+        if: steps.pick.outputs.mods != ''
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.pick.outputs.mods != ''
+
+      - name: Build
+        if: steps.pick.outputs.mods != ''
+        run: ./gradlew --console=plain $(for m in ${{ steps.pick.outputs.mods }}; do echo ":$m:build"; done)
+
+      - name: Release
+        if: steps.pick.outputs.mods != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: |
+          for m in ${{ steps.pick.outputs.mods }}; do .github/scripts/release-mod.sh "$m"; done

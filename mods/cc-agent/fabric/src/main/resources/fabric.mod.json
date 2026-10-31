@@ -6,9 +6,9 @@
   "description": "${mod_description}",
   "authors": ["JR Bussard"],
   "contact": {
-    "homepage": "https://github.com/pirut/cc-agent",
-    "sources": "https://github.com/pirut/cc-agent",
-    "issues": "https://github.com/pirut/cc-agent/issues"
+    "homepage": "https://github.com/pirut/mc-mods/tree/main/mods/cc-agent",
+    "sources": "https://github.com/pirut/mc-mods/tree/main/mods/cc-agent",
+    "issues": "https://github.com/pirut/mc-mods/issues"
   },
   "license": "${mod_license}",
   "environment": "*",

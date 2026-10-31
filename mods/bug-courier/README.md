@@ -1,6 +1,6 @@
 # Bug Courier
 
-A small NeoForge library that gives players a clear in-game way to report bugs to the mods they play.
+A small NeoForge library (Fabric to follow) that gives players a clear in-game way to report bugs to the mods they play.
 
 The player picks the mod, writes what happened, and sees exactly what will be sent. Then the mod's issue page
 opens in their browser with the report filled in, the full logs are copied to the clipboard, and a zip of the
@@ -75,10 +75,10 @@ are easy to search for.
 ## Building
 
 ```
-gradle build      # Java 21; the core package's tests run on plain JUnit
-gradle runClient
+./gradlew :bug-courier:build                 # from the mc-mods root; the core package's tests run on plain JUnit
+./gradlew :bug-courier:neoforge:runClient
 ```
 
 ## License
 
-LGPL-3.0-only (see LICENSE and COPYING).
+LGPL-3.0-only. See [`COPYING`](../../COPYING) and [`COPYING.LESSER`](../../COPYING.LESSER).

@@ -1,0 +1,5 @@
+plugins {
+    id 'mcmods.neoforge'
+}
+
+// The core package has no Minecraft classes, so its tests run on plain JUnit (set up by mcmods.neoforge).

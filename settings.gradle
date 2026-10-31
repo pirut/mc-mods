@@ -1,0 +1,38 @@
+pluginManagement {
+    // Shared build logic: the mcmods.neoforge, mcmods.fabric and mcmods.library convention plugins.
+    includeBuild 'build-logic'
+    repositories {
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.neoforged.net/releases' }
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'mc-mods'
+
+// The internal library a mod can bundle into its jars (uses_common_lib=true in the mod's gradle.properties).
+include 'common-lib'
+
+// Every folder in mods/ with a gradle.properties is a mod, and becomes the project :<folder>. Its loader folders
+// (neoforge/, fabric/) with a build.gradle become :<folder>:neoforge and :<folder>:fabric. common/ is not a
+// project: its sources are compiled into each loader's jar.
+def addMod = { File dir ->
+    def name = dir.name
+    include ":$name"
+    project(":$name").projectDir = dir
+    ['neoforge', 'fabric'].each { loader ->
+        if (new File(dir, "$loader/build.gradle").exists()) {
+            include ":$name:$loader"
+            project(":$name:$loader").projectDir = new File(dir, loader)
+        }
+    }
+}
+file('mods').listFiles().findAll { it.isDirectory() && new File(it, 'gradle.properties').exists() }
+        .sort { it.name }.each(addMod)
+
+// The template is built too, so it never goes stale. It is never released.
+addMod(file('template'))

@@ -11,7 +11,7 @@ runs it, reads the errors and fixes them, while you watch.
 
 Minecraft 1.21.1 · NeoForge and Fabric · CC: Tweaked 1.120.0 or newer · singleplayer and servers
 
-**[Download the latest release](https://github.com/pirut/cc-agent/releases/latest)** ·
+**[Download the latest release](https://github.com/pirut/mc-mods/releases?q=cc-agent)** ·
 [Getting started](docs/getting-started.md) · [Using the chat](docs/chat.md) ·
 [Troubleshooting](docs/troubleshooting.md) · [Testing checklist](docs/testing.md)
 
@@ -102,15 +102,18 @@ The [getting started guide](docs/getting-started.md) walks through every step, i
 
 ## Building
 
+From the root of the [mc-mods](../../README.md) repo:
+
 ```sh
-./gradlew build
+./gradlew :cc-agent:build
 ```
 
-Jars land in `neoforge/build/libs` and `fabric/build/libs`. `common/` holds the shared code; each loader
-folder adds only its entry point. `./gradlew :neoforge:runClient` or `:fabric:runClient` starts a dev game.
+Jars land in `mods/cc-agent/neoforge/build/libs` and `mods/cc-agent/fabric/build/libs`. `common/` holds the
+shared code; each loader folder adds only its entry point. `./gradlew :cc-agent:neoforge:runClient` or
+`:cc-agent:fabric:runClient` starts a dev game.
 
 ## License
 
-LGPL-3.0-only. See `COPYING` and `COPYING.LESSER`. The jars bundle [pty4j](https://github.com/JetBrains/pty4j)
+LGPL-3.0-only. See [`COPYING`](../../COPYING) and [`COPYING.LESSER`](../../COPYING.LESSER). The jars bundle [pty4j](https://github.com/JetBrains/pty4j)
 (EPL-1.0) and the Kotlin standard library (Apache-2.0) for the terminal behind `--tui`. CC: Tweaked is by
 SquidDev and contributors; this mod is not affiliated with it, with Anthropic or with OpenAI.

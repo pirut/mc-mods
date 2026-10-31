@@ -33,7 +33,7 @@ Any launcher works. [Prism Launcher](https://prismlauncher.org) or the
    - [CC: Tweaked](https://modrinth.com/mod/cc-tweaked) for 1.21.1 (1.120.0 or newer)
    - on Fabric only: [Fabric API](https://modrinth.com/mod/fabric-api)
    - CC: Agent: download `ccagent-neoforge-1.21.1-<version>.jar` or `ccagent-fabric-1.21.1-<version>.jar`
-     from the [latest release](https://github.com/pirut/cc-agent/releases/latest) and drop it in the
+     from the [latest release](https://github.com/pirut/mc-mods/releases?q=cc-agent) and drop it in the
      instance's `mods` folder.
 3. Start the game and create a **Creative** world (easier for testing).
 

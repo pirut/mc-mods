@@ -55,4 +55,4 @@ Setup: [Getting started](getting-started.md). Note your **loader** (NeoForge or 
 ## Reporting
 
 For each problem: what you typed, what you expected, what happened, a screenshot, and `logs/latest.log`.
-Open an issue at https://github.com/pirut/cc-agent/issues or send them to JR.
+Open an issue at https://github.com/pirut/mc-mods/issues or send them to JR.

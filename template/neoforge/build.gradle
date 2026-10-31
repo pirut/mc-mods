@@ -1,0 +1,8 @@
+plugins {
+    id 'mcmods.neoforge'
+}
+
+dependencies {
+    // NeoForge-only dependencies go here, for example:
+    // implementation "cc.tweaked:cc-tweaked-${minecraft_version}-forge:${cc_version}"
+}

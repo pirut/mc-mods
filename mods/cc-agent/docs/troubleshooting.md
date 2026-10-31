@@ -36,5 +36,5 @@ That was fixed in 0.3.0; update CC: Agent. For Codex in your own terminal, add
 The agent runs on your PC, so your game needs the mod as well as the server.
 
 **Something else**
-Open an issue at https://github.com/pirut/cc-agent/issues with what you did, what you saw, and your
+Open an issue at https://github.com/pirut/mc-mods/issues with what you did, what you saw, and your
 `logs/latest.log` (in the game folder). See the [testing checklist](testing.md).

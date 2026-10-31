@@ -1,0 +1,94 @@
+// What every loader project of a mod shares. Applied by mcmods.neoforge and mcmods.fabric; a mod never applies it
+// itself. The project is mods/<mod>/<loader>, and its parent (mods/<mod>) holds gradle.properties with mod_id,
+// mod_name, mod_version, mod_group, mod_description and anything else the mod's metadata files use.
+
+plugins {
+    id 'java'
+}
+
+def modDir = project.parent.projectDir
+def loader = project.name
+
+version = mod_version
+group = mod_group
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+base.archivesName = "${mod_id}-${loader}-${minecraft_version}"
+
+repositories {
+    maven {
+        url = 'https://maven.squiddev.cc'
+        content { includeGroup 'cc.tweaked' }
+    }
+    maven {
+        url = 'https://maven.parchmentmc.org'
+        content { includeGroup 'org.parchmentmc.data' }
+    }
+    maven {
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
+    }
+    mavenCentral()
+}
+
+// Code and assets shared by the loaders live in mods/<mod>/common and go into every loader's jar.
+def common = new File(modDir, 'common/src/main')
+if (common.exists()) {
+    sourceSets.main {
+        java.srcDir new File(common, 'java')
+        resources.srcDir new File(common, 'resources')
+    }
+}
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+    failOnNoDiscoveredTests = false
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+// License texts go into the jar's META-INF. A mod with its own COPYING / COPYING.LESSER / LICENSE files uses
+// those; otherwise the repo's LGPL texts.
+def licenseFiles = ['COPYING', 'COPYING.LESSER', 'LICENSE'].collect { new File(modDir, it) }.findAll { it.exists() }
+if (licenseFiles.isEmpty()) licenseFiles = ['COPYING', 'COPYING.LESSER'].collect { rootProject.file(it) }
+tasks.named('jar', Jar) {
+    licenseFiles.each { f -> from(f) { into 'META-INF'; rename { "${mod_id}-${f.name}.txt" } } }
+    manifest.attributes(
+            'Implementation-Title': mod_name,
+            'Implementation-Version': mod_version,
+            'Implementation-Vendor': findProperty('mod_authors') ?: '')
+}
+
+// ${...} in neoforge.mods.toml and fabric.mod.json is filled from gradle.properties: the repo's shared values,
+// then the mod's own (which win).
+def readProps = { File f ->
+    def p = new Properties()
+    if (f.exists()) f.withReader('UTF-8') { p.load(it) }
+    p.findAll { k, v -> !k.startsWith('org.gradle.') }
+}
+def metadata = readProps(rootProject.file('gradle.properties')) + readProps(new File(modDir, 'gradle.properties'))
+metadata.mod_version = mod_version
+tasks.named('processResources', ProcessResources) {
+    inputs.properties metadata
+    filesMatching(['META-INF/neoforge.mods.toml', 'fabric.mod.json']) { expand metadata }
+}
+
+// Bundles the internal library (common-lib) into the jar when the mod asks for it with uses_common_lib=true.
+// Each loader plugin nests it its own way (jarJar / include); the newest copy wins when several mods have it.
+ext.usesCommonLib = findProperty('uses_common_lib')?.toString() == 'true'
+if (usesCommonLib) {
+    dependencies { implementation project(':common-lib') }
+}
