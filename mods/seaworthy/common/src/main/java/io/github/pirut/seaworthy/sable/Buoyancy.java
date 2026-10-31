@@ -1,5 +1,6 @@
 package io.github.pirut.seaworthy.sable;
 
+import dev.ryanhcode.sable.api.physics.force.ForceGroup;
 import dev.ryanhcode.sable.api.physics.force.ForceGroups;
 import dev.ryanhcode.sable.api.physics.force.QueuedForceGroup;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
@@ -12,6 +13,7 @@ import io.github.pirut.seaworthy.SeaworthyConfig;
 import io.github.pirut.seaworthy.hull.Lumps;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import org.joml.Vector3d;
 
@@ -29,7 +31,16 @@ public final class Buoyancy {
     private static final double SABLE_LIFT = 10.5;
     private static final double SABLE_GRAVITY = 11.0;
 
+    private static final ResourceLocation FORCE_GROUP = ResourceLocation.fromNamespaceAndPath("sable", "levitation");
+    private static ForceGroup forceGroup;
+
     private Buoyancy() {
+    }
+
+    /** Sable's levitation force group, looked up by id (its holder type comes from a library we don't compile against). */
+    private static ForceGroup forceGroup() {
+        if (forceGroup == null) forceGroup = ForceGroups.REGISTRY.get(FORCE_GROUP);
+        return forceGroup;
     }
 
     /**
@@ -103,7 +114,9 @@ public final class Buoyancy {
             double g = gravity.length();
             if (g < 1e-6) continue;
             pose.orientation().transformInverse(gravity); // into the ship's frame
-            QueuedForceGroup group = subLevel.getOrCreateQueuedForceGroup(ForceGroups.LEVITATION.get());
+            ForceGroup forceGroup = forceGroup();
+            if (forceGroup == null) return;
+            QueuedForceGroup group = subLevel.getOrCreateQueuedForceGroup(forceGroup);
 
             if (s.lift() > 0) {
                 // Upwards, against gravity, as hard as Sable floats a block of the same volume.
