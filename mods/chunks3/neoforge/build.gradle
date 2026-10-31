@@ -1,0 +1,18 @@
+plugins {
+    id 'mcmods.neoforge'
+}
+
+dependencies {
+    // The far renderer reads shader packs through Iris when it is installed; never bundled.
+    compileOnly("maven.modrinth:iris:${iris_neoforge_version}") { transitive = false }
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+}
+
+// The engine's tests (in common/src/test) need Minecraft and the engine's mixins applied, so they run here as
+// NeoForge unit tests, in a game set up without a window. The Fabric project skips them.
+neoForge {
+    unitTest {
+        enable()
+        testedMod = mods."${mod_id}"
+    }
+}

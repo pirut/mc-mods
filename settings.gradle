@@ -30,6 +30,11 @@ def addMod = { File dir ->
             project(":$name:$loader").projectDir = new File(dir, loader)
         }
     }
+    // A mod may keep a never-released example mod that uses it in example/ (see mods/chunks3/example).
+    if (new File(dir, 'example/build.gradle').exists()) {
+        include ":$name:example"
+        project(":$name:example").projectDir = new File(dir, 'example')
+    }
 }
 file('mods').listFiles().findAll { it.isDirectory() && new File(it, 'gradle.properties').exists() }
         .sort { it.name }.each(addMod)
