@@ -1,0 +1,6 @@
+agentlog shows every tool call an AI agent makes through CC: Agent, live, on this screen or a monitor.
+
+ex:
+"agentlog" shows it here.
+"agentlog right" shows it on the monitor on the right (text scale 0.5).
+"agentlog monitor_0 1" uses a networked monitor at text scale 1.

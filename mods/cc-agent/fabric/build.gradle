@@ -1,0 +1,11 @@
+plugins {
+    id 'mcmods.fabric'
+}
+
+dependencies {
+    modImplementation "cc.tweaked:cc-tweaked-${minecraft_version}-fabric:${cc_version}"
+
+    // A real terminal for the agents' TUIs. Minecraft already ships JNA.
+    include(implementation("org.jetbrains.pty4j:pty4j:${pty4j_version}") { transitive = false })
+    include(implementation("org.jetbrains.kotlin:kotlin-stdlib:${kotlin_stdlib_version}") { transitive = false })
+}

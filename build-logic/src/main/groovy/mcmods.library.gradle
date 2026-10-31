@@ -1,0 +1,39 @@
+// common-lib: plain Java with no Minecraft or loader classes, so one jar nests into both loaders' jars.
+
+plugins {
+    id 'java-library'
+}
+
+version = common_lib_version
+group = 'io.github.pirut.mcmods'
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+    failOnNoDiscoveredTests = false
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+tasks.named('jar', Jar) {
+    from(rootProject.file('COPYING')) { into 'META-INF'; rename { 'mcmods-common-lib-COPYING.txt' } }
+    from(rootProject.file('COPYING.LESSER')) { into 'META-INF'; rename { 'mcmods-common-lib-COPYING.LESSER.txt' } }
+    // A stable module name, so NeoForge sees the same library whichever mod brought it.
+    manifest.attributes('Automatic-Module-Name': 'io.github.pirut.mcmods.lib',
+            'Implementation-Version': common_lib_version)
+}

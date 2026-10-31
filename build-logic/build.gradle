@@ -1,0 +1,15 @@
+plugins {
+    id 'groovy-gradle-plugin'
+}
+
+repositories {
+    maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://maven.neoforged.net/releases' }
+    gradlePluginPortal()
+}
+
+// The loader plugins the convention plugins apply. Bump them here for every mod at once.
+dependencies {
+    implementation 'net.neoforged.moddev:net.neoforged.moddev.gradle.plugin:2.0.148'
+    implementation 'fabric-loom:fabric-loom.gradle.plugin:1.17.21'
+}

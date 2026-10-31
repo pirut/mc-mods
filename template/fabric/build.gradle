@@ -1,0 +1,8 @@
+plugins {
+    id 'mcmods.fabric'
+}
+
+dependencies {
+    // Fabric-only dependencies go here, for example:
+    // modImplementation "cc.tweaked:cc-tweaked-${minecraft_version}-fabric:${cc_version}"
+}
