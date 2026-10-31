@@ -92,9 +92,9 @@ public final class AgentRunner {
         if (!claude && !agent.equals("codex")) throw new ToolException("agent must be claude or codex");
         // These come from the computer (any Lua program can set them) or, in multiplayer, from the server, and
         // end up on the command line. On Windows the npm shims go through cmd.exe, which would run "&calc".
-        checkArg("model", options.model());
-        checkArg("effort", options.effort());
-        checkArg("session", session);
+        CliArgs.check("model", options.model());
+        CliArgs.check("effort", options.effort());
+        CliArgs.check("session", session);
         var exe = find(claude ? config.claudeCommand : config.codexCommand);
         if (exe == null) {
             throw new ToolException("couldn't find " + (claude ? config.claudeCommand : config.codexCommand)
@@ -128,7 +128,7 @@ public final class AgentRunner {
                 if (options.model() != null) cmd.addAll(List.of("--model", options.model()));
                 if (options.effort() != null) cmd.addAll(List.of("--effort", options.effort()));
                 if (session != null) cmd.addAll(List.of("--resume", session));
-                cmd.addAll(split(config.claudeArgs));
+                cmd.addAll(CliArgs.split(config.claudeArgs));
             } else {
                 cmd.addAll(List.of("exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only",
                     "-c", "approval_policy=never",
@@ -139,7 +139,7 @@ public final class AgentRunner {
                     "-c", "mcp_servers.cc-agent.http_headers={\"" + Questions.CHAT_HEADER + "\"=\"" + computerId + "\"}"));
                 if (options.model() != null) cmd.addAll(List.of("-m", options.model()));
                 if (options.effort() != null) cmd.addAll(List.of("-c", "model_reasoning_effort=" + options.effort()));
-                cmd.addAll(split(config.codexArgs));
+                cmd.addAll(CliArgs.split(config.codexArgs));
                 if (session != null) cmd.addAll(List.of("resume", session));
                 cmd.add("-");
             }
@@ -476,21 +476,6 @@ public final class AgentRunner {
     private static String shorten(String text, int max) {
         var t = text.replaceAll("\\s+", " ").trim();
         return t.length() > max ? t.substring(0, max - 3) + "..." : t;
-    }
-
-    /** Model names, effort levels and session ids: letters, digits and . _ - : @ / [ ] only. */
-    private static final java.util.regex.Pattern SAFE_ARG = java.util.regex.Pattern.compile("[A-Za-z0-9._:@/\\[\\]-]{1,128}");
-
-    static void checkArg(String what, String value) {
-        if (value != null && !SAFE_ARG.matcher(value).matches()) throw new ToolException("that " + what + " isn't valid: " + value);
-    }
-
-    static List<String> split(String args) {
-        var out = new ArrayList<String>();
-        if (args == null || args.isBlank()) return out;
-        var m = java.util.regex.Pattern.compile("\"([^\"]*)\"|(\\S+)").matcher(args);
-        while (m.find()) out.add(m.group(1) != null ? m.group(1) : m.group(2));
-        return out;
     }
 
     static boolean windows() {
