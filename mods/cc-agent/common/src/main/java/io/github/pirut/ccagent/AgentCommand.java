@@ -29,19 +29,24 @@ final class AgentCommand {
         return player != null && source.getServer().isSingleplayerOwner(player.getGameProfile());
     }
 
-    private static int status(CommandSourceStack source) {
+    /** Says why there's nothing to connect to, if the MCP server isn't running. */
+    private static boolean notRunning(CommandSourceStack source) {
         var config = CCAgent.config();
         if (config == null) {
             source.sendFailure(Component.literal("CC: Agent hasn't loaded its config yet."));
-            return 0;
+            return true;
         }
-        if (!CCAgent.running()) {
-            var why = !config.enabled ? "enabled=false in config/ccagent.properties"
-                : CCAgent.startError() != null ? CCAgent.startError()
-                : "it's off on dedicated servers unless dedicatedServer=true";
-            source.sendFailure(Component.literal("CC: Agent's MCP server isn't running: " + why));
-            return 0;
-        }
+        if (CCAgent.running()) return false;
+        var why = !config.enabled ? "enabled=false in config/ccagent.properties"
+            : CCAgent.startError() != null ? CCAgent.startError()
+            : "it's off on dedicated servers unless dedicatedServer=true";
+        source.sendFailure(Component.literal("CC: Agent's MCP server isn't running: " + why));
+        return true;
+    }
+
+    private static int status(CommandSourceStack source) {
+        if (notRunning(source)) return 0;
+        var config = CCAgent.config();
         source.sendSystemMessage(Component.literal("CC: Agent MCP server: ").withStyle(ChatFormatting.GOLD)
             .append(copyable(config.url(), config.url())));
         source.sendSystemMessage(Component.literal("Claude Code: ").append(link("/ccagent claude")));
@@ -50,6 +55,7 @@ final class AgentCommand {
     }
 
     private static int claude(CommandSourceStack source) {
+        if (notRunning(source)) return 0;
         var config = CCAgent.config();
         var cmd = "claude mcp add --scope user --transport http cc-agent " + config.url()
             + " --header \"Authorization: Bearer " + config.token + "\"";
@@ -60,6 +66,7 @@ final class AgentCommand {
     }
 
     private static int codex(CommandSourceStack source) {
+        if (notRunning(source)) return 0;
         var config = CCAgent.config();
         var toml = "[mcp_servers.cc-agent]\nurl = \"" + config.url() + "\"\nhttp_headers = { \"Authorization\" = \"Bearer "
             + config.token + "\" }\ndefault_tools_approval_mode = \"approve\"\n";

@@ -197,7 +197,7 @@ public final class McpServer {
         return obj(
             "protocolVersion", version,
             "capabilities", obj("tools", obj("listChanged", false)),
-            "serverInfo", obj("name", "cc-agent", "title", "CC: Agent", "version", CCAgent.VERSION),
+            "serverInfo", obj("name", "cc-agent", "title", "CC: Agent", "version", CCAgent.version()),
             "instructions", INSTRUCTIONS);
     }
 
