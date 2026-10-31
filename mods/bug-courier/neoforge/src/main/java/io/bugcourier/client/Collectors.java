@@ -5,6 +5,7 @@ import io.bugcourier.BugCourier;
 import io.bugcourier.api.ReportConfig;
 import io.bugcourier.core.Attachment;
 import io.bugcourier.core.CrashReports;
+import io.bugcourier.core.IssueBody;
 import io.bugcourier.core.Redactor;
 import io.bugcourier.core.Report;
 import java.io.IOException;
@@ -26,18 +27,21 @@ import net.neoforged.neoforgespi.language.IModInfo;
 
 /** Gathers what a report can carry. Every text passes through the redactor before anyone sees it. */
 final class Collectors {
-    static final String LOG = "latest.log";
-    static final String CRASH = "crash-report.txt";
-    static final String MODS = "mods.txt";
+    private static final String LOG = IssueBody.LOG_FILE;
+    private static final String CRASH = IssueBody.CRASH_FILE;
+    private static final String MODS = "mods.txt";
     private static final int LOG_TAIL_BYTES = 256 * 1024;
     private static final int FILE_MAX_BYTES = 128 * 1024;
-    private static final Duration RECENT_CRASH = Duration.ofDays(3);
+    /** How old a crash report may be and still be offered, after a crash or in a report made by hand. */
+    static final Duration RECENT_CRASH = Duration.ofDays(3);
 
     private Collectors() {
     }
 
     static Redactor redactor(boolean includePlayer) {
         Redactor r = new Redactor();
+        // Four-part versions look like IP addresses; keep every installed mod's so the mod list stays readable.
+        for (IModInfo mod : ModList.get().getMods()) r.keep(mod.getVersion().toString());
         if (!includePlayer) {
             var user = Minecraft.getInstance().getUser();
             r.hide(user.getName());
@@ -59,7 +63,7 @@ final class Collectors {
         env.put(target.name(), target.version());
         env.put("Minecraft", SharedConstants.getCurrentVersion().getName());
         env.put("NeoForge", FMLLoader.versionInfo().neoForgeVersion());
-        env.put("Bug Courier", ModList.get().getModContainerById(BugCourier.MOD_ID).map(c -> c.getModInfo().getVersion().toString()).orElse("?"));
+        env.put("Bug Courier", Sender.libraryVersion());
         env.put("Mods installed", Integer.toString(ModList.get().size()));
         env.put("OS", System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")");
         env.put("Java", System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ")");

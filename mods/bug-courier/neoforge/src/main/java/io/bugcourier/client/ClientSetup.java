@@ -8,7 +8,6 @@ import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.Properties;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -32,7 +31,6 @@ import net.neoforged.neoforge.common.NeoForge;
 /** The ways in: a pause-menu button, a key (unbound until the player picks one), /bugreport, and a prompt after a crash. */
 public final class ClientSetup {
     private static final KeyMapping OPEN = new KeyMapping("key.bugcourier.open", InputConstants.UNKNOWN.getValue(), "key.categories.bugcourier");
-    private static final Duration CRASH_PROMPT_AGE = Duration.ofDays(3);
     private static boolean crashChecked;
 
     private ClientSetup() {
@@ -52,7 +50,12 @@ public final class ClientSetup {
                 .then(Commands.argument("mod", StringArgumentType.word())
                         .suggests((c, b) -> SharedSuggestionProvider.suggest(ReportTargets.all().stream().map(ReportTarget::modId), b))
                         .executes(c -> {
-                            ReportTargets.openScreen(StringArgumentType.getString(c, "mod"), null);
+                            String modId = StringArgumentType.getString(c, "mod");
+                            if (ReportTargets.find(modId).isEmpty()) {
+                                c.getSource().sendFailure(Component.translatable("bugcourier.command.unknown_mod", modId));
+                                return 0;
+                            }
+                            ReportTargets.openScreen(modId, null);
                             return 1;
                         }))));
     }
@@ -89,7 +92,7 @@ public final class ClientSetup {
 
     // The game is gone when it crashes, so the offer comes on the next start, once per crash report.
     private static void offerCrashReport() {
-        Collectors.newestCrash(CRASH_PROMPT_AGE).ifPresent(crash -> {
+        Collectors.newestCrash(Collectors.RECENT_CRASH).ifPresent(crash -> {
             Properties state = loadState();
             String seen = state.getProperty("lastCrashSeen", "");
             String name = crash.getFileName().toString();
