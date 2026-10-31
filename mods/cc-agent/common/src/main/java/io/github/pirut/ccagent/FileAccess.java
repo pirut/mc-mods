@@ -37,7 +37,7 @@ public final class FileAccess {
         while (clean.startsWith("/")) clean = clean.substring(1);
         var first = clean.split("/", 2)[0];
         if (first.equals("rom")) throw new ToolException("/rom is the read-only ROM, not on disk: read it with run_lua and fs");
-        if (first.startsWith("disk")) throw new ToolException("/" + first + " is a disk drive mount: use run_lua with fs for it");
+        if (first.matches("disk\\d*")) throw new ToolException("/" + first + " is a disk drive mount: use run_lua with fs for it");
         var resolved = root.resolve(clean).normalize();
         if (!resolved.startsWith(root)) throw new ToolException("path leaves the computer's drive: " + path);
         return resolved;
@@ -52,7 +52,8 @@ public final class FileAccess {
         var root = root(computerId).toAbsolutePath().normalize();
         var dir = resolve(computerId, path);
         var out = new JsonObject();
-        out.addProperty("drive", root.toString());
+        // Relay players don't get to see where the server keeps its world.
+        if (Access.current() == null) out.addProperty("drive", root.toString());
         var entries = new JsonArray();
         if (!Files.exists(dir)) {
             if (dir.equals(root)) {

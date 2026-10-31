@@ -31,7 +31,8 @@ public final class LuaStrings {
                 case '\r' -> out.append("\\r");
                 case '\t' -> out.append("\\t");
                 default -> {
-                    if (c < 32 || c >= 127) out.append('\\').append(c);
+                    // Always three digits: "\1" followed by a "2" would read as "\12".
+                    if (c < 32 || c >= 127) out.append('\\').append(c < 100 ? (c < 10 ? "00" : "0") : "").append(c);
                     else out.append((char) c);
                 }
             }

@@ -4,6 +4,12 @@ Internal code shared by the mods in this repo. It is not a mod and is never rele
 sets `uses_common_lib=true` in its `gradle.properties` gets it nested inside its jars (`jarJar` on NeoForge,
 `include` on Fabric), so players never need an extra download.
 
+What's in it:
+
+- `PropertiesFile`: read and write small `.properties` config and state files (UTF-8, defaults when missing,
+  written whole). Used by CC: Agent (`config/ccagent.properties`) and Bug Courier (its crash-prompt state).
+- `CommonLib`: the bundled version, and `ellipsize` for cutting long text.
+
 Rules:
 
 - Plain Java only. No Minecraft, NeoForge or Fabric classes, so one jar works on both loaders.

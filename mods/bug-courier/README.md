@@ -11,9 +11,9 @@ You need no account, token or server for any of this, and nothing leaves the com
 submits it themselves.
 
 - **Minecraft** 1.21.1
-- **Loader** NeoForge 21.1.256 or later (Fabric is planned)
+- **Loaders** NeoForge 21.1.256 or later, or Fabric Loader 0.16.14 or later with Fabric API
 - **Side** client only. Servers don't need it.
-- **Needs** nothing else
+- **Needs** nothing else on NeoForge. On Fabric it needs Fabric API.
 
 [Download](https://github.com/pirut/mc-mods/releases?q=bug-courier) ·
 [Changelog](CHANGELOG.md) ·
@@ -36,7 +36,8 @@ which mod to blame, or where that mod takes issues. Bug Courier fixes both sides
 
 ### Install
 
-Put the jar in your `mods` folder. That's all. Bug Courier runs only on your own computer, so it works on any
+Put the jar for your loader in your `mods` folder: `bugcourier-neoforge-...` for NeoForge, or
+`bugcourier-fabric-...` for Fabric (with Fabric API). That's all. Bug Courier runs only on your own computer, so it works on any
 server, whether or not the server has it.
 
 ### Report a bug
@@ -82,14 +83,15 @@ exists only once you press Submit there.
 - Each crash is offered once. To never be asked after a crash, set `neverAskAboutCrashes=true` in
   `config/bugcourier-state.properties`.
 - You can send one report per mod every 5 minutes, so a stuck key can't flood a tracker.
-- Minecraft and NeoForge themselves aren't in the list. Their bugs belong with Mojang and NeoForge.
+- Minecraft and the loader itself aren't in the list. Their bugs belong with Mojang and the loader. On Fabric,
+  mods bundled inside another mod's jar (such as Fabric API's modules) are reported to the mod that carries them.
 - A mod only shows up if it says where it takes issues. If yours is missing, the mod hasn't set an issue tracker.
 
 ## What a report holds
 
 The text you write and a table of facts always go in:
 
-- the mod and its version, Minecraft, NeoForge, Bug Courier and how many mods are installed
+- the mod and its version, Minecraft, the loader (NeoForge or Fabric), Bug Courier and how many mods are installed
 - OS, Java, CPU, GPU and OpenGL version, and how much memory Java may use
 - any short facts the mod adds itself, such as a render setting
 
@@ -110,18 +112,19 @@ The tag is the same every time the same crash happens, so the same crash is easy
 
 ## For mod authors
 
-You can do nothing, add two lines of config, or use the Java API. Bug Courier looks at them in this order:
-what you registered in code, then your `modproperties`, then your `issueTrackerURL`.
+You can do nothing, add two lines of metadata, or use the Java API. Bug Courier looks at them in this order:
+what you registered in code, then your `bugcourier_*` keys, then your issue link.
 
-### Nothing: `issueTrackerURL`
+### Nothing: your issue link
 
-If your `neoforge.mods.toml` has an `issueTrackerURL`, players can already report to you. That works for every
-installed mod, including ones that have never heard of Bug Courier.
+If your mod declares where it takes issues, players can already report to you: `issueTrackerURL` in
+`neoforge.mods.toml`, or `contact.issues` in `fabric.mod.json`. That works for every installed mod, including
+ones that have never heard of Bug Courier.
 
-### A few lines of config
+### A few lines of metadata
 
-Add these to `neoforge.mods.toml` to set labels, send reports somewhere other than `issueTrackerURL`, or keep
-your mod out of the list:
+Use these keys to set labels, send reports somewhere other than your issue link, or keep your mod out of the
+list. On NeoForge, in `neoforge.mods.toml`:
 
 ```toml
 [modproperties.yourmodid]
@@ -130,9 +133,18 @@ bugcourier_labels = "bug,player-report"
 # bugcourier_disabled = true
 ```
 
+On Fabric, in the `"custom"` block of `fabric.mod.json`:
+
+```json
+"custom": {
+  "bugcourier_tracker": "github:you/your-mod",
+  "bugcourier_labels": "bug,player-report"
+}
+```
+
 ### Where reports can go
 
-`bugcourier_tracker`, `issueTrackerURL` and `tracker(...)` in the API all accept:
+`bugcourier_tracker`, your issue link and `tracker(...)` in the API all accept:
 
 | Tracker | Short form | Link that's recognized | Filled in |
 | --- | --- | --- | --- |
@@ -147,12 +159,12 @@ always safe.
 
 ### Java API
 
-Use the API when you want extra facts or files in the report, or your own **Report a bug** button. Compile against the jar from the
+Use the API when you want extra facts or files in the report, or your own **Report a bug** button. Compile against the jar for your loader from the
 [releases](https://github.com/pirut/mc-mods/releases?q=bug-courier) as `compileOnly`, and only call it when
 Bug Courier is installed:
 
 ```java
-if (ModList.get().isLoaded("bugcourier")) {
+if (ModList.get().isLoaded("bugcourier")) {   // Fabric: FabricLoader.getInstance().isModLoaded("bugcourier")
     BugReports.register("yourmodid", cfg -> cfg
             .tracker("github:you/your-mod")
             .labels("bug", "player-report")
@@ -185,11 +197,12 @@ Anything else may change between versions.
 From the root of this repo, with Java 21:
 
 ```sh
-./gradlew :bug-courier:build                # jar in mods/bug-courier/neoforge/build/libs
-./gradlew :bug-courier:neoforge:runClient   # a dev game with the mod loaded
+./gradlew :bug-courier:build                # jars in mods/bug-courier/{neoforge,fabric}/build/libs
+./gradlew :bug-courier:neoforge:runClient   # a dev game with the mod loaded (or :bug-courier:fabric:runClient)
 ```
 
-The `io.bugcourier.core` package has no Minecraft classes, so its tests run on plain JUnit.
+Everything except the loader glue lives in `common/`. The `io.bugcourier.core` package has no Minecraft classes,
+so its tests run on plain JUnit, once in each loader project.
 
 ## License
 

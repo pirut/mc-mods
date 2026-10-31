@@ -8,6 +8,7 @@ import io.bugcourier.core.CrashReports;
 import io.bugcourier.core.IssueBody;
 import io.bugcourier.core.Redactor;
 import io.bugcourier.core.Report;
+import io.bugcourier.platform.Platform;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
@@ -20,10 +21,6 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
-import net.neoforged.fml.ModList;
-import net.neoforged.fml.loading.FMLLoader;
-import net.neoforged.fml.loading.FMLPaths;
-import net.neoforged.neoforgespi.language.IModInfo;
 
 /** Gathers what a report can carry. Every text passes through the redactor before anyone sees it. */
 final class Collectors {
@@ -41,7 +38,7 @@ final class Collectors {
     static Redactor redactor(boolean includePlayer) {
         Redactor r = new Redactor();
         // Four-part versions look like IP addresses; keep every installed mod's so the mod list stays readable.
-        for (IModInfo mod : ModList.get().getMods()) r.keep(mod.getVersion().toString());
+        for (Platform.ModEntry mod : Platform.get().allMods()) r.keep(mod.version());
         if (!includePlayer) {
             var user = Minecraft.getInstance().getUser();
             r.hide(user.getName());
@@ -62,9 +59,10 @@ final class Collectors {
         var env = report.environment();
         env.put(target.name(), target.version());
         env.put("Minecraft", SharedConstants.getCurrentVersion().getName());
-        env.put("NeoForge", FMLLoader.versionInfo().neoForgeVersion());
+        Platform platform = Platform.get();
+        env.put(platform.loaderName(), platform.loaderVersion());
         env.put("Bug Courier", Sender.libraryVersion());
-        env.put("Mods installed", Integer.toString(ModList.get().size()));
+        env.put("Mods installed", Integer.toString(platform.allMods().size()));
         env.put("OS", System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")");
         env.put("Java", System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ")");
         env.put("CPU", GlUtil.getCpuInfo() + ", " + Runtime.getRuntime().availableProcessors() + " threads");
@@ -80,7 +78,8 @@ final class Collectors {
                 }
             }
         }
-        env.replaceAll((k, v) -> redact.apply(v));
+        // The rows above come from the game and the system, not the player; context rows were redacted one by one.
+        // (Redacting them all hid four-part Java versions such as 21.0.12.1 as IP addresses.)
 
         // Opened from the crash prompt: that crash is the report. Opened by hand: offer a recent crash, unticked.
         boolean fromCrash = crashText != null;
@@ -127,13 +126,13 @@ final class Collectors {
     }
 
     static Path gameDir() {
-        return FMLPaths.GAMEDIR.get();
+        return Platform.get().gameDir();
     }
 
     private static String modList() {
         StringBuilder b = new StringBuilder();
-        ModList.get().getMods().stream().sorted(Comparator.comparing(IModInfo::getModId)).forEach(m -> b.append(m.getModId()).append(' ')
-                .append(m.getVersion()).append("  (").append(m.getOwningFile().getFile().getFileName()).append(")\n"));
+        Platform.get().allMods().stream().sorted(Comparator.comparing(Platform.ModEntry::id)).forEach(m -> b.append(m.id()).append(' ')
+                .append(m.version()).append("  (").append(m.file()).append(")\n"));
         return b.toString();
     }
 

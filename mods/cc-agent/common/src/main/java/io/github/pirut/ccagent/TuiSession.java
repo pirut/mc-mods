@@ -81,6 +81,9 @@ public final class TuiSession {
         if (!config.launchAgents) throw new ToolException("launchAgents=false in config/ccagent.properties");
         boolean claude = agent.equals("claude");
         if (!claude && !agent.equals("codex")) throw new ToolException("agent must be claude or codex");
+        // The same bounds as resize: the size can come from a server over the relay.
+        cols = Math.max(20, Math.min(cols, 400));
+        rows = Math.max(5, Math.min(rows, 200));
         stopComputer(computerId);
 
         var exe = AgentRunner.find(claude ? config.claudeCommand : config.codexCommand);
@@ -106,13 +109,13 @@ public final class TuiSession {
                 Files.writeString(mcp, Json.PRETTY.toJson(Json.obj("mcpServers", servers)));
                 cmd.addAll(List.of("--strict-mcp-config", "--mcp-config", mcp.toString(),
                     "--allowedTools", "mcp__cc-agent__*,WebSearch,WebFetch"));
-                cmd.addAll(AgentRunner.split(config.claudeArgs));
+                cmd.addAll(CliArgs.split(config.claudeArgs));
             } else {
                 cmd.addAll(List.of("--sandbox", "read-only",
                     "-c", "mcp_servers.cc-agent.url=" + mcpUrl,
                     "-c", "mcp_servers.cc-agent.bearer_token_env_var=CC_AGENT_TOKEN",
                     "-c", "mcp_servers.cc-agent.default_tools_approval_mode=approve"));
-                cmd.addAll(AgentRunner.split(config.codexArgs));
+                cmd.addAll(CliArgs.split(config.codexArgs));
             }
         } catch (IOException e) {
             throw new ToolException("couldn't set up the agent folder: " + e.getMessage());
