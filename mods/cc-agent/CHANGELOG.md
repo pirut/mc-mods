@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.2
+
+- **Security fix for multiplayer on Windows.** The model, effort and session the chat passes to Claude Code
+  or Codex are now checked before they reach the command line. Before, a program on a server's computer could
+  set a model name that made the Windows command shim run another program on the PC of the player who opened
+  that computer. Update both your game and your server.
+- When a player leaves a server, chats their agent was running on its computers now end with a message
+  instead of waiting forever.
+- A Lua string with a control character followed by a digit no longer comes out wrong on the computer.
+- Full-screen sizes are kept to 400x200 when a TUI starts, as they already were on resize.
+- `/ccagent claude` and `/ccagent codex` say why the MCP server isn't running, instead of handing out a
+  setup command that can't connect.
+- Folders whose names start with "disk" (like `diskutil`) are no longer mistaken for disk drives by the file
+  tools. On servers, `list_files` no longer shows players where the server keeps its world.
+- A player can't make the server hold on to endless half-sent relay messages.
+- The mod has an icon in the mod list, and the version it reports always matches the jar.
+
 ## 0.5.1
 
 - **Scroll back through the chat** with the mouse wheel or Page Up/Down (the last 1000 messages). New

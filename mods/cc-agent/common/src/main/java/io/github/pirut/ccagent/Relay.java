@@ -74,6 +74,8 @@ public final class Relay {
         if (payload.parts() <= 0 || payload.parts() > 2048 || payload.part() < 0 || payload.part() >= payload.parts()) return null;
         if (payload.parts() == 1) return parse(payload.data());
         var key = from + "/" + payload.message();
+        // A sender can't pile up half-sent messages without end.
+        if (!PARTIALS.containsKey(key) && pendingFrom(from) >= MAX_PARTIALS) return null;
         var partial = PARTIALS.computeIfAbsent(key, k -> new Partial(payload.parts()));
         synchronized (partial) {
             if (partial.parts.length != payload.parts() || partial.parts[payload.part()] != null) return null;
@@ -84,6 +86,13 @@ public final class Relay {
         var all = new ByteArrayOutputStream();
         for (var part : partial.parts) all.writeBytes(part);
         return parse(all.toByteArray());
+    }
+
+    private static final int MAX_PARTIALS = 16;
+
+    private static long pendingFrom(String from) {
+        var prefix = from + "/";
+        return PARTIALS.keySet().stream().filter(k -> k.startsWith(prefix)).count();
     }
 
     private static JsonObject parse(byte[] bytes) {
@@ -118,11 +127,20 @@ public final class Relay {
         if (!serverEnabled() || !CCAgent.platform().hasRelay(player)) return;
         // The singleplayer host already has the local MCP server.
         if (server.isSingleplayerOwner(player.getGameProfile())) return;
-        send(player, obj("type", "hello", "version", CCAgent.VERSION));
+        send(player, obj("type", "hello", "version", CCAgent.version()));
     }
 
     public static void playerLeft(ServerPlayer player) {
-        CHATS.values().removeIf(chat -> chat.player.equals(player.getUUID()));
+        // Their PC ran the agent, so its chats end here: tell the computers instead of leaving them waiting.
+        for (var chat : List.copyOf(CHATS.values())) {
+            if (chat.player.equals(player.getUUID())) {
+                CHATS.remove(chat.id);
+                chat.computer.queueEvent("ccagent_chat", chat.id, "error", LuaStrings.toLua(
+                    player.getGameProfile().getName() + " left the server, and the agent ran on their PC"));
+                chat.computer.queueEvent("ccagent_chat", chat.id, "done", "");
+            }
+        }
+        PARTIALS.keySet().removeIf(k -> k.startsWith(player.getUUID() + "/"));
         for (var tui : List.copyOf(TUIS.values())) {
             if (tui.player.equals(player.getUUID())) {
                 TUIS.remove(tui.id);

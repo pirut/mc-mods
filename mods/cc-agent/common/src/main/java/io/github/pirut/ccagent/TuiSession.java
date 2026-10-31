@@ -81,6 +81,9 @@ public final class TuiSession {
         if (!config.launchAgents) throw new ToolException("launchAgents=false in config/ccagent.properties");
         boolean claude = agent.equals("claude");
         if (!claude && !agent.equals("codex")) throw new ToolException("agent must be claude or codex");
+        // The same bounds as resize: the size can come from a server over the relay.
+        cols = Math.max(20, Math.min(cols, 400));
+        rows = Math.max(5, Math.min(rows, 200));
         stopComputer(computerId);
 
         var exe = AgentRunner.find(claude ? config.claudeCommand : config.codexCommand);

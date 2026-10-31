@@ -31,7 +31,6 @@ public final class AgentRunner {
     private static final Map<Integer, Run> RUNS = new ConcurrentHashMap<>();
     private static final String TOOL_PREFIX = "mcp__cc-agent__";
 
-    /** Where a run's chat lines go: straight to the computer, or back over the relay. */
     /** Chat settings: model and effort (null for the CLI's own default) and the permission mode. */
     public record Options(String model, String effort, String mode) {
         public static final Options DEFAULT = new Options(null, null, "auto");
@@ -66,6 +65,7 @@ public final class AgentRunner {
         "list_files", "read_file", "list_peripherals", "describe_peripheral", "turtle_inventory", "inspect_block",
         "scan_area", "watch_events", "cc_help", "ask_player");
 
+    /** Where a run's chat lines go: straight to the computer, or back over the relay. */
     public interface Sink {
         void send(int run, String kind, String text);
     }
@@ -90,6 +90,11 @@ public final class AgentRunner {
 
         boolean claude = agent.equals("claude");
         if (!claude && !agent.equals("codex")) throw new ToolException("agent must be claude or codex");
+        // These come from the computer (any Lua program can set them) or, in multiplayer, from the server, and
+        // end up on the command line. On Windows the npm shims go through cmd.exe, which would run "&calc".
+        checkArg("model", options.model());
+        checkArg("effort", options.effort());
+        checkArg("session", session);
         var exe = find(claude ? config.claudeCommand : config.codexCommand);
         if (exe == null) {
             throw new ToolException("couldn't find " + (claude ? config.claudeCommand : config.codexCommand)
@@ -471,6 +476,13 @@ public final class AgentRunner {
     private static String shorten(String text, int max) {
         var t = text.replaceAll("\\s+", " ").trim();
         return t.length() > max ? t.substring(0, max - 3) + "..." : t;
+    }
+
+    /** Model names, effort levels and session ids: letters, digits and . _ - : @ / [ ] only. */
+    private static final java.util.regex.Pattern SAFE_ARG = java.util.regex.Pattern.compile("[A-Za-z0-9._:@/\\[\\]-]{1,128}");
+
+    static void checkArg(String what, String value) {
+        if (value != null && !SAFE_ARG.matcher(value).matches()) throw new ToolException("that " + what + " isn't valid: " + value);
     }
 
     static List<String> split(String args) {

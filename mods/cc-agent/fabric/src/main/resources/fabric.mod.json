@@ -4,13 +4,14 @@
   "version": "${mod_version}",
   "name": "${mod_name}",
   "description": "${mod_description}",
-  "authors": ["JR Bussard"],
+  "authors": ["${mod_authors}"],
   "contact": {
     "homepage": "https://github.com/pirut/mc-mods/tree/main/mods/cc-agent",
     "sources": "https://github.com/pirut/mc-mods/tree/main/mods/cc-agent",
     "issues": "https://github.com/pirut/mc-mods/issues"
   },
   "license": "${mod_license}",
+  "icon": "assets/ccagent/icon.png",
   "environment": "*",
   "entrypoints": {
     "main": ["io.github.pirut.ccagent.fabric.CCAgentFabric"],
