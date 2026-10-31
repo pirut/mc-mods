@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "A clear in-game way to report bugs to the mods you play. Pick the mod, say what happened, see exactly what will be sent, and the mod's issue page opens with the report filled in. Nothing is sent without you.",
+  "authors": ["JR Bussard"],
+  "contact": {
+    "homepage": "https://github.com/pirut/mc-mods/tree/main/mods/bug-courier",
+    "sources": "https://github.com/pirut/mc-mods/tree/main/mods/bug-courier",
+    "issues": "https://github.com/pirut/mc-mods/issues"
+  },
+  "license": "${mod_license}",
+  "environment": "*",
+  "entrypoints": {
+    "client": ["io.bugcourier.fabric.BugCourierFabricClient"]
+  },
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "java": ">=21"
+  },
+  "custom": {
+    "bugcourier_tracker": "github:pirut/mc-mods",
+    "bugcourier_labels": "bug,player-report,bug-courier"
+  }
+}

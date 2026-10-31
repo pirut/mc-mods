@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 
 public final class CCAgent {
     public static final String MOD_ID = "ccagent";
-    public static final String VERSION = "0.5.1";
     public static final Logger LOG = LoggerFactory.getLogger("CC: Agent");
 
     private static Platform platform;
@@ -89,6 +88,12 @@ public final class CCAgent {
 
     public static MinecraftServer server() {
         return server;
+    }
+
+    /** This mod's version, from its loader metadata (filled from gradle.properties at build time). */
+    public static String version() {
+        var meta = mod(MOD_ID);
+        return meta == null ? "unknown" : meta.version();
     }
 
     public static Platform.ModMeta mod(String modId) {

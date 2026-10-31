@@ -217,6 +217,6 @@ public final class AgentApi implements ILuaAPI {
 
     @LuaFunction
     public final String version() {
-        return CCAgent.VERSION;
+        return CCAgent.version();
     }
 }

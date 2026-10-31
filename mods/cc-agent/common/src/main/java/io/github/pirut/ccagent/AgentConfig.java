@@ -1,10 +1,6 @@
 package io.github.pirut.ccagent;
 
-import java.io.IOException;
-import java.io.Reader;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
+import io.github.pirut.mcmods.lib.PropertiesFile;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.HexFormat;
@@ -37,14 +33,7 @@ public final class AgentConfig {
 
     public static AgentConfig load(Path configDir) {
         var config = new AgentConfig(configDir.resolve("ccagent.properties"));
-        var props = new Properties();
-        if (Files.exists(config.file)) {
-            try (Reader in = Files.newBufferedReader(config.file, StandardCharsets.UTF_8)) {
-                props.load(in);
-            } catch (IOException e) {
-                CCAgent.LOG.warn("Couldn't read {}, using defaults", config.file, e);
-            }
-        }
+        Properties props = PropertiesFile.read(config.file, (f, e) -> CCAgent.LOG.warn("Couldn't read {}, using defaults", f, e));
         config.enabled = bool(props, "enabled", config.enabled);
         config.dedicatedServer = bool(props, "dedicatedServer", config.dedicatedServer);
         config.host = props.getProperty("host", config.host).trim();
@@ -122,31 +111,19 @@ public final class AgentConfig {
             """.formatted(enabled, dedicatedServer, host, port, token, allowShellAndLua, allowFileWrites,
             launchAgents, esc(claudeCommand), esc(codexCommand), esc(claudeArgs), esc(codexArgs),
             relay, relayOpsOnly, relayRange, relayCallsPerMinute);
-        try {
-            Files.createDirectories(file.getParent());
-            try (Writer out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
-                out.write(text);
-            }
-        } catch (IOException e) {
-            CCAgent.LOG.warn("Couldn't write {}", file, e);
-        }
+        PropertiesFile.writeText(file, text, (f, e) -> CCAgent.LOG.warn("Couldn't write {}", f, e));
     }
 
     /** Properties files treat backslashes as escapes (Windows paths). */
     private static String esc(String value) {
-        return value.replace("\\", "\\\\");
+        return PropertiesFile.escape(value);
     }
 
     private static int integer(Properties props, String key, int fallback) {
-        try {
-            return Integer.parseInt(props.getProperty(key, Integer.toString(fallback)).trim());
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
+        return PropertiesFile.integer(props, key, fallback);
     }
 
     private static boolean bool(Properties props, String key, boolean fallback) {
-        var value = props.getProperty(key);
-        return value == null ? fallback : Boolean.parseBoolean(value.trim());
+        return PropertiesFile.bool(props, key, fallback);
     }
 }

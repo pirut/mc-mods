@@ -8,7 +8,9 @@ modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
 displayURL="https://github.com/pirut/mc-mods/tree/main/mods/bug-courier"
-authors="JR Bussard"
+authors="${mod_authors}"
+# Client-side only: it adds no blocks, items or network traffic, so servers and clients never need to match.
+displayTest="IGNORE_ALL_VERSION"
 description='''
 A clear in-game way to report bugs to the mods you play. Pick the mod, say what happened, see exactly
 what will be sent, and the mod's issue page opens with the report filled in. Nothing is sent without you.

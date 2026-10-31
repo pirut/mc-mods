@@ -43,6 +43,8 @@ if (common.exists()) {
         resources.srcDir new File(common, 'resources')
     }
 }
+def commonTest = new File(modDir, 'common/src/test/java')
+if (commonTest.exists()) sourceSets.test.java.srcDir commonTest
 
 dependencies {
     testImplementation platform('org.junit:junit-bom:5.11.4')

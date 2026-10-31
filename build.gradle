@@ -1,0 +1,11 @@
+// `./gradlew :<mod>:build` builds all of that mod's loader jars. Without this, Gradle would match the
+// abbreviation to :<mod>:buildEnvironment, since the mod folder itself has no Java code.
+subprojects { p ->
+    if (p.parent == rootProject && !p.subprojects.isEmpty()) {
+        p.tasks.register('build') {
+            group = 'build'
+            description = "Builds every loader jar of ${p.name}."
+            dependsOn p.subprojects.collect { "${it.path}:build" }
+        }
+    }
+}
