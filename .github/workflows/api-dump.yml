@@ -1,0 +1,22 @@
+# TEMPORARY: dumps Minecraft API listings for porting work. Removed before merge.
+name: API dump
+on:
+  push:
+    branches: [claude/project-thread-rtab4i]
+    paths: [.github/workflows/api-dump.yml, .github/api-dump.py]
+permissions:
+  contents: write
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 25 }
+      - run: python3 .github/api-dump.py out
+      - run: |
+          cd out
+          git init -q -b api-dump
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "API dump"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" api-dump:claude/api-dump-scratch
