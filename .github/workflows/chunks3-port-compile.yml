@@ -24,6 +24,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: |
           set +e
+          rm -rf mods/bug-courier mods/cc-agent mods/seaworthy
           mkdir -p out
           A="--console=plain --continue -I .github/chunks3-port/maxerrs.gradle -Pmc=${{ matrix.mc }}"
           ./gradlew $A :chunks3:neoforge:compileJava :chunks3:neoforge:compileTestJava > out/neoforge.log 2>&1
