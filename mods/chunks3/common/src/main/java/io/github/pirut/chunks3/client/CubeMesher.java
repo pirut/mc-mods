@@ -330,8 +330,10 @@ final class CubeMesher {
     /** Whether vanilla's face check hides all six faces of the block, as the model pass asks it. */
     private static boolean buried(BlockState state, View view, BlockPos pos, BlockPos.MutableBlockPos near) {
         for (Direction face : FACES) {
-            //#if MC >= 1.21.11
+            //#if MC >= 1.21.11 && NEOFORGE
             //$$ if (Block.shouldRenderFace(view, pos, state, view.getBlockState(near.setWithOffset(pos, face)), face)) return false;
+            //#elseif MC >= 1.21.11
+            //$$ if (Block.shouldRenderFace(state, view.getBlockState(near.setWithOffset(pos, face)), face)) return false;
             //#else
             if (Block.shouldRenderFace(state, view, pos, face, near.setWithOffset(pos, face))) return false;
             //#endif

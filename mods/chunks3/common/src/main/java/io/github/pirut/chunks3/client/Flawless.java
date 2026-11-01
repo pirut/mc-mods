@@ -61,11 +61,11 @@ public final class Flawless {
      * a while rather than hang a render on something that never arrives.
      */
     static void settle(ClientCubeWorld world) {
-        var camera = Minecraft.getInstance().getCameraEntity();
-        if (camera == null) return;
+        var viewer = Minecraft.getInstance().getCameraEntity();
+        if (viewer == null) return;
         long until = System.nanoTime() + 20_000_000_000L;
         while (System.nanoTime() < until) {
-            int left = world.renderer().settle(camera.getEyePosition(), camera.getYRot()) + world.far().settle(camera.getBlockX(), camera.getBlockZ());
+            int left = world.renderer().settle(viewer.getEyePosition(), viewer.getYRot()) + world.far().settle(viewer.getBlockX(), viewer.getBlockZ());
             if (left == 0) return;
             java.util.concurrent.locks.LockSupport.parkNanos(2_000_000L);
         }

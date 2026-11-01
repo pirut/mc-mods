@@ -325,6 +325,10 @@ public final class CubeRenderer {
      */
     private static Map<BlockPos, Object> modelData(Cube cube) {
         if (cube.blockEntities().isEmpty()) return Map.of();
+        //#if MC >= 1.21.11
+        //$$ // NeoForge 21.11's models read their model data from the level (the mesher's view) themselves.
+        //$$ if (true) return Map.of();
+        //#endif
         Map<BlockPos, Object> data = new HashMap<>();
         for (BlockEntity entity : cube.blockEntities().values()) {
             Object model = ClientPlatform.INSTANCE.blockEntityModelData(entity);
@@ -601,7 +605,12 @@ public final class CubeRenderer {
         //$$ for (Cube cube : world.cubes()) {
             //$$ if (cube.blockEntities().isEmpty()) continue;
             //$$ for (BlockEntity entity : cube.blockEntities().values()) {
+                //#if NEOFORGE
                 //$$ BlockEntityRenderState state = dispatcher.tryExtractRenderState(entity, partialTick, null, frustum);
+                //#else
+                //$$ if (frustum != null && !frustum.isVisible(new AABB(entity.getBlockPos()).inflate(1.0))) continue;
+                //$$ BlockEntityRenderState state = dispatcher.tryExtractRenderState(entity, partialTick, null);
+                //#endif
                 //$$ if (state != null) into.add(state);
             //$$ }
         //$$ }

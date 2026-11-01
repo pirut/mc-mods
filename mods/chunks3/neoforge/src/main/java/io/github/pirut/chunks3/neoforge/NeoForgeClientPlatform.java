@@ -14,7 +14,9 @@ import net.minecraft.client.Minecraft;
 //$$ import net.minecraft.data.AtlasIds;
 //#else
 import net.minecraft.client.renderer.RenderType;
+//#endif
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
+//#if MC < 1.21.11
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.world.inventory.InventoryMenu;
@@ -43,6 +45,11 @@ public final class NeoForgeClientPlatform implements ClientPlatform {
     //$$
     //$$ @Override public TextureAtlasSprite particleIcon(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state) {
     //$$     return model.particleIcon(level, pos, state);
+    //$$ }
+    //$$
+    //$$ @Override public void renderBatched(BlockRenderDispatcher blocks, BlockState state, BlockPos pos, BlockAndTintGetter level, PoseStack pose,
+    //$$                                    java.util.function.Function<ChunkSectionLayer, VertexConsumer> builders, List<BlockModelPart> parts) {
+    //$$     blocks.renderBatched(state, pos, level, pose, builders, true, parts);
     //$$ }
     //$$
     //#else

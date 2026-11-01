@@ -238,7 +238,12 @@ public final class FarLod {
     private static void sun() {
         var level = Minecraft.getInstance().level;
         if (level == null) { sunUp = false; return; }
+        //#if MC >= 1.21.11
+        //$$ float day = level.environmentAttributes().getValue(net.minecraft.world.attribute.EnvironmentAttributes.SUN_ANGLE,
+        //$$         Minecraft.getInstance().gameRenderer.getMainCamera().position()) / 360.0F;
+        //#else
         float day = level.getTimeOfDay(Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false));
+        //#endif
         float tilt = ShaderBlocks.IRIS ? FarLodIris.sunPathRotation() : 0.0F;
         // The sky turns about the east-west axis; a pack can tilt that path about the north-south one.
         sunWorld.set(0.0F, 1.0F, 0.0F).rotateX((float) Math.toRadians(day * 360.0F))

@@ -45,10 +45,8 @@ public interface ClientPlatform {
     //$$ TextureAtlasSprite particleIcon(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state);
     //$$
     //$$ /** Draws a block model's parts into the builders for their layers, culling faces against neighbours. */
-    //$$ default void renderBatched(BlockRenderDispatcher blocks, BlockState state, BlockPos pos, BlockAndTintGetter level, PoseStack pose,
-    //$$                            Function<ChunkSectionLayer, VertexConsumer> builders, List<BlockModelPart> parts) {
-    //$$     blocks.renderBatched(state, pos, level, pose, builders, true, parts);
-    //$$ }
+    //$$ void renderBatched(BlockRenderDispatcher blocks, BlockState state, BlockPos pos, BlockAndTintGetter level, PoseStack pose,
+    //$$                     Function<ChunkSectionLayer, VertexConsumer> builders, List<BlockModelPart> parts);
     //$$
     //#else
     /** A block entity's model data, or null when it has none. */

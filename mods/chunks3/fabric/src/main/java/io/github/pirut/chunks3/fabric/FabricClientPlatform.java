@@ -18,7 +18,9 @@ import net.minecraft.client.renderer.ItemBlockRenderTypes;
 //$$ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 //#else
 import net.minecraft.client.renderer.RenderType;
+//#endif
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
+//#if MC < 1.21.11
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.resources.model.BakedModel;
 //#endif
@@ -46,6 +48,11 @@ public final class FabricClientPlatform implements ClientPlatform {
     //$$
     //$$ @Override public TextureAtlasSprite particleIcon(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state) {
     //$$     return model.particleIcon();
+    //$$ }
+    //$$
+    //$$ @Override public void renderBatched(BlockRenderDispatcher blocks, BlockState state, BlockPos pos, BlockAndTintGetter level, PoseStack pose,
+    //$$                                    java.util.function.Function<ChunkSectionLayer, VertexConsumer> builders, List<BlockModelPart> parts) {
+    //$$     blocks.renderBatched(state, pos, level, pose, builders.apply(ItemBlockRenderTypes.getChunkRenderType(state)), true, parts);
     //$$ }
     //$$
     //#else
