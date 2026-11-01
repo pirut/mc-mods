@@ -5,7 +5,6 @@ import io.github.pirut.ccagent.Platform;
 import io.github.pirut.ccagent.Relay;
 import io.github.pirut.ccagent.RelayPayload;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.level.ServerPlayer;
@@ -54,8 +53,7 @@ public final class CCAgentFabric implements ModInitializer {
                 }).orElse(null);
             }
         });
-        PayloadTypeRegistry.playC2S().register(RelayPayload.TYPE, RelayPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(RelayPayload.TYPE, RelayPayload.CODEC);
+        Payloads.register();
         ServerPlayNetworking.registerGlobalReceiver(RelayPayload.TYPE, (payload, context) -> Relay.serverReceive(context.player(), payload));
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> Relay.playerJoined(handler.player));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> Relay.playerLeft(handler.player));

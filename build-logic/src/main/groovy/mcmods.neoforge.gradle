@@ -7,9 +7,12 @@ plugins {
 
 neoForge {
     version = neo_version
-    parchment {
-        mappingsVersion = parchment_mappings_version
-        minecraftVersion = parchment_minecraft_version
+    // Minecraft 26.1 and later ship without obfuscation and need no Parchment names.
+    if (findProperty('parchment_mappings_version')) {
+        parchment {
+            mappingsVersion = parchment_mappings_version
+            minecraftVersion = parchment_minecraft_version
+        }
     }
     runs {
         client { client() }
@@ -23,9 +26,13 @@ neoForge {
     }
 }
 
+// Before Minecraft 1.21.9, NeoForge's dev runs only saw plain (non-mod) libraries put in additionalRuntimeClasspath;
+// later versions see every dependency and refuse that configuration. Mods check neoLegacyClasspath too.
+ext.neoLegacyClasspath = neoForge.versionCapabilities.legacyClasspath()
+
 if (usesCommonLib) {
     dependencies {
         jarJar(project(':common-lib'))
-        additionalRuntimeClasspath project(':common-lib')
+        if (neoLegacyClasspath) additionalRuntimeClasspath project(':common-lib')
     }
 }

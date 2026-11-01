@@ -5,9 +5,7 @@ import io.github.pirut.ccagent.Platform;
 import io.github.pirut.ccagent.Relay;
 import io.github.pirut.ccagent.RelayPayload;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -71,7 +69,6 @@ public final class CCAgentNeoForge {
         NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedOutEvent e) -> {
             if (e.getEntity() instanceof ServerPlayer player) Relay.playerLeft(player);
         });
-        if (FMLEnvironment.dist == Dist.CLIENT) NeoForgeClient.init();
         NeoForge.EVENT_BUS.addListener((ServerStartedEvent e) -> CCAgent.serverStarted(e.getServer()));
         NeoForge.EVENT_BUS.addListener((ServerStoppingEvent e) -> CCAgent.serverStopping());
         NeoForge.EVENT_BUS.addListener((RegisterCommandsEvent e) -> CCAgent.registerCommands(e.getDispatcher()));

@@ -15,9 +15,9 @@ runs it, reads the errors and fixes them, while you watch.
 
 | | |
 | --- | --- |
-| Minecraft | 1.21.1 |
-| Loaders | NeoForge 21.1 · Fabric (with Fabric API) |
-| Needs | [CC: Tweaked](https://modrinth.com/mod/cc-tweaked) 1.120.0 or newer |
+| Minecraft | 1.21.1, 1.21.4, 1.21.8, 1.21.11, 26.1.2, 26.2, 26.3 (every version CC: Tweaked supports from 1.21.1 on) |
+| Loaders | NeoForge · Fabric (with Fabric API) |
+| Needs | [CC: Tweaked](https://modrinth.com/mod/cc-tweaked) for your Minecraft version: 1.120.0+ on 1.21.1, 1.115.1+ on 1.21.4, 1.116.1+ on 1.21.8, 1.117.1+ on 1.21.11, 1.120.0+ on 26.1.2, 1.120.2+ on 26.2, 1.120.3+ on 26.3 |
 | On your PC | [Claude Code](https://code.claude.com/docs/en/setup) or [Codex](https://github.com/openai/codex), signed in once |
 | Works in | Singleplayer, LAN and servers (install it on the server and in each player's game) |
 | Systems | Windows, macOS and Linux |
@@ -89,7 +89,8 @@ client works too. See [Your own terminal](docs/terminal.md).
    on your PC, then run `claude` (or `codex`) in a terminal once and sign in.
 2. Put CC: Tweaked and the CC: Agent jar for your loader in your `mods` folder. Fabric also needs
    [Fabric API](https://modrinth.com/mod/fabric-api). The jars are named
-   `ccagent-neoforge-1.21.1-<version>.jar` and `ccagent-fabric-1.21.1-<version>.jar`.
+   `ccagent-neoforge-<minecraft>-<version>.jar` and `ccagent-fabric-<minecraft>-<version>.jar`; take the one for
+   your Minecraft version.
 3. Start a world, place an **advanced computer**, right-click it and type `claude`.
 
 The [getting started guide](docs/getting-started.md) walks through every step, including the monitor wall.
@@ -160,15 +161,18 @@ Say what you typed, what you expected and what happened, and attach `logs/latest
 
 ## Building
 
-From the root of the [mc-mods](../../README.md) repo, with Java 21:
+From the root of the [mc-mods](../../README.md) repo, with Java 21 (and Java 25 for Minecraft 26.x):
 
 ```sh
-./gradlew :cc-agent:build              # both jars, and the tests
-./gradlew :cc-agent:neoforge:runClient # a dev game (also :cc-agent:fabric:runClient)
+./gradlew :cc-agent:build                        # both jars for Minecraft 1.21.1, and the tests
+./gradlew :cc-agent:build -Pmc=26.3              # the same for another Minecraft version
+./gradlew :cc-agent:neoforge:runClient -Pmc=1.21.8 # a dev game (also :cc-agent:fabric:runClient)
 ```
 
-Jars land in `mods/cc-agent/neoforge/build/libs` and `mods/cc-agent/fabric/build/libs`. `common/` holds the
-shared code and the Lua programs; each loader folder adds only its entry point.
+Jars land in `mods/cc-agent/<loader>/build/<minecraft>/libs`. `common/` holds the shared code and the Lua
+programs; each loader folder adds only its entry point. Code that differs between Minecraft versions lives in
+small classes under `common/src/before-<mc>` and `since-<mc>` (and the same in each loader folder), picked per
+version by `extra_src` in `versions/<mc>.properties`.
 
 ## License
 

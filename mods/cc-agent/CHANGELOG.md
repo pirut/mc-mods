@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+- **Every Minecraft version CC: Tweaked supports from 1.21.1 on**: 1.21.1, 1.21.4, 1.21.8, 1.21.11, 26.1.2, 26.2
+  and 26.3, on both NeoForge and Fabric. Each jar is built against that version's CC: Tweaked (1.120.3 on 26.3)
+  and is named for its Minecraft version. Minecraft 26.x needs Java 25.
+
 ## 0.5.2
 
 - **Security fix for multiplayer on Windows.** The model, effort and session the chat passes to Claude Code

@@ -1,9 +1,17 @@
 // A mod's Fabric jar: mods/<mod>/fabric/build.gradle applies this and adds its own dependencies.
+//
+// Up to Minecraft 1.21.11 the game is obfuscated: Loom remaps it to Mojang's names (plus Parchment's parameter
+// names) and remaps the jar back on build. Minecraft 26.1 and later ship unobfuscated (unobfuscated=true in
+// versions/<mc>.properties), so Loom's non-remapping plugin is used and there are no mappings. Mods declare their
+// dependencies the same way for both: the modImplementation-style configurations exist either way.
 
 plugins {
     id 'mcmods.mod'
-    id 'fabric-loom'
 }
+
+def unobfuscated = findProperty('unobfuscated')?.toString() == 'true'
+// pluginManager, not apply plugin: a precompiled script plugin has no ClassLoaderScope for the latter.
+pluginManager.apply(unobfuscated ? 'net.fabricmc.fabric-loom' : 'net.fabricmc.fabric-loom-remap')
 
 loom {
     runs {
@@ -11,11 +19,27 @@ loom {
     }
 }
 
+if (unobfuscated) {
+    // Without remapping, a mod dependency is just a dependency.
+    ['modImplementation': 'implementation', 'modApi': 'api', 'modCompileOnly': 'compileOnly',
+     'modCompileOnlyApi': 'compileOnlyApi', 'modRuntimeOnly': 'runtimeOnly', 'modLocalRuntime': 'runtimeOnly']
+            .each { mod, plain ->
+                if (configurations.findByName(mod) != null || configurations.findByName(plain) == null) return
+                def alias = configurations.create(mod) {
+                    canBeResolved = false
+                    canBeConsumed = false
+                }
+                configurations.named(plain) { extendsFrom alias }
+            }
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
-    mappings loom.layered {
-        officialMojangMappings()
-        parchment("org.parchmentmc.data:parchment-${parchment_minecraft_version}:${parchment_mappings_version}@zip")
+    if (!unobfuscated) {
+        mappings loom.layered {
+            officialMojangMappings()
+            parchment("org.parchmentmc.data:parchment-${parchment_minecraft_version}:${parchment_mappings_version}@zip")
+        }
     }
     modImplementation "net.fabricmc:fabric-loader:${loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
