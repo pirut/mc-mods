@@ -70,6 +70,9 @@ final class ShipHull {
     private long lastRegionBuild = Long.MIN_VALUE / 2;
     private boolean regionsStale;
 
+    /** On the player's game: where to draw the top of the water in each compartment. */
+    private Flooding.Surface[] surfaces = new Flooding.Surface[0];
+
     private double[] lumpVolume = new double[0];
     private long lastLumpBuild = Long.MIN_VALUE / 2;
     private boolean lumpsStale;
@@ -242,6 +245,8 @@ final class ShipHull {
         if (regionWet.length != compartments.size()) return true;
         for (int k = 0; k < compartments.size(); k++) {
             if (Flooding.wetCells(compartments.get(k), s.volume()[k]) != regionWet[k]) return true;
+            // The surface appears when water first comes in, and goes when the last drains.
+            if (client && k < surfaces.length && (surfaces[k] == Flooding.Surface.NONE) != (s.volume()[k] <= 0)) return true;
         }
         return false;
     }
@@ -275,6 +280,11 @@ final class ShipHull {
             int n = Flooding.wetCells(c, s.volume()[k]);
             regionWet[k] = n;
         }
+        if (client) {
+            Flooding.Surface[] next = new Flooding.Surface[compartments.size()];
+            for (int k = 0; k < compartments.size(); k++) next[k] = Flooding.surface(g, compartments.get(k), s.volume()[k]);
+            surfaces = next;
+        }
 
         WaterOcclusionContainer<?> occlusion = WaterOcclusionContainer.getContainer(level);
         if (occlusion != null) {
@@ -306,6 +316,30 @@ final class ShipHull {
                 }
                 regions.add(occlusion.addRegion(volume));
             }
+        }
+    }
+
+    /** Called with each cell whose top is the water's surface, in plot coordinates, and how far up it the water is. */
+    interface SurfaceSink {
+        void cell(int x, int y, int z, float height);
+    }
+
+    /** The water's surface in every compartment that has some, for drawing it (on the player's game). */
+    void surface(SurfaceSink sink) {
+        Scan s = scan;
+        Flooding.Surface[] all = surfaces;
+        if (s == null || failed) return;
+        List<Compartment> compartments = s.result().compartments();
+        if (all.length != compartments.size()) return;
+        HullGrid g = s.grid();
+        BlockPos o = s.origin();
+        for (int k = 0; k < all.length; k++) {
+            Flooding.Surface top = all[k];
+            if (top.fixed().length == 0 && top.live().length == 0) continue;
+            for (int i : top.fixed()) sink.cell(o.getX() + g.x(i), o.getY() + g.y(i), o.getZ() + g.z(i), 1f);
+            if (top.live().length == 0) continue;
+            float h = (float) Math.max(0.02, top.liveHeight(compartments.get(k), s.volume()[k]));
+            for (int i : top.live()) sink.cell(o.getX() + g.x(i), o.getY() + g.y(i), o.getZ() + g.z(i), h);
         }
     }
 
@@ -364,6 +398,7 @@ final class ShipHull {
         if (occlusion != null) removeRegions(occlusion);
         scan = null;
         regionWet = new int[0];
+        surfaces = new Flooding.Surface[0];
         lumpVolume = new double[0];
         lumps = Lumps.NONE;
         sample = Buoyancy.Sample.NONE;

@@ -28,7 +28,10 @@ class FloodingTest {
         assertTrue(first > 0.1 && first < 1, "a 1x1 hole 2 deep lets in a fraction of a block per tick: " + first);
         for (int t = 0; t < 20 * 60 * 5; t++) v = Flooding.step(g, c, v, outside(c, waterline), G, CD, TICK);
         assertEquals(waterline, c.surface(v), 0.05);
-        assertEquals(9 * 2, Flooding.wetCells(c, v), 1); // floor at y 2, so y 2 and 3 are under water
+        // Floor at y 2, so y 2 and 3 are under water: y 2 is full and y 3 is the live layer at the top.
+        Flooding.Surface top = Flooding.surface(g, c, v);
+        assertEquals(9, top.live().length);
+        assertEquals(1.0, top.liveHeight(c, v), 0.05);
     }
 
     @Test
@@ -59,17 +62,17 @@ class FloodingTest {
         Compartment c = HullAnalysis.analyze(g, 2).compartments().get(0);
         float[] wet = new float[g.volume()];
         for (double v = 0; v <= c.size(); v += 0.37) {
-            int shown = Flooding.wetCells(c, v);
-            assertTrue(Arrays.binarySearch(c.groupStart(), shown) >= 0 || shown == c.size(),
-                    "only whole layers show as water: " + shown + " at " + v);
-            assertTrue(Math.abs(shown - v) <= 0.5 * maxGroup(c) + 1e-9, "the shown water is within half a layer of the real water");
+            int full = Flooding.wetCells(c, v);
+            assertTrue(Arrays.binarySearch(c.groupStart(), full) >= 0 || full == c.size(),
+                    "only whole layers count as full: " + full + " at " + v);
+            assertTrue(full <= v + 1e-9 && v - full < maxGroup(c), "the full layers are the water, less the live layer");
             Arrays.fill(wet, 0);
             Flooding.wetness(c, v, wet);
             double sum = 0;
             for (int i : c.cells()) sum += wet[i];
             assertEquals(v, sum, 1e-3, "buoyancy sees exactly the water that came in");
         }
-        // The 5x5 floor is one layer: two blocks of water show nothing, and the layer is evenly damp.
+        // The 5x5 floor is one layer: two blocks of water make the whole floor a thin, even layer.
         int floor = -1;
         for (int k = 0; k < c.groupStart().length; k++) if (c.groupEnd(k) - c.groupStart()[k] == 25) { floor = k; break; }
         assertTrue(floor >= 0);
@@ -78,7 +81,14 @@ class FloodingTest {
         Arrays.fill(wet, 0);
         Flooding.wetness(c, v, wet);
         for (int w = c.groupStart()[floor]; w < c.groupEnd(floor); w++) assertEquals(2f / 25, wet[c.cells()[w]], 1e-6);
-        assertEquals(c.groupEnd(floor), Flooding.wetCells(c, c.groupStart()[floor] + 13));
+        Flooding.Surface top = Flooding.surface(g, c, v);
+        assertEquals(25, top.live().length, "the surface covers the whole floor");
+        assertEquals(2.0 / 25, top.liveHeight(c, v), 1e-9);
+        // Once the floor layer is full and the next has begun, the floor's top is under water, not the surface.
+        double v2 = c.groupEnd(floor) + 5;
+        Flooding.Surface top2 = Flooding.surface(g, c, v2);
+        for (int i : top2.fixed()) assertTrue(g.y(i) != g.y(c.cells()[c.groupStart()[floor]]), "no surface under water");
+        assertEquals(25, top2.live().length);
     }
 
     static int maxGroup(Compartment c) {

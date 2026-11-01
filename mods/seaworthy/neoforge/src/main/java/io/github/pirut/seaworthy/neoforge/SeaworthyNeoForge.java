@@ -7,6 +7,7 @@ import io.github.pirut.seaworthy.net.FloodSyncPayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -36,5 +37,6 @@ public final class SeaworthyNeoForge {
         modBus.addListener((RegisterPayloadHandlersEvent e) -> e.registrar("1").optional()
                 .playToClient(FloodSyncPayload.TYPE, FloodSyncPayload.CODEC,
                         (payload, context) -> context.enqueueWork(() -> ClientFlood.handle(payload))));
+        if (FMLEnvironment.dist.isClient()) SeaworthyNeoForgeClient.init();
     }
 }

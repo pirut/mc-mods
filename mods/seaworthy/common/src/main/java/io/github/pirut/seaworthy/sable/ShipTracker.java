@@ -93,6 +93,11 @@ public final class ShipTracker implements SubLevelObserver {
         if (hull != null) hull.dispose();
     }
 
+    /** Every ship's hull, for drawing their water. */
+    void forEachHull(java.util.function.Consumer<ShipHull> action) {
+        hulls.values().forEach(action);
+    }
+
     Level level() {
         return level;
     }

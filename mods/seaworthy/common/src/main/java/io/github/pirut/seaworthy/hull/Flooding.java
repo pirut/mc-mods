@@ -47,18 +47,56 @@ public final class Flooding {
     }
 
     /**
-     * How many of the compartment's cells show as water at this volume (they fill in {@link Compartment#cells} order).
-     *
-     * <p>Minecraft water is a whole block or nothing, so the water is shown a layer at a time: a layer appears all
-     * at once when it is half full, instead of block by block across the floor. That keeps the surface level.
+     * How many of the compartment's cells are completely under water at this volume: the layers that are full (cells
+     * fill in {@link Compartment#cells} order, a layer at a time). The layer the surface is in is drawn by
+     * {@link Surface}, at its real height.
      */
     public static int wetCells(Compartment c, double volume) {
         int size = c.size();
         if (volume <= 0 || size == 0) return 0;
         if (volume >= size) return size;
         int g = c.groupAt((int) volume);
-        int start = c.groupStart()[g], end = c.groupEnd(g);
-        return (volume - start) * 2 >= end - start ? end : start;
+        int start = c.groupStart()[g];
+        return volume >= c.groupEnd(g) ? c.groupEnd(g) : start;
+    }
+
+    /**
+     * Where the top of the water in a compartment is, for drawing it. Minecraft can't show the water inside a hull:
+     * the only water there is the sea, whose surface is at sea level. So the surface is drawn on its own.
+     *
+     * @param fixed cells of full layers with nothing wet above them: their top is the surface
+     * @param live  cells of the layer the surface is in, whose height follows the volume ({@link #liveHeight})
+     * @param group the run of {@link Compartment#cells} that {@code live} is, or -1
+     */
+    public record Surface(int[] fixed, int[] live, int group) {
+        public static final Surface NONE = new Surface(new int[0], new int[0], -1);
+
+        /** How far up its cells the live layer's water is, 0 to 1. */
+        public double liveHeight(Compartment c, double volume) {
+            if (group < 0) return 0;
+            int start = c.groupStart()[group], end = c.groupEnd(group);
+            return Math.max(0, Math.min(1, (volume - start) / (end - start)));
+        }
+    }
+
+    /** The surface at this volume. Changes only when a layer fills or empties ({@link #wetCells} changes). */
+    public static Surface surface(HullGrid g, Compartment c, double volume) {
+        int full = wetCells(c, volume);
+        if (volume <= 0 || c.size() == 0) return Surface.NONE;
+        int[] cells = c.cells();
+        int liveGroup = full < cells.length ? c.groupAt(full) : -1;
+        int liveEnd = liveGroup >= 0 ? c.groupEnd(liveGroup) : full;
+        java.util.BitSet wet = new java.util.BitSet(g.volume());
+        for (int w = 0; w < liveEnd; w++) wet.set(cells[w]);
+        int[] fixed = new int[full];
+        int n = 0;
+        for (int w = 0; w < full; w++) {
+            int i = cells[w];
+            int y = g.y(i) + 1;
+            if (y >= g.sy || !wet.get(g.index(g.x(i), y, g.z(i)))) fixed[n++] = i;
+        }
+        int[] live = liveGroup >= 0 ? java.util.Arrays.copyOfRange(cells, full, liveEnd) : new int[0];
+        return new Surface(java.util.Arrays.copyOf(fixed, n), live, liveGroup);
     }
 
     /**
