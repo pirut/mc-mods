@@ -46,7 +46,6 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.NaturalSpawner;
 import net.minecraft.world.level.block.Block;
@@ -854,7 +853,7 @@ public final class ServerCubeWorld extends CubeWorld {
     }
 
     private void randomTicks(int v) {
-        int speed = server.getGameRules().getInt(GameRules.RULE_RANDOMTICKING);
+        int speed = Mc.randomTickSpeed(server);
         if (speed <= 0 || watchers.isEmpty()) return;
         RandomSource random = server.getRandom();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -914,7 +913,7 @@ public final class ServerCubeWorld extends CubeWorld {
             Cube cube = cubes.get(it.nextLong());
             if (cube == null) { it.remove(); continue; }
             ChunkPos chunk = new ChunkPos(cube.x, cube.z);
-            if (!cubes.containsKey(CubeKey.pack(cube.x, cube.y + 1, cube.z)) || !server.isNaturalSpawningAllowed(chunk)) continue;
+            if (!cubes.containsKey(CubeKey.pack(cube.x, cube.y + 1, cube.z)) || !Mc.canSpawnIn(server, chunk)) continue;
             it.remove();
             int x = chunk.getMiddleBlockX(), z = chunk.getMiddleBlockZ();
             NaturalSpawner.spawnMobsForChunkGeneration(server, server.getBiome(new BlockPos(x, skyTop(x, z) + 1, z)), chunk, server.getRandom());
@@ -929,7 +928,7 @@ public final class ServerCubeWorld extends CubeWorld {
         for (long key : unplacedEntities.keySet().toLongArray()) {
             Cube cube = cubes.get(key);
             if (cube == null) { unplacedEntities.remove(key); continue; }
-            if (!server.isNaturalSpawningAllowed(new ChunkPos(cube.x, cube.z))) continue;
+            if (!Mc.canSpawnIn(server, new ChunkPos(cube.x, cube.z))) continue;
             for (CompoundTag tag : unplacedEntities.remove(key)) {
                 Entity entity = EntityType.loadEntityRecursive(tag, server, e -> e);
                 if (entity != null) server.addFreshEntity(entity);

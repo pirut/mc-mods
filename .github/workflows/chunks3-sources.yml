@@ -10,6 +10,7 @@ jobs:
   sources:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         mc: [1.21.1, 1.21.11]
     steps:
@@ -24,10 +25,12 @@ jobs:
       - run: |
           rm -rf mods/bug-courier mods/cc-agent mods/seaworthy
           ./gradlew --console=plain -Pmc=${{ matrix.mc }} --configure-on-demand :chunks3:neoforge:createMinecraftArtifacts
-          find mods/chunks3/neoforge/build -name '*sources*.jar' | head
-          mkdir -p out && cd out
-          unzip -q -o "$(find ../mods/chunks3/neoforge/build -name '*sources*.jar' | head -1)" 'net/*' 'com/mojang/*'
-          echo ok > README
+          mkdir -p out
+          find / -name '*.jar' -path '*moddev*' 2>/dev/null | grep -i sources > out/JARS || true
+          find mods/chunks3 -name '*.jar' >> out/JARS || true
+          cd out
+          for j in $(grep -i 'sources' JARS); do unzip -q -o "$j" 'net/minecraft/*' 'com/mojang/*' 'net/neoforged/*' || true; done
+          du -sh . > SIZE
       - run: |
           cd out
           git init -q -b s

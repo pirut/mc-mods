@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.gen;
 
+import io.github.pirut.chunks3.mc.Mc;
 import io.github.pirut.chunks3.mc.Nbt;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -74,7 +75,7 @@ class UndergroundTest {
                 cubes++;
                 // Every block entity a cube starts with sits on a block that takes it.
                 for (CompoundTag tag : blockEntities.subList(before, blockEntities.size())) {
-                    var type = BuiltInRegistries.BLOCK_ENTITY_TYPE.get(net.minecraft.resources.ResourceLocation.parse(Nbt.getString(tag, "id")));
+                    var type = Mc.value(BuiltInRegistries.BLOCK_ENTITY_TYPE, net.minecraft.resources.ResourceLocation.parse(Nbt.getString(tag, "id")));
                     assertTrue(type != null && type.isValid(section.getBlockState(Nbt.getInt(tag, "x") & 15, Nbt.getInt(tag, "y") & 15, Nbt.getInt(tag, "z") & 15)), "block under " + tag);
                 }
                 for (int i = 0; i < 4096; i++) {

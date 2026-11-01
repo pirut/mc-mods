@@ -521,7 +521,7 @@ public abstract class SurfaceGenerator implements CubeGenerator {
         blockEntities.removeIf(tag -> {
             if (Nbt.getInt(tag, "x") >> 4 != cx || Nbt.getInt(tag, "y") >> 4 != cy || Nbt.getInt(tag, "z") >> 4 != cz) return false; // another cube's
             ResourceLocation id = ResourceLocation.tryParse(Nbt.getString(tag, "id"));
-            BlockEntityType<?> type = id == null ? null : BuiltInRegistries.BLOCK_ENTITY_TYPE.get(id);
+            BlockEntityType<?> type = id == null ? null : Mc.value(BuiltInRegistries.BLOCK_ENTITY_TYPE, id);
             BlockState state = section.getBlockState(Nbt.getInt(tag, "x") & 15, Nbt.getInt(tag, "y") & 15, Nbt.getInt(tag, "z") & 15);
             return type == null || !type.isValid(state);
         });

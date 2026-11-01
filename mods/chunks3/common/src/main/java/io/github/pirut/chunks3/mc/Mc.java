@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.IdMap;
 import net.minecraft.core.Registry;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -101,6 +102,17 @@ public final class Mc {
         //#endif
     }
 
+    // --- Registries.
+
+    /** The entry named {@code id}, or null. */
+    public static <T> T value(Registry<T> registry, ResourceLocation id) {
+        //#if MC >= 1.21.2
+        //$$ return registry.getValue(id);
+        //#else
+        return registry.get(id);
+        //#endif
+    }
+
     // --- Players and the server.
 
     public static MinecraftServer server(ServerPlayer player) {
@@ -135,6 +147,33 @@ public final class Mc {
         //$$ return server.isSingleplayerOwner(player.nameAndId());
         //#else
         return server.isSingleplayerOwner(player.getGameProfile());
+        //#endif
+    }
+
+    /** The spawnRadius (respawn radius) game rule. */
+    public static int spawnRadius(ServerLevel level) {
+        //#if MC >= 1.21.11
+        //$$ return level.getGameRules().get(net.minecraft.world.level.gamerules.GameRules.RESPAWN_RADIUS);
+        //#else
+        return level.getServer().getSpawnRadius(level);
+        //#endif
+    }
+
+    /** The randomTickSpeed game rule. */
+    public static int randomTickSpeed(ServerLevel level) {
+        //#if MC >= 1.21.11
+        //$$ return level.getGameRules().get(net.minecraft.world.level.gamerules.GameRules.RANDOM_TICK_SPEED);
+        //#else
+        return level.getGameRules().getInt(net.minecraft.world.level.GameRules.RULE_RANDOMTICKING);
+        //#endif
+    }
+
+    /** Whether mobs may spawn in a chunk (it is in range of a player and ticking). */
+    public static boolean canSpawnIn(ServerLevel level, net.minecraft.world.level.ChunkPos chunk) {
+        //#if MC >= 1.21.11
+        //$$ return level.canSpawnEntitiesInChunk(chunk);
+        //#else
+        return level.isNaturalSpawningAllowed(chunk);
         //#endif
     }
 

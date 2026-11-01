@@ -132,7 +132,11 @@ public abstract class CubeWorld {
     }
 
     public boolean blocksSky(BlockState state, BlockPos pos) {
+        //#if MC >= 1.21.2
+        //$$ return !state.isAir() && !state.propagatesSkylightDown();
+        //#else
         return !state.isAir() && !state.propagatesSkylightDown(level, pos);
+        //#endif
     }
 
     /** Called when a column's top changed. */
