@@ -53,7 +53,11 @@ class SpawnInfoWireTest {
 
     private static RegistryFriendlyByteBuf write(BlockPos death) {
         var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), access);
+        //#if MC >= 1.21.2
+        //$$ new CommonPlayerSpawnInfo(type, CUBIC, 42L, GameType.SURVIVAL, null, false, true, Optional.of(GlobalPos.of(CUBIC, death)), 0, 63).write(buffer);
+        //#else
         new CommonPlayerSpawnInfo(type, CUBIC, 42L, GameType.SURVIVAL, null, false, true, Optional.of(GlobalPos.of(CUBIC, death)), 0).write(buffer);
+        //#endif
         return buffer;
     }
 
@@ -70,6 +74,9 @@ class SpawnInfoWireTest {
         buffer.readResourceKey(Registries.DIMENSION);
         BlockPos death = BlockPos.of(buffer.readLong());
         buffer.readVarInt();
+        //#if MC >= 1.21.2
+        //$$ buffer.readVarInt(); // sea level
+        //#endif
         assertEquals(0, buffer.readableBytes(), "bytes past the vanilla layout");
         return death;
     }
