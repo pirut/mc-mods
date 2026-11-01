@@ -5,7 +5,6 @@ import io.bugcourier.client.ClientSetup;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
@@ -14,9 +13,12 @@ import net.neoforged.neoforge.common.NeoForge;
 
 @Mod(BugCourier.MOD_ID)
 public final class BugCourierNeoForge {
-    public BugCourierNeoForge(IEventBus modBus) {
+    // NeoForge passes the side in: FMLEnvironment.dist became FMLEnvironment.getDist() in newer versions, so asking for it
+    // keeps one entry point for every version.
+    public BugCourierNeoForge(IEventBus modBus, Dist dist) {
+        NeoForgePlatform.dist = dist;
         // Reports are made on the player's computer; a dedicated server only needs the jar to load.
-        if (FMLEnvironment.dist == Dist.CLIENT) Client.init(modBus);
+        if (dist == Dist.CLIENT) Client.init(modBus);
     }
 
     private static final class Client {
