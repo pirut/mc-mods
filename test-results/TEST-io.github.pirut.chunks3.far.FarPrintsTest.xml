@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.far.FarPrintsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:55:08.913Z" hostname="runnervmnwato" time="0.005">
+  <properties/>
+  <testcase name="printsTellColumnsApart()" classname="io.github.pirut.chunks3.far.FarPrintsTest" time="0.001"/>
+  <testcase name="aRemakeIsComparedWithWhatPlayersHeldAtTheEdit()" classname="io.github.pirut.chunks3.far.FarPrintsTest" time="0.003"/>
+  <testcase name="onlyAChangedRemakeIsSent()" classname="io.github.pirut.chunks3.far.FarPrintsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.diagnostics.DiagnosticsTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:55:08.367Z" hostname="runnervmnwato" time="0.017">
+  <properties/>
+  <testcase name="everyRetainedFileKeepsCapabilitiesAfterRepeatedRotation(Path)" classname="io.github.pirut.chunks3.diagnostics.DiagnosticsTest" time="0.007"/>
+  <testcase name="identitiesAndErrorsNeverUseArbitraryText()" classname="io.github.pirut.chunks3.diagnostics.DiagnosticsTest" time="0.003"/>
+  <testcase name="frameSummaryUsesObservedDurationsAndBoundedQuantiles()" classname="io.github.pirut.chunks3.diagnostics.DiagnosticsTest" time="0.002"/>
+  <testcase name="logRotationAndOversizedEventsAreBounded(Path)" classname="io.github.pirut.chunks3.diagnostics.DiagnosticsTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

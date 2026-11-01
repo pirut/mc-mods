@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.client.FarShadersTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:55:07.519Z" hostname="runnervmnwato" time="0.024">
+  <properties/>
+  <testcase name="declaresOnlyWhatThePacksCodeReadsAndLeavesUndeclared()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.004"/>
+  <testcase name="jitterGoesBeforeTheVertexShader()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.0"/>
+  <testcase name="farTerrainUnderTheGamesBlocksDrawsOnlyWhereTheyAreNot()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.004"/>
+  <testcase name="facesDepthTakesALocationThePackLeavesFree()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.004"/>
+  <testcase name="readsTheUniformsAndSamplersAVoxyPackAsksFor()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.0"/>
+  <testcase name="theGroundSlopeTakesOverThePacksFaceNormal()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.001"/>
+  <testcase name="packsWithAnotherNormalAreLeftAlone()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.001"/>
+  <testcase name="ownDepthKeepsFarTerrainBehindTheGameAndWritesItsFaceDepth()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.001"/>
+  <testcase name="depthPrepassOnlyForPacksThatKeepEveryFragmentAndItsDepth()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.0"/>
+  <testcase name="prepassDecidesDepthAndShadingPassOnlyShades()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.002"/>
+  <testcase name="flatGroundPointsStraightUp()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.0"/>
+  <testcase name="readsThePacksTaaOffset()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.001"/>
+  <testcase name="noJitterWithoutTaa()" classname="io.github.pirut.chunks3.client.FarShadersTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.gen.FarSurfacePacketTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:55:09.850Z" hostname="runnervmnwato" time="0.434">
+  <properties/>
+  <testcase name="unsupportedFineTreesGiantsAndStrataUseTheDenseOracle()" classname="io.github.pirut.chunks3.gen.FarSurfacePacketTest" time="0.112"/>
+  <testcase name="transientDenseViewKeepsExactStatesBiomesAndDropsAndRejectsVerticalBiomeChanges()" classname="io.github.pirut.chunks3.gen.FarSurfacePacketTest" time="0.011"/>
+  <testcase name="compactCodecRoundTripsVariedRegistryStatesPropertiesAndUnsignedDrops()" classname="io.github.pirut.chunks3.gen.FarSurfacePacketTest" time="0.005"/>
+  <testcase name="boundedGenerationAndEncodingMatchEveryDenseBlockBiomeDropAndSectionByte()" classname="io.github.pirut.chunks3.gen.FarSurfacePacketTest" time="0.289"/>
+  <testcase name="immutableBaseOwnsInputsAndLargeEditOverlaysRequireDenseFallback()" classname="io.github.pirut.chunks3.gen.FarSurfacePacketTest" time="0.008"/>
+  <testcase name="sparseSnapshotsPreserveCavesOverhangsWaterBlockPropertiesAndRevisionOwnership()" classname="io.github.pirut.chunks3.gen.FarSurfacePacketTest" time="0.004"/>
+  <testcase name="decoderRejectsTruncationTrailingBytesBadIdsAndResourceBounds()" classname="io.github.pirut.chunks3.gen.FarSurfacePacketTest" time="0.004"/>
+  <system-out><![CDATA[SURFACE_PACKET_ORACLE columns=90 voxels=860160 dense+decoded exact
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

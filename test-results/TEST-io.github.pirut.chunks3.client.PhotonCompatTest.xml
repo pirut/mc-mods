@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.client.PhotonCompatTest" tests="2" skipped="1" failures="0" errors="0" timestamp="2026-11-01T17:55:08.357Z" hostname="runnervmnwato" time="0.007">
+  <properties/>
+  <testcase name="adaptsPhoton(Path)" classname="io.github.pirut.chunks3.client.PhotonCompatTest" time="0.001">
+    <skipped message="org.opentest4j.TestAbortedException: Assumption failed: assumption is not true" type="org.opentest4j.TestAbortedException">org.opentest4j.TestAbortedException: Assumption failed: assumption is not true
+	at org.junit.jupiter.api.Assumptions.throwAssumptionFailed(Assumptions.java:321)
+	at org.junit.jupiter.api.Assumptions.assumeTrue(Assumptions.java:120)
+	at org.junit.jupiter.api.Assumptions.assumeTrue(Assumptions.java:71)
+	at TRANSFORMER/chunks3@0.2.0-alpha.1/io.github.pirut.chunks3.client.PhotonCompatTest.adaptsPhoton(PhotonCompatTest.java:26)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+</skipped>
+  </testcase>
+  <testcase name="aMissingAnchorLeavesThePackAlone()" classname="io.github.pirut.chunks3.client.PhotonCompatTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

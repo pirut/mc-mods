@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.client.FarCoverageTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:55:03.422Z" hostname="runnervmnwato" time="0.702">
+  <properties/>
+  <testcase name="allDropValuesMatchTheReferenceAtNegativeCoordinatesAndVerticalGaps()" classname="io.github.pirut.chunks3.client.FarCoverageTest" time="0.374"/>
+  <testcase name="keyLimitsAndOverflowQueriesKeepTheReferenceWrappingBehavior()" classname="io.github.pirut.chunks3.client.FarCoverageTest" time="0.002"/>
+  <testcase name="exhaustiveVerticalCoveragePatternsMatchAtEverySmallVoxelLevel()" classname="io.github.pirut.chunks3.client.FarCoverageTest" time="0.206"/>
+  <testcase name="fractionalDropsRequireTheLowerCubeEvenWhenTheUpperOneIsDrawn()" classname="io.github.pirut.chunks3.client.FarCoverageTest" time="0.001"/>
+  <testcase name="randomFullAndPartialFootprintsMatchAtEveryLevelIncludingColumnSeams()" classname="io.github.pirut.chunks3.client.FarCoverageTest" time="0.097"/>
+  <testcase name="everyCubeInACoarseFootprintMustBeDrawnAcrossEveryTouchedRow()" classname="io.github.pirut.chunks3.client.FarCoverageTest" time="0.012"/>
+  <testcase name="nullAndEmptySnapshotsNeverCoverAnything()" classname="io.github.pirut.chunks3.client.FarCoverageTest" time="0.003"/>
+  <testcase name="maximumHeightMasksCrossBitWordsAndDoNotShareJobState()" classname="io.github.pirut.chunks3.client.FarCoverageTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

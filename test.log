@@ -1,0 +1,137 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.8.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :build-logic:extractPluginRequests UP-TO-DATE
+> Task :build-logic:generatePluginAdapters UP-TO-DATE
+> Task :build-logic:compileJava UP-TO-DATE
+> Task :build-logic:compileGroovy NO-SOURCE
+> Task :build-logic:compileGroovyPlugins UP-TO-DATE
+> Task :build-logic:pluginDescriptors UP-TO-DATE
+> Task :build-logic:processResources UP-TO-DATE
+> Task :build-logic:classes UP-TO-DATE
+> Task :build-logic:jar UP-TO-DATE
+
+> Configure project :chunks3:neoforge
+Creating Minecraft artifacts without recompilation.
+
+> Configure project :chunks3:example
+Creating Minecraft artifacts without recompilation.
+
+> Configure project :chunks3:fabric
+Fabric Loom: 1.18.4
+
+> Configure project :template:fabric
+Fabric Loom: 1.18.4
+
+> Configure project :template:neoforge
+Creating Minecraft artifacts without recompilation.
+
+> Task :chunks3:neoforge:createMinecraftArtifacts UP-TO-DATE
+> Task :chunks3:neoforge:preprocessJava UP-TO-DATE
+> Task :chunks3:neoforge:compileJava UP-TO-DATE
+> Task :chunks3:neoforge:processResources UP-TO-DATE
+> Task :chunks3:neoforge:classes UP-TO-DATE
+> Task :chunks3:neoforge:preprocessTestJava UP-TO-DATE
+> Task :chunks3:neoforge:compileTestJava UP-TO-DATE
+
+> Task :chunks3:neoforge:downloadAssets
+Loaded 127 artifacts from /home/runner/work/mc-mods/mc-mods/mods/chunks3/neoforge/build/1.21.11/tmp/downloadAssets/nfrt_artifact_manifest.properties
+Downloading asset index 29
+Using Minecraft asset root: /home/runner/.gradle/caches/neoformruntime/assets
+  ↓ https://piston-meta.mojang.com/v1/packages/0e43ee533675d60aa9b7e5959742ac9c9cd2eccb/29.json
+100/4399 downloads
+200/4399 downloads
+300/4399 downloads
+400/4399 downloads
+500/4399 downloads
+600/4399 downloads
+700/4399 downloads
+800/4399 downloads
+900/4399 downloads
+1000/4399 downloads
+1100/4399 downloads
+1200/4399 downloads
+1300/4399 downloads
+1400/4399 downloads
+1500/4399 downloads
+1600/4399 downloads
+1700/4399 downloads
+1800/4399 downloads
+1900/4399 downloads
+2000/4399 downloads
+2100/4399 downloads
+2200/4399 downloads
+2300/4399 downloads
+2400/4399 downloads
+2500/4399 downloads
+2600/4399 downloads
+2700/4399 downloads
+2800/4399 downloads
+2900/4399 downloads
+3000/4399 downloads
+3100/4399 downloads
+3200/4399 downloads
+3300/4399 downloads
+3400/4399 downloads
+3500/4399 downloads
+3600/4399 downloads
+3700/4399 downloads
+3800/4399 downloads
+3900/4399 downloads
+4000/4399 downloads
+4100/4399 downloads
+4200/4399 downloads
+4300/4399 downloads
+Downloaded 4399 files with a total size of 334 MiB
+
+> Task :chunks3:neoforge:prepareNeoForgeTestFiles
+> Task :chunks3:neoforge:processTestResources NO-SOURCE
+> Task :chunks3:neoforge:testClasses UP-TO-DATE
+> Task :chunks3:neoforge:test
+
+> Task :chunks3:example:createMinecraftArtifacts
+Loaded 127 artifacts from /home/runner/work/mc-mods/mc-mods/mods/chunks3/example/build/tmp/createMinecraftArtifacts/nfrt_artifact_manifest.properties
+[1m*** Started working on [4mdownloadJson[23;0m[23;0m
+ [1m[92m✓[23;0m Completed [4mdownloadJson[23;0m in 0.02s
+[1m*** Started working on [4mdownloadServer[23;0m[23;0m
+[1m*** Started working on [4mdownloadClient[23;0m[23;0m
+[1m*** Started working on [4mdownloadClientMappings[23;0m[23;0m
+ [1m[92m✓[23;0m Completed [4mdownloadClient[23;0m in 0.04s
+ [1m[92m✓[23;0m Completed [4mdownloadClientMappings[23;0m in 0.04s
+ [1m[92m✓[23;0m Completed [4mdownloadServer[23;0m in 0.04s
+[1m*** Started working on [4mmergeMappings[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mmergeMappings[23;0m in 0.00s
+[1m*** Started working on [4mextractServer[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mextractServer[23;0m in 0.00s
+[1m*** Started working on [4mstripClient[23;0m[23;0m
+[1m*** Started working on [4mstripServer[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mstripClient[23;0m in 0.00s
+ [1m[92m♻[23;0m Used cache of [4mstripServer[23;0m in 0.00s
+[1m*** Started working on [4mmerge[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mmerge[23;0m in 0.00s
+[1m*** Started working on [4mrename[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mrename[23;0m in 0.00s
+[1m*** Started working on [4mbinaryPatch[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mbinaryPatch[23;0m in 0.00s
+[1m*** Started working on [4mcopyUnpatchedClasses[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mcopyUnpatchedClasses[23;0m in 0.00s
+[1m*** Started working on [4mapplyDevTransforms[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mapplyDevTransforms[23;0m in 0.00s
+[1m*** Started working on [4mbinaryWithNeoForge[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mbinaryWithNeoForge[23;0m in 0.00s
+Total runtime: 1.03s
+
+
+> Task :chunks3:example:preprocessJava
+> Task :chunks3:example:compileJava
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1793555673804.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/mc-mods/mc-mods/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.8.2/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 47s
+19 actionable tasks: 6 executed, 13 up-to-date
