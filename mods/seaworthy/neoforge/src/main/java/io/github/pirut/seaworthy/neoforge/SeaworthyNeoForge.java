@@ -4,11 +4,14 @@ import io.github.pirut.seaworthy.Platform;
 import io.github.pirut.seaworthy.Seaworthy;
 import io.github.pirut.seaworthy.net.ClientFlood;
 import io.github.pirut.seaworthy.net.FloodSyncPayload;
+import io.github.pirut.seaworthy.sable.StatusCommand;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
@@ -37,6 +40,7 @@ public final class SeaworthyNeoForge {
         modBus.addListener((RegisterPayloadHandlersEvent e) -> e.registrar("1").optional()
                 .playToClient(FloodSyncPayload.TYPE, FloodSyncPayload.CODEC,
                         (payload, context) -> context.enqueueWork(() -> ClientFlood.handle(payload))));
+        NeoForge.EVENT_BUS.addListener((RegisterCommandsEvent e) -> StatusCommand.register(e.getDispatcher()));
         if (FMLEnvironment.dist.isClient()) SeaworthyNeoForgeClient.init();
     }
 }

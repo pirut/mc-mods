@@ -360,6 +360,43 @@ final class ShipHull {
         }
     }
 
+    /** One compartment, for telling a player about it. */
+    record CompartmentStatus(int size, double volume, int leaks) {
+    }
+
+    /** The ship's compartments, or none if it hasn't been looked at yet. */
+    List<CompartmentStatus> status() {
+        Scan s = scan;
+        if (s == null || failed) return List.of();
+        List<Compartment> compartments = s.result().compartments();
+        List<CompartmentStatus> status = new ArrayList<>(compartments.size());
+        for (int k = 0; k < compartments.size(); k++) {
+            Compartment c = compartments.get(k);
+            status.add(new CompartmentStatus(c.size(), s.volume()[k], leaks(s, c)));
+        }
+        return status;
+    }
+
+    /** How many of the compartment's breaches have water outside them, above the hole. */
+    private int leaks(Scan s, Compartment c) {
+        Pose3dc pose = subLevel.logicalPose();
+        HullGrid g = s.grid();
+        BlockPos o = s.origin();
+        Vector3d p = new Vector3d();
+        int leaks = 0;
+        for (Breach breach : c.breaches()) {
+            int cell = breach.outside();
+            p.set(o.getX() + g.x(cell) + 0.5, o.getY() + g.y(cell) + 0.5, o.getZ() + g.z(cell) + 0.5);
+            p = pose.transformPosition(p);
+            double surface = probe.surfaceAbove(p.x, p.y, p.z);
+            if (Double.isNaN(surface)) continue;
+            p.y = surface;
+            p = pose.transformPositionInverse(p);
+            if (p.y - o.getY() > breach.height(g)) leaks++;
+        }
+        return leaks;
+    }
+
     /** Called with each cell whose top is the water's surface, in plot coordinates, and how far up it the water is. */
     interface SurfaceSink {
         void cell(int x, int y, int z, float height);

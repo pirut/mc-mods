@@ -30,6 +30,11 @@ Needs Sable 2.0 or later. NeoForge and Fabric, Minecraft 1.21.1. Install it on t
   wider gap is open sea, so a ship missing half a wall fills up as fast as the water can get in.
 - Compartments are the separate dry spaces inside. Each floods on its own.
 
+## Commands
+
+`/seaworthy status` lists each ship's compartments, how flooded they are, and how many leaks each has below the
+waterline. Anyone can use it for ships within 128 blocks; operators see every ship in the dimension.
+
 ## Config
 
 `config/seaworthy.properties`, written on first start:
