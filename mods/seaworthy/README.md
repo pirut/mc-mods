@@ -43,8 +43,8 @@ Needs Sable 2.0 or later. NeoForge and Fabric, Minecraft 1.21.1. Install it on t
 | `maxHullCells` | `8000000` | Ships with more blocks than this in their bounding box are left alone. |
 | `maxLumps` | `4096` | How finely buoyancy is spread over a big hull. |
 
-- When a ship is put together on the water, the hole its blocks leave in the sea is told to fill back in, so the
-  ship floats at its proper height right where it was built.
+- When a ship is first put together on the water, the hole its blocks leave in the sea is told to fill back in, so the
+  ship floats at its proper height right where it was built. This happens once per ship, not after every restart.
 
 ## Known limits
 

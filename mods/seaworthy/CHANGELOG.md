@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Floodwater is saved with the world, so a flooded ship is still flooded after a restart.
+- The sea only refills under a ship the first time it is seen, and big ships are done over several ticks.
 
 ## 0.1.0-alpha.1
 

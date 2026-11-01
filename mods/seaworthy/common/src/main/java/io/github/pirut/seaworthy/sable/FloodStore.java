@@ -8,7 +8,9 @@ import net.minecraft.util.datafix.DataFixTypes;
 import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -24,6 +26,8 @@ final class FloodStore extends SavedData {
             new Factory<>(FloodStore::new, FloodStore::load, DataFixTypes.SAVED_DATA_COMMAND_STORAGE);
 
     private final Map<UUID, Map<Long, Float>> ships = new HashMap<>();
+    /** Every ship we've seen, so what happens once for a new ship doesn't happen again after a restart. */
+    private final Set<UUID> seen = new HashSet<>();
 
     private FloodStore() {
     }
@@ -41,6 +45,7 @@ final class FloodStore extends SavedData {
             for (String anchor : ship.getAllKeys()) volumes.put(Long.parseLong(anchor), ship.getFloat(anchor));
             store.ships.put(UUID.fromString(id), volumes);
         }
+        for (String id : tag.getCompound("seen").getAllKeys()) store.seen.add(UUID.fromString(id));
         return store;
     }
 
@@ -53,7 +58,17 @@ final class FloodStore extends SavedData {
             ships.put(id.toString(), ship);
         });
         tag.put("ships", ships);
+        CompoundTag seen = new CompoundTag();
+        this.seen.forEach(id -> seen.putBoolean(id.toString(), true));
+        tag.put("seen", seen);
         return tag;
+    }
+
+    /** True the first time this is asked about a ship, ever. */
+    boolean firstSight(UUID ship) {
+        if (!seen.add(ship)) return false;
+        setDirty();
+        return true;
     }
 
     /** The ship's saved water, by anchor. Empty if it has none. */
@@ -71,6 +86,6 @@ final class FloodStore extends SavedData {
     }
 
     void forget(UUID ship) {
-        if (ships.remove(ship) != null) setDirty();
+        if (ships.remove(ship) != null | seen.remove(ship)) setDirty();
     }
 }

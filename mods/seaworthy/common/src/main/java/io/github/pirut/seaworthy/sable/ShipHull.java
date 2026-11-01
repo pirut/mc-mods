@@ -17,9 +17,6 @@ import io.github.pirut.seaworthy.hull.HullGrid;
 import io.github.pirut.seaworthy.hull.Lumps;
 import io.github.pirut.seaworthy.net.FloodSyncPayload;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.tags.FluidTags;
-import net.minecraft.world.level.material.FluidState;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
@@ -89,6 +86,7 @@ final class ShipHull {
     /** Read by the physics tick. */
     private volatile Buoyancy.Sample sample = Buoyancy.Sample.NONE;
     private Lumps lumps = Lumps.NONE;
+    private @Nullable SeaWake wake;
 
     private record Scan(HullSnapshot snapshot, HullAnalysis.Result result, double[] volume) {
         HullGrid grid() {
@@ -183,6 +181,7 @@ final class ShipHull {
         }
 
         if (!client) {
+            if (wake != null && wake.run((ServerLevel) level)) wake = null;
             sample = Buoyancy.sample(subLevel, s.origin(), lumps, probe, config);
             if (now - lastSync >= 10) sync(s, now);
             if (now % SAVE_INTERVAL == phase % SAVE_INTERVAL) saveWater(s);
@@ -199,7 +198,7 @@ final class ShipHull {
     private void adopt(Scan next) {
         Scan old = scan;
         if (old == null && level instanceof ServerLevel server) {
-            wakeSea(server);
+            if (FloodStore.of(server).firstSight(subLevel.getUniqueId())) wake = SeaWake.under(subLevel);
             restoreWater(server, next);
         }
         if (old != null) {
@@ -222,57 +221,6 @@ final class ShipHull {
         regionsStale = true;
         lumpsStale = true;
     }
-
-    /** Most blocks of the sea under a ship (positions) checked at once, so a giant ship can't stall the server. */
-    private static final int WAKE_LIMIT = 4_000_000;
-
-    /**
-     * When a ship is put together on the water, its blocks leave the world, and the hole they leave in the sea can
-     * stay dry: water only fills a gap when something nudges it. A ship floating over a dry hole has nothing to
-     * displace, and sits blocks too low. So the first time we see a ship, every bit of sea beside an air gap under
-     * it is told to flow, and the hole fills as it would if you dug it out by hand.
-     */
-    private void wakeSea(ServerLevel server) {
-        BoundingBox3ic b = subLevel.getPlot().getBoundingBox();
-        Pose3dc pose = subLevel.logicalPose();
-        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE, minZ = Double.MAX_VALUE;
-        double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE, maxZ = -Double.MAX_VALUE;
-        Vector3d p = new Vector3d();
-        for (int c = 0; c < 8; c++) {
-            p.set((c & 1) == 0 ? b.minX() : b.maxX() + 1, (c & 2) == 0 ? b.minY() : b.maxY() + 1, (c & 4) == 0 ? b.minZ() : b.maxZ() + 1);
-            p = pose.transformPosition(p);
-            minX = Math.min(minX, p.x);
-            minY = Math.min(minY, p.y);
-            minZ = Math.min(minZ, p.z);
-            maxX = Math.max(maxX, p.x);
-            maxY = Math.max(maxY, p.y);
-            maxZ = Math.max(maxZ, p.z);
-        }
-        // Not clamped to the level's build height: some dimensions (Earth Platform's) report -64..320 and reach far beyond.
-        int x0 = (int) Math.floor(minX) - 1, y0 = (int) Math.floor(minY) - 1, z0 = (int) Math.floor(minZ) - 1;
-        int x1 = (int) Math.ceil(maxX) + 1, y1 = (int) Math.ceil(maxY) + 1, z1 = (int) Math.ceil(maxZ) + 1;
-        if ((long) (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1) > WAKE_LIMIT) return;
-        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
-        BlockPos.MutableBlockPos next = new BlockPos.MutableBlockPos();
-        for (int x = x0; x <= x1; x++) {
-            for (int z = z0; z <= z1; z++) {
-                if (!server.hasChunk(x >> 4, z >> 4)) continue;
-                for (int y = y0; y <= y1; y++) {
-                    at.set(x, y, z);
-                    FluidState fluid = server.getFluidState(at);
-                    if (!fluid.is(FluidTags.WATER)) continue;
-                    for (Direction d : WAKE_DIRECTIONS) {
-                        if (server.getBlockState(next.setWithOffset(at, d)).isAir()) {
-                            server.scheduleTick(at.immutable(), fluid.getType(), fluid.getType().getTickDelay(server));
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private static final Direction[] WAKE_DIRECTIONS = {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
 
     /** Each compartment's anchor cell, relative to the ship's bounds: what its saved water is filed under. */
     private static long[] saveKeys(Scan s) {
