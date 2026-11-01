@@ -20,6 +20,6 @@ import org.spongepowered.asm.mixin.injection.At;
 abstract class CubicRandomPosMixin {
     @WrapOperation(method = "*", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;getMaxBuildHeight()I"))
     private static int chunks3$cubicTop(Level level, Operation<Integer> original) {
-        return CubicLevel.of(level) != null ? CubeWorld.MAX_Y + 1 : original.call(level);
+        return CubicLevel.of(level) != null ? CubeWorld.VANILLA_TOP : original.call(level);
     }
 }

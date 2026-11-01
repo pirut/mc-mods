@@ -13,8 +13,14 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(ServerGamePacketListenerImpl.class)
 abstract class CubicBuildHeightMixin {
     @WrapOperation(method = {"handlePlayerAction", "handleUseItemOn"},
+    //#if MC >= 1.21.2
+    //$$         // A server player's level() is a ServerLevel from 1.21.2 (it was serverLevel() before), so the call names it.
+    //$$         at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;getMaxBuildHeight()I"))
+    //$$ private int chunks3$cubicTop(net.minecraft.server.level.ServerLevel level, Operation<Integer> original) {
+    //#else
             at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;getMaxBuildHeight()I"))
     private int chunks3$cubicTop(Level level, Operation<Integer> original) {
-        return CubicLevel.of(level) != null ? CubeWorld.MAX_Y + 1 : original.call(level);
+    //#endif
+        return CubicLevel.of(level) != null ? CubeWorld.VANILLA_TOP : original.call(level);
     }
 }

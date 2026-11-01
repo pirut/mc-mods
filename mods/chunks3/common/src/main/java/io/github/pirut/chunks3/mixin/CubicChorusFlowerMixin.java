@@ -14,6 +14,6 @@ import org.spongepowered.asm.mixin.injection.At;
 abstract class CubicChorusFlowerMixin {
     @WrapOperation(method = "randomTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;getMaxBuildHeight()I"))
     private int chunks3$cubicTop(ServerLevel level, Operation<Integer> original) {
-        return CubicLevel.of(level) != null ? CubeWorld.MAX_Y + 1 : original.call(level);
+        return CubicLevel.of(level) != null ? CubeWorld.VANILLA_TOP : original.call(level);
     }
 }

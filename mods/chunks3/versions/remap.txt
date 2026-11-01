@@ -28,3 +28,4 @@
 1.21.11 view.getPosition() view.position()
 1.21.11 camera.getYRot() camera.yRot()
 1.21.2 .getTimer() .getDeltaTracker()
+1.21.2 getMaxBuildHeight()I getMaxY()I

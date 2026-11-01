@@ -34,6 +34,15 @@ public abstract class CubeWorld {
     public static final BlockState UNLOADED = Blocks.VOID_AIR.defaultBlockState();
     /** Earth's surface spans about -11 km to +9 km; leave room for digging and building. */
     public static final int MIN_Y = -16384, MAX_Y = 16383;
+    /**
+     * What the cubic world answers for vanilla's top of the world: up to 1.21.1 vanilla asked for the first height above
+     * it (getMaxBuildHeight), from 1.21.2 for the highest block in it (getMaxY), with its comparisons changed to match.
+     */
+    //#if MC >= 1.21.2
+    //$$ public static final int VANILLA_TOP = MAX_Y;
+    //#else
+    public static final int VANILLA_TOP = MAX_Y + 1;
+    //#endif
 
     protected final Level level;
     protected final Thread owner;
