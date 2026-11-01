@@ -51,7 +51,7 @@ public record SeaworthyConfig(boolean flooding, double floodSpeed, double buoyan
             Files.createDirectories(file.getParent());
             try (Writer w = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
                 w.write("""
-                        # Seaworthy: watertight hulls for Sable / Create Aeronautics ships. Restart the game after editing.
+                        # Create: Seaworthy, watertight hulls for Sable / Create Aeronautics ships. Restart the game after editing.
 
                         # Water comes in through holes below the waterline, and fills the compartment behind them.
                         flooding=%s

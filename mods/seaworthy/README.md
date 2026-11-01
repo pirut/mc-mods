@@ -1,4 +1,4 @@
-# Seaworthy
+# Create: Seaworthy
 
 Watertight hulls for [Create Aeronautics](https://modrinth.com/mod/create-aeronautics) and any other ship built on
 [Sable](https://github.com/ryanhcode/sable). Build a hull, and the sea stays out of it.
