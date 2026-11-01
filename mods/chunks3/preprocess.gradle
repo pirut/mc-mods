@@ -183,10 +183,13 @@ tasks.named('processResources', ProcessResources) {
         def pkg = json.package.replace('.', '/')
         def compiled = javaSet.files.collect { compiledRoot.toPath().relativize(it.toPath()).toString().replace('\\', '/') } as Set
         ['mixins', 'client', 'server'].each { key ->
-            if (json[key] instanceof List) json[key] = json[key].findAll { String entry ->
-                def rel = "$pkg/${entry.replace('.', '/')}.java"
+            if (!(json[key] instanceof List) || json[key].isEmpty()) return
+            // rel must be a String: a GString never equals the Strings in the set, which dropped every mixin.
+            json[key] = json[key].findAll { String entry ->
+                String rel = "$pkg/${entry.replace('.', '/')}.java"
                 compiled.contains(rel) && mixinClassDeclared(new File(compiledRoot, rel), entry.tokenize('.').last())
             }
+            if (json[key].isEmpty()) throw new GradleException("${details.path}: every '$key' mixin was left out for $mc")
         }
         def target = new File(destinationDir, details.path)
         target.parentFile.mkdirs()
