@@ -34,3 +34,11 @@ type = "required"
 versionRange = "[${sable_version_min},)"
 ordering = "AFTER"
 side = "BOTH"
+
+# Optional: Create's mechanical pumps empty flooded compartments. Create 6 is the first Create on 1.21.1.
+[[dependencies.${mod_id}]]
+modId = "create"
+type = "optional"
+versionRange = "[6.0.0,)"
+ordering = "NONE"
+side = "BOTH"
