@@ -186,9 +186,16 @@ public final class CubicPortals {
         final Set<BlockPos> portals = new HashSet<>();
 
         //#if MC >= 1.21.5
+        //$$ private static final com.mojang.serialization.Codec<Registry> CODEC = com.mojang.serialization.Codec.INT_STREAM.fieldOf("portals").codec()
+        //$$         .xmap(ints -> unpack(ints.toArray()), registry -> java.util.stream.IntStream.of(registry.pack()));
+        //#if NEOFORGE
+        //$$ private static final net.minecraft.world.level.saveddata.SavedDataType<Registry> TYPE =
+        //$$         new net.minecraft.world.level.saveddata.SavedDataType<>(NAME, Registry::new, CODEC);
+        //#else
+        //$$ // Vanilla's saved data must name a data fixer: the command storage's fixes touch none of this file's fields.
         //$$ private static final net.minecraft.world.level.saveddata.SavedDataType<Registry> TYPE = new net.minecraft.world.level.saveddata.SavedDataType<>(
-        //$$         NAME, Registry::new, com.mojang.serialization.Codec.INT_STREAM.fieldOf("portals").codec()
-        //$$                 .xmap(ints -> unpack(ints.toArray()), registry -> java.util.stream.IntStream.of(registry.pack())));
+        //$$         NAME, Registry::new, CODEC, net.minecraft.util.datafix.DataFixTypes.SAVED_DATA_COMMAND_STORAGE);
+        //#endif
         //$$
         //$$ static Registry of(ServerLevel cubic) { return cubic.getDataStorage().computeIfAbsent(TYPE); }
         //#else
