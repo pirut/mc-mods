@@ -1,0 +1,17 @@
+package net.neoforged.neoforge.common.advancements.critereon;
+
+import com.mojang.serialization.Codec;
+import net.minecraft.core.component.DataComponentGetter;
+import net.minecraft.core.component.predicates.DataComponentPredicate;
+import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.common.ItemAbility;
+
+public record ItemAbilityPredicate(ItemAbility action) implements DataComponentPredicate {
+   public static final Codec<ItemAbilityPredicate> CODEC = ItemAbility.CODEC.xmap(ItemAbilityPredicate::new, ItemAbilityPredicate::action);
+   public static final DataComponentPredicate.Type<ItemAbilityPredicate> TYPE = new DataComponentPredicate.ConcreteType<>(CODEC);
+
+   @Override
+   public boolean matches(DataComponentGetter dataComponentGetter) {
+      return dataComponentGetter instanceof ItemStack itemStack && itemStack.canPerformAction(this.action);
+   }
+}
