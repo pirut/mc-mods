@@ -80,7 +80,8 @@ def DISABLED = ~/^(\s*)\/\/\$\$ ?(.*)$/
 
 ext.chunks3Preprocess = { String text, String fileName ->
     def out = new StringBuilder()
-    // Each level: [active now, some branch already taken, parent active].
+    // Each level, innermost last: [the enclosing level active, some branch already taken]. (Groovy's push and pop work
+    // at the front of a list, so they are not used here.)
     def stack = []
     boolean active = true
     int lineNo = 0
@@ -93,25 +94,25 @@ ext.chunks3Preprocess = { String text, String fileName ->
             switch (kind) {
                 case 'if':
                     boolean take = active && evalCondition(cond)
-                    stack.push([active, take])
+                    stack << [active, take]
                     active = take
                     break
                 case 'elseif':
                     if (!stack) throw new GradleException("$fileName:$lineNo: #elseif without #if")
-                    def top = stack.last()
+                    def top = stack[-1]
                     boolean take = top[0] && !top[1] && evalCondition(cond)
                     if (take) top[1] = true
                     active = take
                     break
                 case 'else':
                     if (!stack) throw new GradleException("$fileName:$lineNo: #else without #if")
-                    def top = stack.last()
+                    def top = stack[-1]
                     active = top[0] && !top[1]
                     top[1] = true
                     break
                 default:
                     if (!stack) throw new GradleException("$fileName:$lineNo: #endif without #if")
-                    active = stack.pop()[0]
+                    active = stack.remove(stack.size() - 1)[0]
             }
             out << line << '\n'
             return

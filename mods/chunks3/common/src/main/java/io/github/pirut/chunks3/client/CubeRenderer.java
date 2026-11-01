@@ -327,14 +327,15 @@ public final class CubeRenderer {
         if (cube.blockEntities().isEmpty()) return Map.of();
         //#if MC >= 1.21.11
         //$$ // NeoForge 21.11's models read their model data from the level (the mesher's view) themselves.
-        //$$ if (true) return Map.of();
-        //#endif
+        //$$ return Map.of();
+        //#else
         Map<BlockPos, Object> data = new HashMap<>();
         for (BlockEntity entity : cube.blockEntities().values()) {
             Object model = ClientPlatform.INSTANCE.blockEntityModelData(entity);
             if (model != null) data.put(entity.getBlockPos().immutable(), model);
         }
         return data;
+        //#endif
     }
 
     @SuppressWarnings("unchecked")
