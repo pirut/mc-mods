@@ -18,8 +18,9 @@ Watertight hulls for [Create Aeronautics](https://modrinth.com/mod/create-aerona
 - **Big ships.** The hull is worked out off the game thread, and buoyancy is spread over at most a few thousand
   points however big the ship gets.
 
-Needs Sable 2.0 or later. NeoForge and Fabric, Minecraft 1.21.1. Tested with Sable 2.0.0 and 2.0.6, Create Aeronautics
-1.3.0 and 1.3.2, and Create 6.0.10, the newest of each. Create is optional; it adds pumps. Install it on the server and on players' games
+Needs Sable 1.0.4 or later, so it works with every Create Aeronautics release from 1.0.2 to the newest. NeoForge and
+Fabric, Minecraft 1.21.1. Tested in-game with Sable 1.0.4, 1.0.6, 1.1.0, 1.1.3, 1.2.2, 2.0.0 and 2.0.6, Aeronautics
+1.0.2 to 1.3.2, and Create 6.0.9 and 6.0.10. Create is optional; it adds pumps. Install it on the server and on players' games
 (players without it can still join, and just see the water as before).
 
 ## How a hull is worked out
