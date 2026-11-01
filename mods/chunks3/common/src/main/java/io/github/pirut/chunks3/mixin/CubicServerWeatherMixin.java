@@ -12,9 +12,17 @@ import org.spongepowered.asm.mixin.injection.At;
 /** Cauldrons and other precipitation handlers fill with rain where the biome rains (see CubicWeather). */
 @Mixin(ServerLevel.class)
 abstract class CubicServerWeatherMixin {
+    //#if MC >= 1.21.2
+    //$$ @WrapOperation(method = "tickPrecipitation", at = @At(value = "INVOKE",
+    //$$         target = "Lnet/minecraft/world/level/biome/Biome;getPrecipitationAt(Lnet/minecraft/core/BlockPos;I)Lnet/minecraft/world/level/biome/Biome$Precipitation;"))
+    //$$ private Biome.Precipitation chunks3$rain(Biome biome, BlockPos pos, int seaLevel, Operation<Biome.Precipitation> original) {
+    //$$     return CubicWeather.precipitation((ServerLevel) (Object) this, biome, original.call(biome, pos, seaLevel));
+    //$$ }
+    //#else
     @WrapOperation(method = "tickPrecipitation", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/world/level/biome/Biome;getPrecipitationAt(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/biome/Biome$Precipitation;"))
     private Biome.Precipitation chunks3$rain(Biome biome, BlockPos pos, Operation<Biome.Precipitation> original) {
         return CubicWeather.precipitation((ServerLevel) (Object) this, biome, original.call(biome, pos));
     }
+    //#endif
 }
