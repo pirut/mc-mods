@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Floodwater is saved with the world, so a flooded ship is still flooded after a restart.
+
 ## 0.1.0-alpha.1
 
 - First version. Sealed hulls keep the sea out: no water, no swimming and no underwater fog inside, on any Sable

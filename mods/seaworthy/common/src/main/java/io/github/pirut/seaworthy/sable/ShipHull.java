@@ -28,6 +28,7 @@ import org.joml.Vector3d;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -54,6 +55,8 @@ final class ShipHull {
     private static final int SCAN_DEBOUNCE = 10;
     private static final double GRAVITY = 9.81;
     private static final double DISCHARGE = 0.6;
+    /** The water is written to the level's saved data this often (ticks), and when the ship unloads. */
+    private static final int SAVE_INTERVAL = 100;
 
     private final SubLevel subLevel;
     private final Level level;
@@ -182,6 +185,7 @@ final class ShipHull {
         if (!client) {
             sample = Buoyancy.sample(subLevel, s.origin(), lumps, probe, config);
             if (now - lastSync >= 10) sync(s, now);
+            if (now % SAVE_INTERVAL == phase % SAVE_INTERVAL) saveWater(s);
         }
     }
 
@@ -194,7 +198,10 @@ final class ShipHull {
     /** Takes over a fresh analysis, carrying the water over: each new compartment keeps the flooded cells it got. */
     private void adopt(Scan next) {
         Scan old = scan;
-        if (old == null && level instanceof ServerLevel server) wakeSea(server);
+        if (old == null && level instanceof ServerLevel server) {
+            wakeSea(server);
+            restoreWater(server, next);
+        }
         if (old != null) {
             HullGrid og = old.grid(), ng = next.grid();
             BlockPos shift = old.origin().subtract(next.origin());
@@ -266,6 +273,37 @@ final class ShipHull {
     }
 
     private static final Direction[] WAKE_DIRECTIONS = {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
+
+    /** Each compartment's anchor cell, relative to the ship's bounds: what its saved water is filed under. */
+    private static long[] saveKeys(Scan s) {
+        List<Compartment> compartments = s.result().compartments();
+        HullGrid g = s.grid();
+        long[] keys = new long[compartments.size()];
+        for (int k = 0; k < keys.length; k++) {
+            int a = compartments.get(k).anchor();
+            keys[k] = BlockPos.asLong(g.x(a), g.y(a), g.z(a));
+        }
+        return keys;
+    }
+
+    /** Puts back the water a ship had when it was last saved. */
+    private void restoreWater(ServerLevel server, Scan next) {
+        Map<Long, Float> saved = FloodStore.of(server).get(subLevel.getUniqueId());
+        if (saved.isEmpty()) return;
+        long[] keys = saveKeys(next);
+        List<Compartment> compartments = next.result().compartments();
+        for (int k = 0; k < keys.length; k++) {
+            Float volume = saved.get(keys[k]);
+            if (volume != null) next.volume()[k] = Math.min(compartments.get(k).size(), volume);
+        }
+    }
+
+    private void saveWater(Scan s) {
+        if (!(level instanceof ServerLevel server)) return;
+        float[] volumes = new float[s.volume().length];
+        for (int k = 0; k < volumes.length; k++) volumes[k] = (float) s.volume()[k];
+        FloodStore.of(server).put(subLevel.getUniqueId(), saveKeys(s), volumes);
+    }
 
     private void flood(Scan s, SeaworthyConfig config, double seconds) {
         Pose3dc pose = subLevel.logicalPose();
@@ -462,6 +500,7 @@ final class ShipHull {
     void dispose() {
         if (pending != null) pending.cancel(false);
         pending = null;
+        if (scan != null) saveWater(scan);
         clear();
     }
 }

@@ -12,7 +12,7 @@ Watertight hulls for [Create Aeronautics](https://modrinth.com/mod/create-aerona
   keep the water in one compartment until it tops them. The water inside is drawn at its real level, rising
   smoothly and evenly across the floor (the sea's own surface is at sea level, so Seaworthy draws the top of the
   water inside itself). Patch the hole and the leak stops. Lift the ship out of the
-  water and it drains.
+  water and it drains. The water is saved with the world, so a flooded ship stays flooded across a restart.
 - **Big ships.** The hull is worked out off the game thread, and buoyancy is spread over at most a few thousand
   points however big the ship gets.
 

@@ -5,6 +5,7 @@ import dev.ryanhcode.sable.api.sublevel.SubLevelObserver;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason;
 import io.github.pirut.seaworthy.net.FloodSyncPayload;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
@@ -91,6 +92,9 @@ public final class ShipTracker implements SubLevelObserver {
     public void onSubLevelRemoved(SubLevel subLevel, SubLevelRemovalReason reason) {
         ShipHull hull = hulls.remove(subLevel.getUniqueId());
         if (hull != null) hull.dispose();
+        if (reason == SubLevelRemovalReason.REMOVED && level instanceof ServerLevel server) {
+            FloodStore.of(server).forget(subLevel.getUniqueId());
+        }
     }
 
     /** Every ship's hull, for drawing their water. */
