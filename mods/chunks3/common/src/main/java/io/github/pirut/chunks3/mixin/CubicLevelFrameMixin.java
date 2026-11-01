@@ -38,7 +38,12 @@
     //$$ }
 
     //$$ @Inject(method = "extractVisibleBlockEntities", at = @At("TAIL"))
+    //#if NEOFORGE
     //$$ private void chunks3$blockEntities(Camera camera, float partialTick, LevelRenderState state, @Nullable Frustum frustum, CallbackInfo info) {
+    //#else
+    //$$ private void chunks3$blockEntities(Camera camera, float partialTick, LevelRenderState state, CallbackInfo info) {
+        //$$ Frustum frustum = CubicClient.LevelFrame.frustum; // vanilla has no frustum parameter (NeoForge adds it)
+    //#endif
         //$$ CubicClient.extractBlockEntities(state.blockEntityRenderStates, frustum, partialTick);
     //$$ }
 //$$ }
