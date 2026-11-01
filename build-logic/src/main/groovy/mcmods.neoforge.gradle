@@ -26,9 +26,13 @@ neoForge {
     }
 }
 
+// Before Minecraft 1.21.9, NeoForge's dev runs only saw plain (non-mod) libraries put in additionalRuntimeClasspath;
+// later versions see every dependency and refuse that configuration. Mods check neoLegacyClasspath too.
+ext.neoLegacyClasspath = neoForge.versionCapabilities.legacyClasspath()
+
 if (usesCommonLib) {
     dependencies {
         jarJar(project(':common-lib'))
-        additionalRuntimeClasspath project(':common-lib')
+        if (neoLegacyClasspath) additionalRuntimeClasspath project(':common-lib')
     }
 }
