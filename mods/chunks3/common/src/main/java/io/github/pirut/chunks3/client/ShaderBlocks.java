@@ -13,7 +13,12 @@ import net.minecraft.world.level.block.state.BlockState;
  * Does nothing without Iris or with no pack in use.
  */
 final class ShaderBlocks {
+    //#if MC >= 1.21.11
+    //$$ // Iris's hooks are not ported to 1.21.11 yet (its compat mixins are left out there), so shader packs are not drawn with.
+    //$$ static final boolean IRIS = false;
+    //#else
     static final boolean IRIS = Loader.INSTANCE.isModLoaded("iris");
+    //#endif
 
     private ShaderBlocks() {}
 

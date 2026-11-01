@@ -5,7 +5,11 @@ import com.llamalad7.mixinextras.sugar.Local;
 import io.github.pirut.chunks3.CubeWorld;
 import io.github.pirut.chunks3.CubicLevel;
 import net.minecraft.client.multiplayer.ClientLevel;
+//#if MC >= 1.21.11
+//$$ import net.minecraft.client.renderer.fog.FogRenderer;
+//#else
 import net.minecraft.client.renderer.FogRenderer;
+//#endif
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
@@ -18,9 +22,16 @@ import org.spongepowered.asm.mixin.injection.At;
  */
 @Mixin(value = FogRenderer.class, priority = 500)
 abstract class CubicVoidFogMixin {
+    //#if MC >= 1.21.11
+    //$$ @ModifyExpressionValue(method = "computeFogColor", require = 0,
+    //$$         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/multiplayer/ClientLevel;getMinBuildHeight()I"))
+    //$$ private int chunks3$cubicBottom(
+    //#else
     @ModifyExpressionValue(method = "setupColor", require = 0,
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/multiplayer/ClientLevel;getMinBuildHeight()I"))
-    private static int chunks3$cubicBottom(int floor, @Local(argsOnly = true) ClientLevel level) {
+    private static int chunks3$cubicBottom(
+    //#endif
+int floor, @Local(argsOnly = true) ClientLevel level) {
         return CubicLevel.of(level) != null ? CubeWorld.MIN_Y : floor;
     }
 }

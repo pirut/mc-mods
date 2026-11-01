@@ -8,7 +8,11 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.multiplayer.ClientLevel;
+//#if MC >= 1.21.11
+//$$ import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
+//#else
 import net.minecraft.client.renderer.FogRenderer;
+//#endif
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.LevelAccessor;
@@ -163,15 +167,51 @@ public final class CubicClient {
         if (stage == Stage.AFTER_CUTOUT_BLOCKS
                 || (stage == Stage.AFTER_ENTITIES && !renderer.drewOpaqueThisPass())) {
             renderer.drawOpaque(camera, frustum, modelView, projection);
+            Gl.bindLevelTarget(false);
             world.far().draw(camera, frustum, modelView, projection);
+            Gl.unbindLevelTarget();
         } else if (stage == Stage.AFTER_BLOCK_ENTITIES) {
             renderer.drawBlockEntities(camera, frustum, pose, partialTick);
         } else if (stage == Stage.AFTER_TRANSLUCENT_BLOCKS || stage == Stage.AFTER_PARTICLES) {
+            Gl.bindLevelTarget(true);
             world.far().drawWater(camera, modelView, projection);
+            Gl.unbindLevelTarget();
             renderer.drawTranslucent(camera, frustum, modelView, projection);
         }
     }
 
+    //#if MC >= 1.21.11
+    //$$ /** The level being drawn: its camera, matrices and culling view, kept as it is set up (see CubicLevelFrameMixin). */
+    //$$ public static final class LevelFrame {
+    //$$     private LevelFrame() {}
+    //$$     static Camera camera;
+    //$$     static Matrix4f modelView = new Matrix4f(), projection = new Matrix4f();
+    //$$     public static Frustum frustum;
+    //$$     static float partialTick;
+    //$$
+    //$$     public static void begin(Camera camera, Matrix4f modelView, Matrix4f projection, float partialTick) {
+    //$$         LevelFrame.camera = camera;
+    //$$         LevelFrame.modelView = new Matrix4f(modelView);
+    //$$         LevelFrame.projection = new Matrix4f(projection);
+    //$$         LevelFrame.partialTick = partialTick;
+    //$$         frustum = null;
+    //$$     }
+    //$$ }
+    //$$
+    //$$ /** Just after the game draws its own sections of a group: the opaque ones, or the translucent ones. */
+    //$$ public static void afterSectionGroup(boolean opaque, boolean translucent) {
+    //$$     if (LevelFrame.camera == null || LevelFrame.frustum == null || (!opaque && !translucent)) return;
+    //$$     render(opaque ? Stage.AFTER_CUTOUT_BLOCKS : Stage.AFTER_TRANSLUCENT_BLOCKS, LevelFrame.camera, LevelFrame.frustum,
+    //$$             LevelFrame.modelView, LevelFrame.projection, new PoseStack(), LevelFrame.partialTick);
+    //$$ }
+    //$$
+    //$$ /** The cubes' block entities in view, added to those the game draws this frame. */
+    //$$ public static void extractBlockEntities(java.util.List<BlockEntityRenderState> into, @javax.annotation.Nullable Frustum frustum, float partialTick) {
+    //$$     ClientCubeWorld world = ClientCubeWorld.current();
+    //$$     if (world != null) world.renderer().extractBlockEntities(into, frustum, partialTick);
+    //$$ }
+    //$$
+    //#endif
     private static long timingsAt;
     private static String[] timingLines = new String[0];
 
@@ -218,9 +258,15 @@ public final class CubicClient {
      * fluid fog stay as they are. Returns the fog's start and end, or null to leave vanilla's.
      */
     @javax.annotation.Nullable
+    //#if MC >= 1.21.11
+    //$$ public static float[] fog(FogType type, Camera view, float farPlaneDistance, float renderDistance) {
+    //$$     if (ClientCubeWorld.current() == null || type != FogType.NONE) return null;
+    //$$     if (farPlaneDistance < renderDistance - 1.0F) return null;
+    //#else
     public static float[] fog(FogRenderer.FogMode mode, FogType type, Camera view, float farPlaneDistance) {
         if (ClientCubeWorld.current() == null || mode != FogRenderer.FogMode.FOG_TERRAIN || type != FogType.NONE) return null;
         if (farPlaneDistance < Minecraft.getInstance().gameRenderer.getRenderDistance() - 1.0F) return null;
+    //#endif
         // High up, the ground below is as far away as the horizon is at ground level: start the fog
         // beyond it, so terrain under a player in the jet stream is clear rather than a pale haze.
         var camera = view.getPosition();

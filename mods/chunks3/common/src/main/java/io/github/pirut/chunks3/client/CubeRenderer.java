@@ -1,7 +1,28 @@
 package io.github.pirut.chunks3.client;
 
 import io.github.pirut.chunks3.Cubic;
+//#if MC >= 1.21.11
+//$$ import com.mojang.blaze3d.buffers.GpuBuffer;
+//$$ import com.mojang.blaze3d.buffers.GpuBufferSlice;
+//$$ import com.mojang.blaze3d.pipeline.RenderTarget;
+//$$ import com.mojang.blaze3d.systems.RenderPass;
+//$$ import com.mojang.blaze3d.textures.AddressMode;
+//$$ import com.mojang.blaze3d.textures.FilterMode;
+//$$ import com.mojang.blaze3d.textures.GpuSampler;
+//$$ import com.mojang.blaze3d.textures.GpuTextureView;
+//$$ import java.util.OptionalDouble;
+//$$ import java.util.OptionalInt;
+//$$ import net.minecraft.client.renderer.DynamicUniforms;
+//$$ import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
+//$$ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+//$$ import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
+//$$ import net.minecraft.client.renderer.texture.TextureAtlas;
+//$$ import net.minecraft.client.TextureFilteringMethod;
+//#else
 import com.mojang.blaze3d.shaders.Uniform;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.ShaderInstance;
+//#endif
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexFormat;
@@ -28,8 +49,6 @@ import java.util.concurrent.Executors;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.core.BlockPos;
@@ -192,7 +211,11 @@ public final class CubeRenderer {
     void blockChanged(BlockPos pos, BlockState old, BlockState state) {
         int cx = pos.getX() >> 4, cy = pos.getY() >> 4, cz = pos.getZ() >> 4;
         boolean lighting = old.getLightEmission() != state.getLightEmission()
+                //#if MC >= 1.21.2
+                //$$ || old.getLightBlock() != state.getLightBlock();
+                //#else
                 || old.getLightBlock(world.client(), pos) != state.getLightBlock(world.client(), pos);
+                //#endif
         if (lighting) { markAround(cx, cy, cz, true); return; }
         markDirty(CubeKey.pack(cx, cy, cz));
         int lx = pos.getX() & 15, ly = pos.getY() & 15, lz = pos.getZ() & 15;
@@ -334,7 +357,12 @@ public final class CubeRenderer {
         }
         int version = versions.get(key);
         CubeMesher.Snapshot snapshot = new CubeMesher.Snapshot(key, version, x, y, z, states, biomes, tops,
+                //#if MC >= 1.21.11
+                //$$ (float) camera.x, (float) camera.y, (float) camera.z,
+                //$$ world.client().dimensionType().cardinalLightType() == net.minecraft.world.level.dimension.DimensionType.CardinalLightType.NETHER,
+                //#else
                 (float) camera.x, (float) camera.y, (float) camera.z, world.client().effects().constantAmbientLight(),
+                //#endif
                 ShaderBlocks.ids(), modelData(center),
                 center.blockEntities().isEmpty() ? Map.of() : new HashMap<>(center.blockEntities()));
         building.add(key);
@@ -443,8 +471,8 @@ public final class CubeRenderer {
         prepare(camera, frustum);
         long start = System.nanoTime();
         for (int i = 0; i < CubeMesher.LAYERS.size(); i++) {
-            RenderType type = CubeMesher.LAYERS.get(i);
-            if (type == RenderType.translucent() || type == RenderType.tripwire()) continue;
+            var type = CubeMesher.LAYERS.get(i);
+            if (type == CubeMesher.TRANSLUCENT || type == CubeMesher.TRIPWIRE) continue;
             draw(i, camera.getPosition(), modelView, projection, false);
         }
         Timings.CUBE_DRAW.since(start);
@@ -456,8 +484,8 @@ public final class CubeRenderer {
         if (translucentPass == LevelPasses.current()) return;
         translucentPass = LevelPasses.current();
         prepare(camera, frustum);
-        draw(CubeMesher.LAYERS.indexOf(RenderType.translucent()), camera.getPosition(), modelView, projection, true);
-        draw(CubeMesher.LAYERS.indexOf(RenderType.tripwire()), camera.getPosition(), modelView, projection, true);
+        draw(CubeMesher.LAYERS.indexOf(CubeMesher.TRANSLUCENT), camera.getPosition(), modelView, projection, true);
+        draw(CubeMesher.LAYERS.indexOf(CubeMesher.TRIPWIRE), camera.getPosition(), modelView, projection, true);
     }
 
     /** Whether the opaque layers are drawn in this pass of the level already. */
@@ -477,8 +505,8 @@ public final class CubeRenderer {
         for (Mesh mesh : meshes.values()) if (shadow.isVisible(mesh.box)) all.add(mesh);
         for (Mesh mesh : retiring.values()) if (shadow.isVisible(mesh.box)) all.add(mesh);
         for (int i = 0; i < CubeMesher.LAYERS.size(); i++) {
-            RenderType type = CubeMesher.LAYERS.get(i);
-            if (type == RenderType.translucent() || type == RenderType.tripwire()) continue;
+            var type = CubeMesher.LAYERS.get(i);
+            if (type == CubeMesher.TRANSLUCENT || type == CubeMesher.TRIPWIRE) continue;
             draw(i, all, camera.getPosition(), modelView, projection, false);
         }
     }
@@ -488,6 +516,58 @@ public final class CubeRenderer {
     }
 
     private void draw(int layer, List<Mesh> visible, Vec3 camera, Matrix4f modelView, Matrix4f projection, boolean backToFront) {
+        //#if MC >= 1.21.11
+        //$$ boolean any = false;
+        //$$ for (Mesh mesh : visible) if (mesh.buffers[layer] != null && mesh.buffers[layer].indexCount > 0) { any = true; break; }
+        //$$ if (!any) return;
+        //$$ ChunkSectionLayer type = CubeMesher.LAYERS.get(layer);
+        //$$ Minecraft minecraft = Minecraft.getInstance();
+        //$$ GpuTextureView atlas = minecraft.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS).getTextureView();
+        //$$ int width = atlas.getWidth(0), height = atlas.getHeight(0);
+        //$$ List<DynamicUniforms.ChunkSectionInfo> infos = new ArrayList<>();
+        //$$ List<RenderPass.Draw<GpuBufferSlice[]>> draws = new ArrayList<>();
+        //$$ int sequential = 0;
+        //$$ for (int n = 0; n < visible.size(); n++) {
+            //$$ Mesh mesh = visible.get(backToFront ? visible.size() - 1 - n : n);
+            //$$ CubeBuffer buffer = mesh.buffers[layer];
+            //$$ if (buffer == null || buffer.vertices == null || buffer.indexCount == 0) continue;
+            //$$ int slot = infos.size();
+            //$$ infos.add(new DynamicUniforms.ChunkSectionInfo(new Matrix4f(modelView), mesh.x, mesh.y, mesh.z, 1.0F, width, height));
+            //$$ if (buffer.indices == null) sequential = Math.max(sequential, buffer.indexCount);
+            //$$ draws.add(new RenderPass.Draw<>(0, buffer.vertices, buffer.indices, buffer.indexType, 0, buffer.indexCount,
+                    //$$ (slices, uploader) -> uploader.upload("ChunkSection", slices[slot])));
+        //$$ }
+        //$$ GpuBufferSlice[] slices = RenderSystem.getDynamicUniforms().writeChunkSections(infos.toArray(new DynamicUniforms.ChunkSectionInfo[0]));
+        //$$ RenderSystem.AutoStorageIndexBuffer quads = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
+        //$$ GpuBuffer quadIndices = sequential == 0 ? null : quads.getBuffer(sequential);
+        //$$ RenderTarget target = (type == ChunkSectionLayer.TRANSLUCENT ? ChunkSectionLayerGroup.TRANSLUCENT
+                //$$ : type == ChunkSectionLayer.TRIPWIRE ? ChunkSectionLayerGroup.TRIPWIRE : ChunkSectionLayerGroup.OPAQUE).outputTarget();
+        //$$ try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Chunks3 cubes " + type.label(),
+                //$$ target.getColorTextureView(), OptionalInt.empty(), target.getDepthTextureView(), OptionalDouble.empty())) {
+            //$$ RenderSystem.bindDefaultUniforms(pass);
+            //$$ pass.bindTexture("Sampler2", minecraft.gameRenderer.lightTexture().getTextureView(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+            //$$ pass.setPipeline(type.pipeline());
+            //$$ pass.bindTexture("Sampler0", atlas, sampler());
+            //$$ pass.drawMultipleIndexed(draws, quadIndices, sequential == 0 ? null : quads.type(), List.of("ChunkSection"), slices);
+        //$$ }
+    //$$ }
+
+    //$$ private GpuSampler sampler;
+    //$$ private int samplerAnisotropy;
+
+    //$$ /** The block atlas sampler the game's own sections draw with. */
+    //$$ private GpuSampler sampler() {
+        //$$ Minecraft minecraft = Minecraft.getInstance();
+        //$$ int anisotropy = minecraft.options.textureFiltering().get() == TextureFilteringMethod.ANISOTROPIC ? minecraft.options.maxAnisotropyValue() : 1;
+        //$$ if (sampler == null || samplerAnisotropy != anisotropy) {
+            //$$ if (sampler != null) sampler.close();
+            //$$ sampler = RenderSystem.getDevice().createSampler(AddressMode.CLAMP_TO_EDGE, AddressMode.CLAMP_TO_EDGE, FilterMode.LINEAR, FilterMode.LINEAR,
+                    //$$ anisotropy, OptionalDouble.empty());
+            //$$ samplerAnisotropy = anisotropy;
+        //$$ }
+        //$$ return sampler;
+    //$$ }
+        //#else
         RenderType type = CubeMesher.LAYERS.get(layer);
         boolean any = false;
         for (Mesh mesh : visible) if (mesh.buffers[layer] != null) { any = true; break; }
@@ -512,7 +592,24 @@ public final class CubeRenderer {
         CubeBuffer.unbind();
         type.clearRenderState();
     }
+        //#endif
 
+    //#if MC >= 1.21.11
+    //$$ /** Block entities with their own renderers (chests, signs, beds...) near the camera, drawn with the game's own. */
+    //$$ public void extractBlockEntities(List<BlockEntityRenderState> into, @javax.annotation.Nullable Frustum frustum, float partialTick) {
+        //$$ BlockEntityRenderDispatcher dispatcher = Minecraft.getInstance().getBlockEntityRenderDispatcher();
+        //$$ for (Cube cube : world.cubes()) {
+            //$$ if (cube.blockEntities().isEmpty()) continue;
+            //$$ for (BlockEntity entity : cube.blockEntities().values()) {
+                //$$ BlockEntityRenderState state = dispatcher.tryExtractRenderState(entity, partialTick, null, frustum);
+                //$$ if (state != null) into.add(state);
+            //$$ }
+        //$$ }
+    //$$ }
+
+    //$$ /** From 1.21.5 the cubes' block entities are drawn with the game's own (see {@link #extractBlockEntities}). */
+    //$$ public void drawBlockEntities(Camera camera, Frustum frustum, PoseStack pose, float partialTick) {}
+    //#else
     /** Block entities with their own renderers (chests, signs, beds...) near the camera. */
     public void drawBlockEntities(Camera camera, Frustum frustum, PoseStack pose, float partialTick) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -535,9 +632,13 @@ public final class CubeRenderer {
         }
         if (any) buffers.endBatch();
     }
+    //#endif
 
     void close() {
         closed = true;
+        //#if MC >= 1.21.11
+        //$$ if (sampler != null) { sampler.close(); sampler = null; }
+        //#endif
         built.close();
         for (Mesh mesh : meshes.values()) mesh.close();
         meshes.clear();

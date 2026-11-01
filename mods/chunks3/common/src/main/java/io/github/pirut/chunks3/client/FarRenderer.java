@@ -1,7 +1,9 @@
 package io.github.pirut.chunks3.client;
 
 import io.github.pirut.chunks3.Cubic;
+//#if MC < 1.21.11
 import com.mojang.blaze3d.shaders.Uniform;
+//#endif
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import io.github.pirut.chunks3.util.NamedThreads;
@@ -33,8 +35,12 @@ import java.util.concurrent.Executors;
 import javax.annotation.Nullable;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+//#if MC < 1.21.11
 import net.minecraft.client.renderer.RenderType;
+//#endif
+//#if MC < 1.21.11
 import net.minecraft.client.renderer.ShaderInstance;
+//#endif
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.Direction;
@@ -1559,12 +1565,22 @@ public final class FarRenderer {
         // Under a pack with Voxy support far terrain keeps its own, finer depth (see FarLod).
         boolean own = pack && FarLod.active();
         Matrix4f farProjection = own ? FarLod.project(projection) : projection;
+        //#if MC >= 1.21.11
+        //$$ // The game's GPU device sets its GL state for each draw: the far terrain sets what it needs itself.
+        //$$ com.mojang.blaze3d.platform.GlStateManager._disableBlend();
+        //$$ com.mojang.blaze3d.platform.GlStateManager._enableDepthTest();
+        //$$ com.mojang.blaze3d.platform.GlStateManager._depthFunc(org.lwjgl.opengl.GL11C.GL_LEQUAL);
+        //$$ com.mojang.blaze3d.platform.GlStateManager._depthMask(true);
+        //$$ com.mojang.blaze3d.platform.GlStateManager._colorMask(true, true, true, true);
+        //$$ com.mojang.blaze3d.platform.GlStateManager._enableCull();
+        //#else
         RenderType type = RenderType.solid();
         type.setupRenderState();
         ShaderInstance shader = RenderSystem.getShader();
         // Applying the terrain shader binds a shader pack's terrain buffers, which the far terrain draws into too.
         shader.setDefaultUniforms(VertexFormat.Mode.QUADS, modelView, projection, Minecraft.getInstance().getWindow());
         shader.apply();
+        //#endif
         float[] shade = new float[6];
         for (Direction direction : Direction.values()) shade[direction.get3DDataValue()] = world.client().getShade(direction, true);
         float reach = FarLod.nearReach();
@@ -1654,8 +1670,12 @@ public final class FarRenderer {
             FarLod.endDeepen();
         }
         FarGpuTimers.end(deepenTimer);
+        //#if MC >= 1.21.11
+        //$$ Gl.invalidate();
+        //#else
         shader.clear();
         type.clearRenderState();
+        //#endif
     }
 
     /**
@@ -2607,6 +2627,40 @@ public final class FarRenderer {
     }
 
     private void drawWaterColumns(Camera camera, Matrix4f modelView, Matrix4f projection) {
+        //#if MC >= 1.21.11
+        //$$ // From 1.21.5 far water is drawn with the game's translucent terrain pipeline (see FarWaterBuffers), each
+        //$$ // column with its own place and view; shader packs' own water is not drawn with there yet.
+        //$$ Vec3 position = camera.getPosition();
+        //$$ long colourTimer = FarGpuTimers.begin("far water colour");
+        //$$ Matrix4f nearer = new Matrix4f();
+        //$$ double lift = WATER_LIFT / nearPlane(projection);
+        //$$ waterBuffers.begin();
+        //$$ for (int pass = 0; pass < 2; pass++) {
+            //$$ IntArrayList water = pass == 0 ? waterSurfaces : waterEdges;
+            //$$ for (int i = (FAST_WATER ? water.size() : shown) - 1; i >= 0; i--) {
+                //$$ int at = FAST_WATER ? water.getInt(i) : i;
+                //$$ Column column = shownColumn(at);
+                //$$ if (!FAST_WATER && (column.fade == FarGpu.FADE_IN || (pass == 0 ? column.water == null : !column.hasWaterWalls()))) continue;
+                //$$ // Drawn shrunk toward the camera, nearer by a couple of depth steps (as below, before 1.21.5).
+                //$$ double distance = Math.sqrt(shownDistance[at] + square(column.box.minY + 0.5 * (column.box.maxY - column.box.minY) - position.y));
+                //$$ float scale = (float) Math.max(0.8, 1.0 - distance * lift);
+                //$$ // The section's place is its offset from the camera's block, so the scale shrinks it toward the camera.
+                //$$ Matrix4f view = nearer.set(modelView).scale(scale);
+                //$$ int x = column.x0, y = column.baseY(), z = column.z0;
+                //$$ if (pass == 0) {
+                    //$$ waterBuffers.draw(column.water, x, y, z, view);
+                    //$$ continue;
+                //$$ }
+                //$$ for (int side = 0; side < 4; side++) {
+                    //$$ FarWaterBuffers.Mesh wall = column.waterWalls[side];
+                    //$$ if (FAST_WATER ? (waterSides(at) & 1 << side) == 0 : wall == null || waterDrawn(beside(column, side))) continue;
+                    //$$ waterBuffers.draw(wall, x, y, z, view);
+                //$$ }
+            //$$ }
+        //$$ }
+        //$$ waterBuffers.end();
+        //$$ FarGpuTimers.end(colourTimer);
+        //#else
         Vec3 position = camera.getPosition();
         RenderType type = RenderType.translucent();
         type.setupRenderState();
@@ -2686,6 +2740,7 @@ public final class FarRenderer {
         shader.clear();
         waterBuffers.end();
         type.clearRenderState();
+        //#endif
     }
 
     /**

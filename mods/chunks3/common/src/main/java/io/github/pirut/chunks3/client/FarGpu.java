@@ -3,7 +3,6 @@ package io.github.pirut.chunks3.client;
 import io.github.pirut.chunks3.Cubic;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferUploader;
 import io.github.pirut.chunks3.far.Far;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -300,9 +299,9 @@ final class FarGpu {
         previousProgram = GL11C.glGetInteger(GL20C.GL_CURRENT_PROGRAM);
         use(program);
 
-        int atlas = Minecraft.getInstance().getTextureManager().getTexture(InventoryMenu.BLOCK_ATLAS).getId();
-        int lightmap = RenderSystem.getShaderTexture(2);
-        previousActive = GlStateManager._getActiveTexture();
+        int atlas = Gl.blockAtlas();
+        int lightmap = Gl.lightmap();
+        previousActive = Gl.activeTexture();
         bind2d(ATLAS_UNIT, atlas, packMode);
         bind2d(LIGHT_UNIT, lightmap, packMode);
         if (this.ground) bind2d(BLOCKS_UNIT, FarBlockDepth.texture(), packMode);
@@ -313,14 +312,14 @@ final class FarGpu {
         GL30C.glBindVertexArray(vao);
         // Bound again every draw, as the near cubes' are, so nothing outside can leave another there.
         if (INDEXED) GL15C.glBindBuffer(GL15C.GL_ELEMENT_ARRAY_BUFFER, indices);
-        RenderSystem.enableDepthTest();
-        RenderSystem.depthMask(true);
-        RenderSystem.enableCull();
+        GlStateManager._enableDepthTest();
+        GlStateManager._depthMask(true);
+        GlStateManager._enableCull();
         if (phase == PREPASS) frozenNow = now();
         if (phase == SHADE) {
             shadeDepthFunc = GL11C.glGetInteger(GL11C.GL_DEPTH_FUNC);
-            RenderSystem.depthMask(false);
-            RenderSystem.depthFunc(GL11C.GL_EQUAL);
+            GlStateManager._depthMask(false);
+            GlStateManager._depthFunc(GL11C.GL_EQUAL);
         }
         for (Arena arena : arenas) arena.clearDraws();
         ranges = 0;
@@ -390,10 +389,10 @@ final class FarGpu {
         GL20C.glUniform3i(program.location("earth_CameraBlock"), bx, by, bz);
         GL20C.glUniform3f(program.location("earth_CameraFraction"), (float) (camera.x - bx), (float) (camera.y - by), (float) (camera.z - bz));
         GL20C.glUniform1f(program.location("earth_Grow"), grow(projection));
-        GL20C.glUniform1i(program.location("earth_FogShape"), RenderSystem.getShaderFogShape().getIndex());
-        GL20C.glUniform1f(program.location("earth_FogStart"), RenderSystem.getShaderFogStart());
-        GL20C.glUniform1f(program.location("earth_FogEnd"), RenderSystem.getShaderFogEnd());
-        float[] fog = RenderSystem.getShaderFogColor(), colour = RenderSystem.getShaderColor();
+        GL20C.glUniform1i(program.location("earth_FogShape"), Gl.fogShape());
+        GL20C.glUniform1f(program.location("earth_FogStart"), Gl.fogStart());
+        GL20C.glUniform1f(program.location("earth_FogEnd"), Gl.fogEnd());
+        float[] fog = Gl.fogColor(), colour = Gl.shaderColor();
         GL20C.glUniform4f(program.location("earth_FogColor"), fog[0], fog[1], fog[2], fog[3]);
         GL20C.glUniform4f(program.location("earth_ColorModulator"), colour[0], colour[1], colour[2], colour[3]);
         GL20C.glUniform1i(program.location("earth_Quads"), QUAD_UNIT);
@@ -504,13 +503,13 @@ final class FarGpu {
         if (ground) restore2d(BLOCKS_UNIT);
         GlStateManager._activeTexture(previousActive);
         GL30C.glBindVertexArray(previousVao);
-        BufferUploader.invalidate();
+        Gl.invalidate();
         if (current.irisUniforms != null) current.irisUniforms.done();
         GlStateManager._glUseProgram(previousProgram);
         current = null;
         if (phase == SHADE) {
-            RenderSystem.depthFunc(shadeDepthFunc);
-            RenderSystem.depthMask(true);
+            GlStateManager._depthFunc(shadeDepthFunc);
+            GlStateManager._depthMask(true);
         }
     }
 
@@ -1071,7 +1070,7 @@ final class FarGpu {
         }
 
         private void attach() {
-            int active = GlStateManager._getActiveTexture();
+            int active = Gl.activeTexture();
             GlStateManager._activeTexture(GL13C.GL_TEXTURE0 + QUAD_UNIT);
             GL11C.glBindTexture(GL31C.GL_TEXTURE_BUFFER, texture);
             GL31C.glTexBuffer(GL31C.GL_TEXTURE_BUFFER, format, buffer);
