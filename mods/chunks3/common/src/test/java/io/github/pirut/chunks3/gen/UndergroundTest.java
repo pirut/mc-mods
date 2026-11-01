@@ -96,7 +96,7 @@ class UndergroundTest {
             assertTrue(counts.getOrDefault(ore, 0) > 0, ore);
         assertTrue(counts.getOrDefault("spawner", 0) > 0, "spawners");
         assertTrue(counts.getOrDefault("budding_amethyst", 0) > 0, "geodes");
-        assertEquals(counts.getOrDefault("spawner", 0), (int) blockEntities.stream().filter(t -> t.getString("id").endsWith("mob_spawner")).count());
+        assertEquals(counts.getOrDefault("spawner", 0), (int) blockEntities.stream().filter(t -> io.github.pirut.chunks3.mc.Nbt.getString(t, "id").endsWith("mob_spawner")).count());
         assertTrue(ms < 25, "generation time per cube " + ms);
     }
 }

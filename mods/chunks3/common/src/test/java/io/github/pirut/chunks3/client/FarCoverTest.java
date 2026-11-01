@@ -27,14 +27,14 @@ class FarCoverTest {
     @BeforeAll static void tags() {
         SurfacePacketFixtures.biomes();
         var blocks = BuiltInRegistries.BLOCK;
-        previous = blocks.getTags().collect(Collectors.toMap(p -> p.getFirst(), p -> p.getSecond().stream().toList()));
+        previous = io.github.pirut.chunks3.TestTags.current(blocks);
         var tags = new java.util.HashMap<>(previous);
         tags.put(BlockTags.LEAVES, blocks.stream().filter(b -> b instanceof LeavesBlock).map(blocks::wrapAsHolder).toList());
         tags.put(BlockTags.LOGS, List.of(blocks.wrapAsHolder(Blocks.OAK_LOG)));
-        blocks.bindTags(tags);
+        io.github.pirut.chunks3.TestTags.bind(blocks, tags);
     }
 
-    @AfterAll static void restore() { BuiltInRegistries.BLOCK.bindTags(previous); }
+    @AfterAll static void restore() { io.github.pirut.chunks3.TestTags.bind(BuiltInRegistries.BLOCK, previous); }
 
     @Test void clearingKeepsItsGrassAmongLeavesOnStone() {
         LevelChunkSection section = Mc.emptySection(SurfacePacketFixtures.biomes());

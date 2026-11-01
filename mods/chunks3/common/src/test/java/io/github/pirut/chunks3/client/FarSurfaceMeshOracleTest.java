@@ -18,20 +18,20 @@ class FarSurfaceMeshOracleTest {
     @org.junit.jupiter.api.BeforeAll static void fluidTags() {
         SurfacePacketFixtures.biomes();
         var registry = net.minecraft.core.registries.BuiltInRegistries.FLUID;
-        previousFluidTags = registry.getTags().collect(java.util.stream.Collectors.toMap(p -> p.getFirst(), p -> p.getSecond().stream().toList()));
+        previousFluidTags = io.github.pirut.chunks3.TestTags.current(registry);
         var tags = new java.util.HashMap<>(previousFluidTags);
         tags.put(net.minecraft.tags.FluidTags.WATER, java.util.List.of(registry.wrapAsHolder(net.minecraft.world.level.material.Fluids.WATER), registry.wrapAsHolder(net.minecraft.world.level.material.Fluids.FLOWING_WATER)));
-        registry.bindTags(tags);
+        io.github.pirut.chunks3.TestTags.bind(registry, tags);
         var blocks=net.minecraft.core.registries.BuiltInRegistries.BLOCK;
-        previousBlockTags=blocks.getTags().collect(java.util.stream.Collectors.toMap(p -> p.getFirst(), p -> p.getSecond().stream().toList()));
+        previousBlockTags=io.github.pirut.chunks3.TestTags.current(blocks);
         var blockTags=new java.util.HashMap<>(previousBlockTags);
         blockTags.put(net.minecraft.tags.BlockTags.LEAVES,blocks.stream().filter(b -> b instanceof net.minecraft.world.level.block.LeavesBlock).map(blocks::wrapAsHolder).toList());
         blockTags.put(net.minecraft.tags.BlockTags.LOGS,java.util.List.of(blocks.wrapAsHolder(net.minecraft.world.level.block.Blocks.OAK_LOG)));
-        blocks.bindTags(blockTags);
+        io.github.pirut.chunks3.TestTags.bind(blocks, blockTags);
     }
     @org.junit.jupiter.api.AfterAll static void restoreTags() {
-        net.minecraft.core.registries.BuiltInRegistries.FLUID.bindTags(previousFluidTags);
-        net.minecraft.core.registries.BuiltInRegistries.BLOCK.bindTags(previousBlockTags);
+        io.github.pirut.chunks3.TestTags.bind(net.minecraft.core.registries.BuiltInRegistries.FLUID, previousFluidTags);
+        io.github.pirut.chunks3.TestTags.bind(net.minecraft.core.registries.BuiltInRegistries.BLOCK, previousBlockTags);
     }
     @SuppressWarnings("unchecked") private static FarFaces faces(LevelChunkSection[] sections) throws Exception {
         FarFaces result = new FarFaces();
