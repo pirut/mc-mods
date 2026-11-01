@@ -10,8 +10,9 @@ on the tracker's own page.
 You need no account, token or server for any of this, and nothing leaves the computer until the player
 submits it themselves.
 
-- **Minecraft** 1.21.1
-- **Loaders** NeoForge 21.1.256 or later, or Fabric Loader 0.16.14 or later with Fabric API
+- **Minecraft** 1.21.1, 1.21.4, 1.21.5, 1.21.8, 1.21.9 to 1.21.10, 1.21.11, 26.1 to 26.1.2 (NeoForge: 26.1.2), 26.2
+  and 26.3. Each has its own jar, named for its Minecraft version.
+- **Loaders** NeoForge (21.1.256 or later on 1.21.1), or Fabric Loader with Fabric API
 - **Side** client only. Servers don't need it.
 - **Needs** nothing else on NeoForge. On Fabric it needs Fabric API.
 
@@ -92,7 +93,7 @@ exists only once you press Submit there.
 The text you write and a table of facts always go in:
 
 - the mod and its version, Minecraft, the loader (NeoForge or Fabric), Bug Courier and how many mods are installed
-- OS, Java, CPU, GPU and OpenGL version, and how much memory Java may use
+- OS, Java, CPU, GPU and its graphics driver, and how much memory Java may use
 - any short facts the mod adds itself, such as a render setting
 
 These files each have a checkbox in the preview:
@@ -194,14 +195,16 @@ Anything else may change between versions.
 
 ## Building
 
-From the root of this repo, with Java 21:
+From the root of this repo, with Java 21 and 25 installed (Gradle finds the one each version needs):
 
 ```sh
-./gradlew :bug-courier:build                # jars in mods/bug-courier/{neoforge,fabric}/build/libs
-./gradlew :bug-courier:neoforge:runClient   # a dev game with the mod loaded (or :bug-courier:fabric:runClient)
+./gradlew :bug-courier:build                        # 1.21.1; jars in mods/bug-courier/{neoforge,fabric}/build/1.21.1/libs
+./gradlew :bug-courier:build -Pmc=26.3              # any other version in minecraft_targets
+./gradlew :bug-courier:neoforge:runClient -Pmc=26.3 # a dev game with the mod loaded (or :bug-courier:fabric:runClient)
 ```
 
-Everything except the loader glue lives in `common/`. The `io.bugcourier.core` package has no Minecraft classes,
+Everything except the loader glue lives in `common/`. What differs between Minecraft versions is kept small and
+apart, in folders listed in [`versions/README.md`](versions/README.md). The `io.bugcourier.core` package has no Minecraft classes,
 so its tests run on plain JUnit, once in each loader project.
 
 ## License

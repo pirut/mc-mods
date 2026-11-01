@@ -11,10 +11,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import io.bugcourier.platform.Platform;
+import io.bugcourier.client.version.Mc;
 
 /**
  * The browser handoff: save the zip, copy the full report, open the tracker's new-issue page filled in.
@@ -47,7 +47,7 @@ final class Sender {
         }
         mc.keyboardHandler.setClipboard(full);
         IssueBody.Prefilled prefilled = IssueBody.prefill(report, target.tracker(), target.labels(), name, libraryVersion());
-        Util.getPlatform().openUri(prefilled.uri());
+        Mc.openUri(prefilled.uri());
         COOLDOWN.mark(target.modId());
         BugCourier.LOG.info("Opened a bug report for {} at {} ({} character link)", target.modId(), target.tracker().displayName(),
                 prefilled.uri().toString().length());

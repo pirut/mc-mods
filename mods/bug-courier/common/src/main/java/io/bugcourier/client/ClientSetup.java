@@ -1,12 +1,12 @@
 package io.bugcourier.client;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import io.bugcourier.BugCourier;
 import io.bugcourier.platform.Platform;
+import io.bugcourier.client.version.Mc;
 import io.github.pirut.mcmods.lib.PropertiesFile;
 import java.nio.file.Path;
 import java.util.List;
@@ -29,7 +29,7 @@ import net.minecraft.network.chat.Component;
  * crash. Each loader's client entry point hooks these up to its own events.
  */
 public final class ClientSetup {
-    public static final KeyMapping OPEN = new KeyMapping("key.bugcourier.open", InputConstants.UNKNOWN.getValue(), "key.categories.bugcourier");
+    public static final KeyMapping OPEN = Mc.keyMapping("key.bugcourier.open");
     private static final DynamicCommandExceptionType UNKNOWN_MOD =
             new DynamicCommandExceptionType(id -> Component.translatable("bugcourier.command.unknown_mod", id));
     private static boolean crashChecked;
@@ -105,12 +105,11 @@ public final class ClientSetup {
             saveState(state);
             String text = Collectors.read(crash);
             if (text == null) return;
-            Minecraft mc = Minecraft.getInstance();
-            mc.tell(() -> {
-                var title = mc.screen;
-                mc.setScreen(new ConfirmScreen(yes -> {
-                    if (yes) mc.setScreen(new ReportScreen(title, null, text));
-                    else mc.setScreen(title);
+            Mc.later(() -> {
+                var title = Mc.screen();
+                Mc.setScreen(new ConfirmScreen(yes -> {
+                    if (yes) Mc.setScreen(new ReportScreen(title, null, text));
+                    else Mc.setScreen(title);
                 }, Component.translatable("bugcourier.crash.title"), Component.translatable("bugcourier.crash.body"),
                         Component.translatable("bugcourier.crash.report"), Component.translatable("bugcourier.crash.later")));
             });
