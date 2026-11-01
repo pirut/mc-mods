@@ -17,6 +17,7 @@ import io.github.pirut.seaworthy.hull.HullGrid;
 import io.github.pirut.seaworthy.hull.Lumps;
 import io.github.pirut.seaworthy.net.FloodSyncPayload;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -68,6 +69,8 @@ final class ShipHull {
     private static final int LEAK_SHOWN = 3;
     private static final double LEAK_RANGE = 32;
     private static final double LEAK_NEAR_SHIP = 128;
+    /** The speed at which a pump moves {@code pumpRate} blocks of water a second. */
+    private static final double PUMP_FULL_RPM = 256;
 
     private final SubLevel subLevel;
     private final Level level;
@@ -94,6 +97,7 @@ final class ShipHull {
     private long lastLumpBuild = Long.MIN_VALUE / 2;
     private boolean lumpsStale;
     private final Vector3d lumpUp = new Vector3d(0, 1, 0);
+    private int[] pumpsRunning = new int[0];
 
     private float[] sent = new float[0];
     private long lastSync;
@@ -178,7 +182,10 @@ final class ShipHull {
         Scan s = scan;
         if (s == null) return;
 
-        if (config.flooding() && now % FLOOD_INTERVAL == phase) flood(s, config, FLOOD_INTERVAL / 20.0);
+        if (config.flooding() && now % FLOOD_INTERVAL == phase) {
+            flood(s, config, FLOOD_INTERVAL / 20.0);
+            if (!client) pumpOut(s, config, FLOOD_INTERVAL / 20.0);
+        }
 
         if (client) leakEffects(s, now);
         long cooldown = s.grid().volume() > 2_000_000 ? 40 : 10;
@@ -267,6 +274,38 @@ final class ShipHull {
         float[] volumes = new float[s.volume().length];
         for (int k = 0; k < volumes.length; k++) volumes[k] = (float) s.volume()[k];
         FloodStore.of(server).put(subLevel.getUniqueId(), saveKeys(s), volumes);
+    }
+
+    /** Create pumps running on the ship empty the compartment they're in, or the wettest one they touch. */
+    private void pumpOut(Scan s, SeaworthyConfig config, double seconds) {
+        if (pumpsRunning.length != s.volume().length) pumpsRunning = new int[s.volume().length];
+        java.util.Arrays.fill(pumpsRunning, 0);
+        if (s.snapshot().pumps().length == 0) return;
+        HullGrid g = s.grid();
+        BlockPos o = s.origin();
+        int[] compartmentOf = s.result().compartmentOf();
+        for (long packed : s.snapshot().pumps()) {
+            BlockPos pos = BlockPos.of(packed);
+            float speed = CreateCompat.speed(level.getBlockEntity(pos));
+            if (speed == 0) continue;
+            int x = pos.getX() - o.getX(), y = pos.getY() - o.getY(), z = pos.getZ() - o.getZ();
+            int k = compartmentOf[g.index(x, y, z)];
+            if (k < 0) {
+                double wettest = -1;
+                for (Direction side : Direction.values()) {
+                    int nx = x + side.getStepX(), ny = y + side.getStepY(), nz = z + side.getStepZ();
+                    if (!g.inBounds(nx, ny, nz)) continue;
+                    int near = compartmentOf[g.index(nx, ny, nz)];
+                    if (near >= 0 && s.volume()[near] > wettest) {
+                        wettest = s.volume()[near];
+                        k = near;
+                    }
+                }
+            }
+            if (k < 0) continue;
+            pumpsRunning[k]++;
+            s.volume()[k] = Flooding.pump(s.volume()[k], config.pumpRate() * Math.abs(speed) / PUMP_FULL_RPM, seconds);
+        }
     }
 
     private void flood(Scan s, SeaworthyConfig config, double seconds) {
@@ -391,7 +430,7 @@ final class ShipHull {
     }
 
     /** One compartment, for telling a player about it. */
-    record CompartmentStatus(int size, double volume, int leaks) {
+    record CompartmentStatus(int size, double volume, int leaks, int pumps) {
     }
 
     /** The ship's compartments, or none if it hasn't been looked at yet. */
@@ -402,7 +441,7 @@ final class ShipHull {
         List<CompartmentStatus> status = new ArrayList<>(compartments.size());
         for (int k = 0; k < compartments.size(); k++) {
             Compartment c = compartments.get(k);
-            status.add(new CompartmentStatus(c.size(), s.volume()[k], leaks(s, c)));
+            status.add(new CompartmentStatus(c.size(), s.volume()[k], leaks(s, c), k < pumpsRunning.length ? pumpsRunning[k] : 0));
         }
         return status;
     }

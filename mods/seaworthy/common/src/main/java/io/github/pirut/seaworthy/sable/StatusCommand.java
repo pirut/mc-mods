@@ -69,7 +69,8 @@ public final class StatusCommand {
         int n = 1;
         for (ShipHull.CompartmentStatus c : compartments) {
             String leaks = c.leaks() == 0 ? "no leaks" : c.leaks() == 1 ? "1 leak" : c.leaks() + " leaks";
-            lines.add(String.format(Locale.ROOT, "  #%d: %.0f%% flooded (%.0f of %d), %s", n++, 100 * c.volume() / c.size(), c.volume(), c.size(), leaks));
+            String pumps = c.pumps() == 0 ? "" : c.pumps() == 1 ? ", 1 pump running" : ", " + c.pumps() + " pumps running";
+            lines.add(String.format(Locale.ROOT, "  #%d: %.0f%% flooded (%.0f of %d), %s%s", n++, 100 * c.volume() / c.size(), c.volume(), c.size(), leaks, pumps));
         }
         return lines;
     }

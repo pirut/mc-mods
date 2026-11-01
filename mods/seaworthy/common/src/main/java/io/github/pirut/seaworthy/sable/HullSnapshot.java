@@ -12,13 +12,17 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Copies a ship's blocks into a {@link HullGrid} on the game thread, so the analysis can run on another one.
  *
  * @param origin  plot position of grid cell (0, 0, 0): one block below and outside the ship's bounds
  * @param blocks  how many cells hold a block, to notice a ship whose chunks haven't arrived yet
+ * @param pumps   plot positions of the Create pumps on the ship
  */
-public record HullSnapshot(HullGrid grid, BlockPos origin, int blocks) {
+public record HullSnapshot(HullGrid grid, BlockPos origin, int blocks, long[] pumps) {
 
     /** A snapshot of the sub-level's blocks, or null if it has none or is bigger than {@code maxCells}. */
     public static @Nullable HullSnapshot take(SubLevel subLevel, long maxCells) {
@@ -34,6 +38,7 @@ public record HullSnapshot(HullGrid grid, BlockPos origin, int blocks) {
         HullGrid grid = new HullGrid(sx, sy, sz);
         BlockPos origin = new BlockPos(minX - 1, minY - 1, minZ - 1);
         int blocks = 0;
+        List<Long> pumps = new ArrayList<>();
 
         for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
             for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {
@@ -54,12 +59,13 @@ public record HullSnapshot(HullGrid grid, BlockPos origin, int blocks) {
                             grid.set(x - origin.getX(), y - origin.getY(), z - origin.getZ(),
                                     BlockFlags.flags(packed), BlockFlags.air(packed));
                             blocks++;
+                            if (CreateCompat.isPump(state)) pumps.add(BlockPos.asLong(x, y, z));
                         }
                     }
                 }
             }
         }
-        return new HullSnapshot(grid, origin, blocks);
+        return new HullSnapshot(grid, origin, blocks, pumps.stream().mapToLong(Long::longValue).toArray());
     }
 
     private static @Nullable LevelChunk chunk(Level level, @Nullable SubLevelContainer container, int cx, int cz) {

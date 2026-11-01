@@ -18,10 +18,11 @@ import java.util.Properties;
  *                     wider ones let the sea straight in. 0 turns patching off.
  * @param maxHullCells ships whose bounding box holds more blocks than this are left alone
  * @param maxLumps     how finely buoyancy is spread over a big hull (more is smoother, and costs more)
+ * @param pumpRate     blocks of water a second a Create mechanical pump empties at 256 RPM; slower pumps do less
  */
 public record SeaworthyConfig(boolean flooding, double floodSpeed, double buoyancy, int maxHoleWidth, long maxHullCells,
-                              int maxLumps) {
-    public static final SeaworthyConfig DEFAULT = new SeaworthyConfig(true, 1.0, 1.0, 2, 8_000_000L, 4096);
+                              int maxLumps, double pumpRate) {
+    public static final SeaworthyConfig DEFAULT = new SeaworthyConfig(true, 1.0, 1.0, 2, 8_000_000L, 4096, 16.0);
 
     public static SeaworthyConfig load(Path file) {
         Properties p = new Properties();
@@ -39,7 +40,8 @@ public record SeaworthyConfig(boolean flooding, double floodSpeed, double buoyan
                 clamp(num(p, "buoyancy", d.buoyancy), 0, 100),
                 (int) clamp(num(p, "maxHoleWidth", d.maxHoleWidth), 0, 4),
                 (long) clamp(num(p, "maxHullCells", d.maxHullCells), 1000, 64_000_000),
-                (int) clamp(num(p, "maxLumps", d.maxLumps), 64, 65536));
+                (int) clamp(num(p, "maxLumps", d.maxLumps), 64, 65536),
+                clamp(num(p, "pumpRate", d.pumpRate), 0, 10_000));
         if (!Files.exists(file)) c.save(file);
         return c;
     }
@@ -64,7 +66,9 @@ public record SeaworthyConfig(boolean flooding, double floodSpeed, double buoyan
                         maxHullCells=%d
                         # How finely buoyancy is spread over a big hull. More is smoother and costs more.
                         maxLumps=%d
-                        """.formatted(flooding, floodSpeed, buoyancy, maxHoleWidth, maxHullCells, maxLumps));
+                        # Blocks of water a second a Create mechanical pump empties at 256 RPM. Slower pumps do less.
+                        pumpRate=%s
+                        """.formatted(flooding, floodSpeed, buoyancy, maxHoleWidth, maxHullCells, maxLumps, pumpRate));
             }
         } catch (IOException e) {
             Seaworthy.LOG.warn("Couldn't write {}: {}", file, e.toString());

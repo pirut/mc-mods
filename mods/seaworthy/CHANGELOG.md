@@ -7,6 +7,7 @@
 - `/seaworthy status` shows how flooded each compartment is and how many leaks it has.
 - Floodwater lies flat in the world when a ship leans, and shifts to the low side, so a part-flooded ship lists further.
 - Holes taking on water show spray or bubbles, and you can hear them.
+- A running Create mechanical pump empties the compartment it sits in.
 
 ## 0.1.0-alpha.1
 

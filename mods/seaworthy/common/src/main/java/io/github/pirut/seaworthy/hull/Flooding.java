@@ -146,4 +146,9 @@ public final class Flooding {
         double h = (lo + hi) / 2;
         for (int w = 0; w < cells.length; w++) out[cells[w]] = (float) Math.max(0, Math.min(1, h - base[w]));
     }
+
+    /** The compartment's water volume after a pump has moved {@code rate} blocks a second out of it for {@code seconds}. */
+    public static double pump(double volume, double rate, double seconds) {
+        return Math.max(0, volume - rate * seconds);
+    }
 }

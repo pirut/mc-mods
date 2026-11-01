@@ -32,6 +32,12 @@ Needs Sable 2.0 or later. NeoForge and Fabric, Minecraft 1.21.1. Install it on t
   wider gap is open sea, so a ship missing half a wall fills up as fast as the water can get in.
 - Compartments are the separate dry spaces inside. Each floods on its own.
 
+## Pumps
+
+A running Create mechanical pump on a ship empties the compartment it's in, or the wettest one it touches, overboard.
+It needs no pipes, only rotation, and it can keep up with a leak if it's fast enough. Check on it with
+`/seaworthy status`. This needs Create, so there's nothing to place on Fabric without a Create port.
+
 ## Commands
 
 `/seaworthy status` lists each ship's compartments, how flooded they are, and how many leaks each has below the
@@ -49,6 +55,7 @@ waterline. Anyone can use it for ships within 128 blocks; operators see every sh
 | `maxHoleWidth` | `2` | Holes up to this wide flood over time; wider gaps let the sea straight in. 0 turns it off. |
 | `maxHullCells` | `8000000` | Ships with more blocks than this in their bounding box are left alone. |
 | `maxLumps` | `4096` | How finely buoyancy is spread over a big hull. |
+| `pumpRate` | `16` | Blocks of water a second a Create mechanical pump empties at 256 RPM. Slower pumps do less. |
 
 - When a ship is first put together on the water, the hole its blocks leave in the sea is told to fill back in, so the
   ship floats at its proper height right where it was built. This happens once per ship, not after every restart.

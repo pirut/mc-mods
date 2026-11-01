@@ -143,4 +143,11 @@ class FloodingTest {
         Flooding.wetness(g, c, v, 0, 1, 0, flat);
         for (int i : c.cells()) assertEquals(level[i], flat[i], 0.01, "upright, it's just the layers");
     }
+
+    @Test
+    void aPumpEmptiesWaterAndStopsAtNothing() {
+        assertEquals(90, Flooding.pump(100, 20, 0.5), 1e-9);
+        assertEquals(0, Flooding.pump(5, 20, 0.5), 1e-9);
+        assertEquals(100, Flooding.pump(100, 0, 0.5), 1e-9);
+    }
 }
