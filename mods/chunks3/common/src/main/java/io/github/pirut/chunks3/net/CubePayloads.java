@@ -91,7 +91,11 @@ public final class CubePayloads {
         public static final int MAX_KEYS = 512;
         public static final Type<FarRequest> TYPE = new Type<>(id("far_request"));
         public static final StreamCodec<RegistryFriendlyByteBuf, FarRequest> CODEC = StreamCodec.of(
+                //#if MC >= 1.21.11
+                //$$ (buf, p) -> buf.writeLongArray(p.keys), buf -> new FarRequest(buf.readLongArray()));
+                //#else
                 (buf, p) -> buf.writeLongArray(p.keys), buf -> new FarRequest(buf.readLongArray(null, MAX_KEYS)));
+                //#endif
         @Override public Type<FarRequest> type() { return TYPE; }
     }
 
@@ -151,5 +155,14 @@ public final class CubePayloads {
         registrar.toServer(FarRequest.TYPE, FarRequest.CODEC, (p, player) -> {
             if (CubicLevel.of(player.serverLevel()) instanceof ServerCubeWorld world) world.far().request(player, p.keys());
         });
+    }
+
+    /** A long array of at most {@link FarRequest#MAX_KEYS} entries, refused before it is allocated if longer. */
+    private static long[] readKeys(net.minecraft.network.FriendlyByteBuf buf) {
+        int count = buf.readVarInt();
+        if (count < 0 || count > FarRequest.MAX_KEYS) throw new io.netty.handler.codec.DecoderException("Too many far keys: " + count);
+        long[] keys = new long[count];
+        for (int i = 0; i < count; i++) keys[i] = buf.readLong();
+        return keys;
     }
 }

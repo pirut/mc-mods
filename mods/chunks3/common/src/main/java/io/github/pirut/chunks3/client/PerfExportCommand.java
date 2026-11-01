@@ -32,8 +32,13 @@ public final class PerfExportCommand {
                     String folder = zip.getParent().toAbsolutePath().toString();
                     message = Component.literal("Saved performance report " + zip.getFileName() + ". ")
                             .append(Component.literal("[Open folder]").withStyle(style -> style.withColor(ChatFormatting.AQUA).withUnderlined(true)
+                                    //#if MC >= 1.21.5
+                                    //$$ .withClickEvent(new ClickEvent.OpenFile(folder))
+                                    //$$ .withHoverEvent(new HoverEvent.ShowText(Component.literal(folder)))))
+                                    //#else
                                     .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, folder))
                                     .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(folder)))))
+                                    //#endif
                             .append(Component.literal(" Attach it to a bug report. It holds no names, places or addresses."));
                 } catch (NoSuchFileException none) {
                     message = Component.literal("No performance log yet. Play for a minute and try again.").withStyle(ChatFormatting.YELLOW);

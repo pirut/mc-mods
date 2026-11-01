@@ -24,3 +24,7 @@
 1.21.2 .changeDimension( .teleport(
 1.21.2 getDimensionTransition getTeleportTransition
 1.21.2 setDimensionTransition setTeleportTransition
+1.21.11 camera.getPosition() camera.position()
+1.21.11 view.getPosition() view.position()
+1.21.11 camera.getYRot() camera.yRot()
+1.21.2 .getTimer() .getDeltaTracker()
