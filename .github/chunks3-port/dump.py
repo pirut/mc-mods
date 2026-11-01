@@ -1,7 +1,7 @@
 # TEMPORARY: dumps the Minecraft classes Chunks3 uses, per version, for the port. Removed before merge.
 import json, os, re, subprocess, sys, urllib.request, zipfile
 out = sys.argv[1]; os.makedirs(out, exist_ok=True)
-VERSIONS = ["1.21.1", "1.21.4", "1.21.5", "1.21.8", "1.21.10", "1.21.11", "26.1.2", "26.2", "26.3"]
+VERSIONS = sys.argv[2].split(",") if len(sys.argv) > 2 else ["1.21.1", "1.21.11", "26.1.2", "26.3"]
 here = os.path.dirname(os.path.abspath(__file__))
 WANT = set()
 for l in open(os.path.join(here, "classes.txt")):
@@ -14,7 +14,8 @@ for c in WANT:
     for p in parts:
         acc.append(p)
         if p[:1].isupper(): outers.add(".".join(acc)); break
-def want(cls): return cls.split("$")[0] in outers
+EXTRA = [l.strip() for l in open(os.path.join(here, "extra.txt")) if l.strip() and not l.startswith("#")]
+def want(cls): return cls.split("$")[0] in outers or any(cls == e or cls.startswith(e + "$") or (e.endswith(".") and cls.startswith(e)) for e in EXTRA)
 def get(url):
     with urllib.request.urlopen(url, timeout=300) as r: return r.read()
 manifest = json.loads(get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
@@ -26,6 +27,7 @@ for ver in VERSIONS:
     if "client_mappings" in dl:
         text = get(dl["client_mappings"]["url"]).decode()
         keep, lines = False, []
+        open(f"{out}/{ver}-classes.txt", "w").write("\n".join(sorted(l.split(" -> ")[0] for l in text.splitlines() if l and not l.startswith(("#", " ")))) + "\n")
         for line in text.splitlines():
             if line.startswith("#"): continue
             if not line.startswith(" "):
@@ -41,6 +43,7 @@ for ver in VERSIONS:
         jar = f"/tmp/{ver}.jar"
         open(jar, "wb").write(get(dl["client"]["url"]))
         with zipfile.ZipFile(jar) as z:
+            open(f"{out}/{ver}-classes.txt", "w").write("\n".join(sorted(n[:-6].replace("/", ".") for n in z.namelist() if n.endswith(".class"))) + "\n")
             classes = sorted(n[:-6].replace("/", ".") for n in z.namelist() if n.endswith(".class") and want(n[:-6].replace("/", ".")))
         found = {c.split("$")[0] for c in classes}
         res = []
@@ -49,3 +52,12 @@ for ver in VERSIONS:
             res.append(r.stdout + r.stderr)
         open(f"{out}/{ver}.txt", "w").write("".join(res))
     open(f"{out}/{ver}-missing.txt", "w").write("\n".join(sorted(outers - found)) + "\n")
+
+# Iris and Sodium builds on Modrinth for each version and loader.
+for slug in ["iris", "sodium"]:
+    try:
+        vs = json.loads(get(f"https://api.modrinth.com/v2/project/{slug}/version"))
+        with open(f"{out}/modrinth-{slug}.txt", "w") as f:
+            for v in vs: f.write(f'{v["id"]} {v["version_number"]} {",".join(v["loaders"])} {",".join(v["game_versions"])}\n')
+    except Exception as e:
+        open(f"{out}/modrinth-{slug}.txt", "w").write(f"failed: {e}\n")

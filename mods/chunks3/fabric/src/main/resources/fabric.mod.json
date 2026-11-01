@@ -25,15 +25,15 @@
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",
     "minecraft": "${minecraft_version}",
-    "java": ">=21"
+    "java": ">=${java_version}"
   },
   "suggests": {
     "sodium": "*",
     "iris": "*"
   },
   "breaks": {
-    "sodium": "<0.8.12-beta.1",
-    "iris": "<1.8.14-beta.1"
+    "sodium": "${sodium_fabric_breaks}",
+    "iris": "${iris_fabric_breaks}"
   },
   "custom": {
     "lithium:options": {

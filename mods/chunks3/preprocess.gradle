@@ -1,0 +1,163 @@
+// Chunks3 builds for several Minecraft versions from one source tree. Its Java sources (common/ and the loader's
+// own) go through a small line preprocessor before they are compiled, so code that differs between versions sits
+// side by side in one file:
+//
+//     //#if MC >= 1.21.11
+//     //$$ Identifier id = Identifier.fromNamespaceAndPath(ns, path);
+//     //#else
+//     ResourceLocation id = ResourceLocation.fromNamespaceAndPath(ns, path);
+//     //#endif
+//
+// The files in the repo are written for the oldest version (1.21.1), so an IDE opened on the repo sees plain Java.
+// For the version being built, lines in the branch that holds are uncommented (their "//$$ " is removed) and lines in
+// the other branches are commented out. Conditions compare MC with a version (==, !=, <, <=, >, >=), or name the
+// loader (NEOFORGE, FABRIC), joined with && and ||, and negated with !. #if, #elseif, #else and #endif nest.
+//
+// versions/remap.txt renames whole words in the code that is kept, from a version on, for renames Mojang made
+// everywhere (ResourceLocation became Identifier in 1.21.11). Each line is "<version> <old> <new>".
+//
+// Applied by neoforge/build.gradle and fabric/build.gradle after their loader plugin.
+
+def modDir = project.parent.projectDir
+def loader = project.name
+def mc = minecraft_version.toString()
+
+def versionKey = { String v ->
+    def parts = v.split('\\.').collect { it.isInteger() ? it.toInteger() : 0 }
+    while (parts.size() < 3) parts << 0
+    // 1.21.11 -> 1.21.11; 26.1.2 -> 26.1.2: compare part by part.
+    parts[0] * 1_000_000L + parts[1] * 1_000L + parts[2]
+}
+def mcKey = versionKey(mc)
+
+def evalAtom = { String atom ->
+    atom = atom.trim()
+    boolean negate = false
+    while (atom.startsWith('!')) { negate = !negate; atom = atom.substring(1).trim() }
+    boolean result
+    def m = atom =~ /^MC\s*(==|!=|<=|>=|<|>)\s*([0-9][0-9.]*)$/
+    if (m.matches()) {
+        def other = versionKey(m.group(2))
+        switch (m.group(1)) {
+            case '==': result = mcKey == other; break
+            case '!=': result = mcKey != other; break
+            case '<': result = mcKey < other; break
+            case '<=': result = mcKey <= other; break
+            case '>': result = mcKey > other; break
+            default: result = mcKey >= other
+        }
+    } else if (atom == 'NEOFORGE' || atom == 'FABRIC') {
+        result = atom.toLowerCase() == loader
+    } else {
+        throw new GradleException("Chunks3 preprocessor: can't read the condition '$atom'")
+    }
+    negate ? !result : result
+}
+def evalCondition = { String cond ->
+    cond.split('\\|\\|').any { alt -> alt.split('&&').every { evalAtom(it) } }
+}
+
+// Whole-word renames that hold for this version, applied to the kept code.
+def remaps = [:]
+def remapFile = new File(modDir, 'versions/remap.txt')
+if (remapFile.exists()) {
+    remapFile.eachLine('UTF-8') { line ->
+        line = line.replaceAll(/#.*$/, '').trim()
+        if (!line) return
+        def parts = line.split(/\s+/)
+        if (parts.size() != 3) throw new GradleException("versions/remap.txt: can't read '$line'")
+        if (mcKey >= versionKey(parts[0])) remaps[parts[1]] = parts[2]
+    }
+}
+def remapPattern = remaps ? java.util.regex.Pattern.compile('(?<![\\w$])(' + remaps.keySet()
+        .sort { -it.length() }.collect { java.util.regex.Pattern.quote(it) }.join('|') + ')(?![\\w$])') : null
+
+def DIRECTIVE = ~/^\s*\/\/#(if|elseif|else|endif)\b\s*(.*)$/
+def DISABLED = ~/^(\s*)\/\/\$\$ ?(.*)$/
+
+ext.chunks3Preprocess = { String text, String fileName ->
+    def out = new StringBuilder()
+    // Each level: [active now, some branch already taken, parent active].
+    def stack = []
+    boolean active = true
+    int lineNo = 0
+    text.eachLine { line ->
+        lineNo++
+        def d = DIRECTIVE.matcher(line)
+        if (d.matches()) {
+            def kind = d.group(1)
+            def cond = d.group(2).trim()
+            switch (kind) {
+                case 'if':
+                    boolean take = active && evalCondition(cond)
+                    stack.push([active, take])
+                    active = take
+                    break
+                case 'elseif':
+                    if (!stack) throw new GradleException("$fileName:$lineNo: #elseif without #if")
+                    def top = stack.last()
+                    boolean take = top[0] && !top[1] && evalCondition(cond)
+                    if (take) top[1] = true
+                    active = take
+                    break
+                case 'else':
+                    if (!stack) throw new GradleException("$fileName:$lineNo: #else without #if")
+                    def top = stack.last()
+                    active = top[0] && !top[1]
+                    top[1] = true
+                    break
+                default:
+                    if (!stack) throw new GradleException("$fileName:$lineNo: #endif without #if")
+                    active = stack.pop()[0]
+            }
+            out << line << '\n'
+            return
+        }
+        def dis = DISABLED.matcher(line)
+        if (active) {
+            def code = dis.matches() ? dis.group(1) + dis.group(2) : line
+            if (remapPattern) code = remapPattern.matcher(code).replaceAll { r -> java.util.regex.Matcher.quoteReplacement(remaps[r.group(1)]) }
+            out << code << '\n'
+        } else if (dis.matches() || line.trim().isEmpty()) {
+            out << line << '\n'
+        } else {
+            def indent = (line =~ /^\s*/)[0]
+            out << indent << '//$$ ' << line.substring(indent.length()) << '\n'
+        }
+    }
+    if (stack) throw new GradleException("$fileName: #if without #endif")
+    out.toString()
+}
+
+// Each source set's Java folders (common/, the loader's own, and any extra_src for this version) are preprocessed
+// into build/<mc>/preprocessed/<set>, which is what gets compiled. Resources are used as they are.
+['main', 'test'].each { setName ->
+    def set = sourceSets.findByName(setName)
+    if (set == null) return
+    def roots = set.java.srcDirs.findAll { it.exists() }.toList()
+    def outDir = layout.buildDirectory.dir("preprocessed/$setName").get().asFile
+    def task = tasks.register(setName == 'main' ? 'preprocessJava' : "preprocess${setName.capitalize()}Java") {
+        inputs.property 'minecraft_version', mc
+        inputs.property 'loader', loader
+        inputs.property 'remaps', remaps.toString()
+        roots.each { inputs.dir(it).withPathSensitivity(PathSensitivity.RELATIVE) }
+        outputs.dir outDir
+        doLast {
+            project.delete(outDir)
+            def seen = [:]
+            roots.each { root ->
+                project.fileTree(root).matching { include '**/*.java' }.visit { f ->
+                    if (f.directory) return
+                    def rel = f.relativePath.pathString
+                    if (seen.containsKey(rel)) throw new GradleException("$rel is in both ${seen[rel]} and $root")
+                    seen[rel] = root
+                    def target = new File(outDir, rel)
+                    target.parentFile.mkdirs()
+                    target.setText(chunks3Preprocess(f.file.getText('UTF-8'), rel), 'UTF-8')
+                }
+            }
+        }
+    }
+    set.java.srcDirs = []
+    set.java.srcDir(project.files(outDir).builtBy(task))
+}

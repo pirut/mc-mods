@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 25 }
-      - run: python3 .github/chunks3-port/dump.py out
+      - run: python3 .github/chunks3-port/dump.py out 1.21.1,1.21.11,26.1.2,26.3
       - run: |
           cd out
           git init -q -b dump

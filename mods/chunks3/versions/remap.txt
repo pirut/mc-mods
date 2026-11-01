@@ -1,0 +1,4 @@
+# Whole-word renames Mojang made everywhere: from <version> on, <old> becomes <new> in the code that is kept.
+# See ../preprocess.gradle.
+1.21.11 ResourceLocation Identifier
+1.21.11 ResourceLocationArgument IdentifierArgument
