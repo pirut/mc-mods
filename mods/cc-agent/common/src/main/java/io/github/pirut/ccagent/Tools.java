@@ -555,9 +555,9 @@ public final class Tools implements McpServer.Backend {
                 : side == dan200.computercraft.core.computer.ComputerSide.RIGHT ? dan200.computercraft.api.turtle.TurtleSide.RIGHT : null;
             if (turtleSide != null && access.getUpgrade(turtleSide) != null) {
                 var upgrade = access.getUpgrade(turtleSide);
-                var item = upgrade.getCraftingItem();
+                var item = McItems.upgradeItem(upgrade);
                 var out = obj("connection", "turtle upgrade", "upgrade", upgrade.getAdjective().getString());
-                if (!item.isEmpty()) out.addProperty("upgrade_item", net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item.getItem()).toString());
+                if (item != null) out.addProperty("upgrade_item", item);
                 return out;
             }
         } else if (be instanceof dan200.computercraft.shared.computer.blocks.ComputerBlockEntity block) {
