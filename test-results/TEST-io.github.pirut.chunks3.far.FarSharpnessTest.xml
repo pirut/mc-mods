@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.far.FarSharpnessTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:53:49.354Z" hostname="runnervmnwato" time="0.921">
+  <properties/>
+  <testcase name="drawnColumnsTileTheCoarsestSquare()" classname="io.github.pirut.chunks3.far.FarSharpnessTest" time="0.13"/>
+  <testcase name="finerLevelsFillTheirParentsMiddle()" classname="io.github.pirut.chunks3.far.FarSharpnessTest" time="0.009"/>
+  <testcase name="sharpnessScalesTheHoleButNeverTheReach()" classname="io.github.pirut.chunks3.far.FarSharpnessTest" time="0.001"/>
+  <testcase name="refinedAboveTheFinestOnlyAsksTheColumnAboveIt()" classname="io.github.pirut.chunks3.far.FarSharpnessTest" time="0.307"/>
+  <testcase name="keptAnswersAsAroundGives()" classname="io.github.pirut.chunks3.far.FarSharpnessTest" time="0.471"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.client.FarPlacesTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:53:47.341Z" hostname="runnervmnwato" time="0.443">
+  <properties/>
+  <testcase name="answersAsTheMapDoes()" classname="io.github.pirut.chunks3.client.FarPlacesTest" time="0.442"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.net.SpawnInfoWireTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:53:53.698Z" hostname="runnervmnwato" time="0.015">
+  <properties/>
+  <testcase name="aDeathInTheVanillaRangeIsUnchanged()" classname="io.github.pirut.chunks3.net.SpawnInfoWireTest" time="0.012"/>
+  <testcase name="theGameReadsItsOwnJoinPacketBack()" classname="io.github.pirut.chunks3.net.SpawnInfoWireTest" time="0.001"/>
+  <testcase name="aDeathOnAHighMountainKeepsTheVanillaLayout()" classname="io.github.pirut.chunks3.net.SpawnInfoWireTest" time="0.0"/>
+  <testcase name="aDeathFarBelowKeepsTheVanillaLayout()" classname="io.github.pirut.chunks3.net.SpawnInfoWireTest" time="0.001"/>
+  <testcase name="otherPositionsStillCarryTheirTallY()" classname="io.github.pirut.chunks3.net.SpawnInfoWireTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

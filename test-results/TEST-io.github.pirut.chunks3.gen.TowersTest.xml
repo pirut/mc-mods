@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.gen.TowersTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:53:50.841Z" hostname="runnervmnwato" time="0.05">
+  <properties/>
+  <testcase name="aKnollAmongGulliesStaysAsItIs()" classname="io.github.pirut.chunks3.gen.TowersTest" time="0.03"/>
+  <testcase name="broadHillsStayAsTheyAre()" classname="io.github.pirut.chunks3.gen.TowersTest" time="0.011"/>
+  <testcase name="aNarrowHillOnAPlainBecomesATower()" classname="io.github.pirut.chunks3.gen.TowersTest" time="0.007"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

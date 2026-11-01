@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.CubeOffsetsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:53:42.748Z" hostname="runnervmnwato" time="0.123">
+  <properties/>
+  <testcase name="viewOrderKeepsEveryCube()" classname="io.github.pirut.chunks3.CubeOffsetsTest" time="0.12"/>
+  <testcase name="inViewComesBeforeBehind()" classname="io.github.pirut.chunks3.CubeOffsetsTest" time="0.001"/>
+  <testcase name="laterGrowsOnlyOutOfView()" classname="io.github.pirut.chunks3.CubeOffsetsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

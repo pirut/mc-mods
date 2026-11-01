@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.far.FarBuildsTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:53:48.750Z" hostname="runnervmnwato" time="0.598">
+  <properties/>
+  <testcase name="countsOnlySolidBlocksAboveTheGround()" classname="io.github.pirut.chunks3.far.FarBuildsTest" time="0.005"/>
+  <testcase name="readsCoarsestDropsUnsigned()" classname="io.github.pirut.chunks3.far.FarBuildsTest" time="0.562"/>
+  <testcase name="keepsSummariesAcrossReopening(Path)" classname="io.github.pirut.chunks3.far.FarBuildsTest" time="0.01"/>
+  <testcase name="standsATowerOnTheCoarseGround()" classname="io.github.pirut.chunks3.far.FarBuildsTest" time="0.012"/>
+  <testcase name="aHollowBuildingCountsAsItsWholeShape()" classname="io.github.pirut.chunks3.far.FarBuildsTest" time="0.004"/>
+  <testcase name="aSmallBuildStaysOutOfCoarseVoxels()" classname="io.github.pirut.chunks3.far.FarBuildsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

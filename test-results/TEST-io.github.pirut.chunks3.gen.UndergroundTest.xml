@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.gen.UndergroundTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:53:50.891Z" hostname="runnervmnwato" time="2.806">
+  <properties/>
+  <testcase name="undergroundHasVanillaLayersOresAndStructures()" classname="io.github.pirut.chunks3.gen.UndergroundTest" time="2.605"/>
+  <testcase name="cubesAreTheSameWhicheverGeneratorAndOrderMakesThem()" classname="io.github.pirut.chunks3.gen.UndergroundTest" time="0.056"/>
+  <system-out><![CDATA[cubes 2974, 0.87 ms each
+{amethyst_block=3429, amethyst_cluster=16, andesite=273262, azalea=12, big_dripleaf=2, big_dripleaf_stem=1, bone_block=37, brown_mushroom=114, budding_amethyst=309, cactus=74, calcite=4300, cave_vines=37, cave_vines_plant=96, chest=26, clay=4, coal_ore=41053, cobblestone=2961, copper_ore=24414, dandelion=442, dead_bush=186, deepslate_coal_ore=428, deepslate_copper_ore=1567, deepslate_diamond_ore=4963, deepslate_gold_ore=5680, deepslate_iron_ore=6242, deepslate_lapis_ore=3845, deepslate_redstone_ore=13406, diamond_ore=138, diorite=274614, dirt=173225, dripstone_block=13986, flowering_azalea=5, glow_lichen=4180, gold_ore=1105, granite=265058, grass_block=23705, gravel=272034, hanging_roots=11, iron_ore=13705, lapis_ore=2677, large_amethyst_bud=17, lava=388265, lilac=1109, lily_of_the_valley=579, medium_amethyst_bud=12, moss_block=411, moss_carpet=70, mossy_cobblestone=820, peony=921, pointed_dripstone=3474, poppy=572, pumpkin=8, raw_copper_block=20, red_mushroom=58, redstone_ore=647, rooted_dirt=12, rose_bush=989, sand=25796, sculk=8217, sculk_catalyst=5, sculk_sensor=43, sculk_shrieker=11, sculk_vein=740, short_grass=1763, small_amethyst_bud=17, small_dripleaf=10, smooth_basalt=5276, spawner=18, spore_blossom=2, sugar_cane=245, tall_grass=657, tuff=308224, water=251822}
+block entities 44, entities 0
+  {SpawnData:{entity:{id:"minecraft:skeleton"}},id:"minecraft:mob_spawner",x:1,y:2343,z:44}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-3215606823157357908L,id:"minecraft:chest",x:2,y:2343,z:46}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:197,y:2255,z:44}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:7866857685535998085L,id:"minecraft:chest",x:197,y:2255,z:46}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:7866857685535998116L,id:"minecraft:chest",x:198,y:2255,z:42}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:22,y:2303,z:56}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:6046742326103497291L,id:"minecraft:chest",x:20,y:2303,z:55}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:6046742326103497322L,id:"minecraft:chest",x:22,y:2303,z:59}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:139,y:2274,z:55}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:8609914112982398145L,id:"minecraft:chest",x:141,y:2274,z:54}
+  {SpawnData:{entity:{id:"minecraft:skeleton"}},id:"minecraft:mob_spawner",x:10,y:2250,z:91}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-405074283088211632L,id:"minecraft:chest",x:8,y:2250,z:93}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-3684706223130544852L,id:"minecraft:chest",x:58,y:2264,z:94}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:58,y:2264,z:96}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-3684706223130544821L,id:"minecraft:chest",x:60,y:2264,z:97}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:14,y:2279,z:123}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-4724857128327736629L,id:"minecraft:chest",x:12,y:2279,z:122}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-4724857128327736598L,id:"minecraft:chest",x:12,y:2279,z:121}
+  {SpawnData:{entity:{id:"minecraft:spider"}},id:"minecraft:mob_spawner",x:77,y:2254,z:131}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-4238600932384723196L,id:"minecraft:chest",x:78,y:2254,z:133}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:61,y:2347,z:146}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-4635529455228053704L,id:"minecraft:chest",x:63,y:2347,z:149}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-4635529455228053673L,id:"minecraft:chest",x:58,y:2347,z:147}
+  {SpawnData:{entity:{id:"minecraft:skeleton"}},id:"minecraft:mob_spawner",x:176,y:2358,z:173}
+  {SpawnData:{entity:{id:"minecraft:skeleton"}},id:"minecraft:mob_spawner",x:3,y:2280,z:200}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-2886007191845692977L,id:"minecraft:chest",x:5,y:2280,z:199}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:67,y:2303,z:196}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:6094778138577547116L,id:"minecraft:chest",x:66,y:2303,z:194}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:83,y:2304,z:192}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-7774478813702655574L,id:"minecraft:chest",x:82,y:2304,z:194}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-7774478813702655543L,id:"minecraft:chest",x:83,y:2304,z:194}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:99,y:2259,z:195}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:8095174090513366309L,id:"minecraft:chest",x:100,y:2259,z:198}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:8095174090513366340L,id:"minecraft:chest",x:98,y:2259,z:198}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:5862278319048444813L,id:"minecraft:chest",x:147,y:2336,z:221}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-4120354455998344125L,id:"minecraft:chest",x:7,y:2283,z:238}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:149,y:2336,z:224}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:5862278319048444844L,id:"minecraft:chest",x:148,y:2336,z:227}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:185,y:2363,z:237}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-7457156850621490593L,id:"minecraft:chest",x:187,y:2363,z:239}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:-7457156850621490562L,id:"minecraft:chest",x:187,y:2363,z:238}
+  {SpawnData:{entity:{id:"minecraft:spider"}},id:"minecraft:mob_spawner",x:6,y:2283,z:240}
+  {SpawnData:{entity:{id:"minecraft:zombie"}},id:"minecraft:mob_spawner",x:46,y:2228,z:248}
+  {LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:2585006422964730747L,id:"minecraft:chest",x:47,y:2228,z:250}
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

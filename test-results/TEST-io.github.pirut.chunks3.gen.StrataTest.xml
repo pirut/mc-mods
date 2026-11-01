@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.gen.StrataTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-01T17:53:50.801Z" hostname="runnervmnwato" time="0.04">
+  <properties/>
+  <testcase name="terracesKeepTheGroundInOrderAndTheFormationsInPlace()" classname="io.github.pirut.chunks3.gen.StrataTest" time="0.029"/>
+  <testcase name="datumFollowsThePlateauAndFallsAwayFromIt()" classname="io.github.pirut.chunks3.gen.StrataTest" time="0.003"/>
+  <testcase name="onlyLayeredCountryHasLayers()" classname="io.github.pirut.chunks3.gen.StrataTest" time="0.003"/>
+  <testcase name="rockFollowsTheSequenceDownToTheBasement()" classname="io.github.pirut.chunks3.gen.StrataTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.pirut.chunks3.client.FarSurfaceMeshOracleTest" tests="7" skipped="1" failures="0" errors="0" timestamp="2026-11-01T17:53:47.810Z" hostname="runnervmnwato" time="0.833">
+  <properties/>
+  <testcase name="editedNeighbourPacketsKeepPackedNormalsAndSkirtsForPreparedAndConvertedOwnColumns()" classname="io.github.pirut.chunks3.client.FarSurfaceMeshOracleTest" time="0.058"/>
+  <testcase name="runCandidateOmissionOnlySkipsFullyHiddenOpaqueInteriorVoxels()" classname="io.github.pirut.chunks3.client.FarSurfaceMeshOracleTest" time="0.017"/>
+  <testcase name="directRunMesherComponentBench()" classname="io.github.pirut.chunks3.client.FarSurfaceMeshOracleTest" time="0.006">
+    <skipped message="org.opentest4j.TestAbortedException: Assumption failed: assumption is not true" type="org.opentest4j.TestAbortedException">org.opentest4j.TestAbortedException: Assumption failed: assumption is not true
+	at org.junit.jupiter.api.Assumptions.throwAssumptionFailed(Assumptions.java:316)
+	at org.junit.jupiter.api.Assumptions.assumeTrue(Assumptions.java:115)
+	at org.junit.jupiter.api.Assumptions.assumeTrue(Assumptions.java:66)
+	at TRANSFORMER/chunks3@0.2.0-alpha.1/io.github.pirut.chunks3.client.FarSurfaceMeshOracleTest.directRunMesherComponentBench(FarSurfaceMeshOracleTest.java:202)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+</skipped>
+  </testcase>
+  <testcase name="editedPacketDirectConsumerUsesExactDenseFallback()" classname="io.github.pirut.chunks3.client.FarSurfaceMeshOracleTest" time="0.15"/>
+  <testcase name="convertedDenseCavesOverhangsPartialWaterAndStatePropertiesKeepPackedOutputExact()" classname="io.github.pirut.chunks3.client.FarSurfaceMeshOracleTest" time="0.014"/>
+  <testcase name="legacyAdapterKeepsPackedFacesOrderingNormalsCoverageHaloAndWaterAttributes()" classname="io.github.pirut.chunks3.client.FarSurfaceMeshOracleTest" time="0.504"/>
+  <testcase name="differentNeighbourDropsBottomsAndBiomesKeepDirectFacesAndLookTableExact()" classname="io.github.pirut.chunks3.client.FarSurfaceMeshOracleTest" time="0.078"/>
+  <system-out><![CDATA[RUN_CANDIDATE_ORACLE omittedHiddenVoxels=1698
+SURFACE_MESH_ORACLE jobs=12 quads=14555 waterParts=12 directRunAndLegacy ordering/attributes exact
+[17:53:48] [Test worker/WARN] [minecraft/MappedRegistry]: Not all defined tags for registry ResourceKey[minecraft:root / minecraft:fluid] are present in data pack: minecraft:water
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

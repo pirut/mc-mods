@@ -1,0 +1,87 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.8.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Configuration on demand is an incubating feature.
+> Task :build-logic:extractPluginRequests
+> Task :build-logic:generatePluginAdapters
+> Task :build-logic:compileJava
+> Task :build-logic:compileGroovy NO-SOURCE
+> Task :build-logic:compileGroovyPlugins
+> Task :build-logic:pluginDescriptors
+> Task :build-logic:processResources
+> Task :build-logic:classes
+> Task :build-logic:jar
+
+> Configure project :chunks3:neoforge
+Creating Minecraft artifacts without recompilation.
+
+> Task :chunks3:neoforge:createMinecraftArtifacts
+Loaded 131 artifacts from /home/runner/work/mc-mods/mc-mods/mods/chunks3/neoforge/build/1.21.1/tmp/createMinecraftArtifacts/nfrt_artifact_manifest.properties
+[1m*** Started working on [4mdownloadJson[23;0m[23;0m
+ [1m[92m✓[23;0m Completed [4mdownloadJson[23;0m in 0.05s
+[1m*** Started working on [4mdownloadClientMappings[23;0m[23;0m
+[1m*** Started working on [4mdownloadClient[23;0m[23;0m
+[1m*** Started working on [4mdownloadServer[23;0m[23;0m
+ [1m[92m✓[23;0m Completed [4mdownloadServer[23;0m in 0.03s
+ [1m[92m✓[23;0m Completed [4mdownloadClientMappings[23;0m in 0.04s
+ [1m[92m✓[23;0m Completed [4mdownloadClient[23;0m in 0.04s
+[1m*** Started working on [4mmergeMappings[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mmergeMappings[23;0m in 0.00s
+[1m*** Started working on [4mstripClient[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mstripClient[23;0m in 0.00s
+[1m*** Started working on [4mextractServer[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mextractServer[23;0m in 0.00s
+[1m*** Started working on [4mstripServer[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mstripServer[23;0m in 0.00s
+[1m*** Started working on [4mmerge[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mmerge[23;0m in 0.00s
+[1m*** Started working on [4mrename[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mrename[23;0m in 0.00s
+[1m*** Started working on [4mbinaryPatch[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mbinaryPatch[23;0m in 0.00s
+[1m*** Started working on [4mcopyUnpatchedClasses[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mcopyUnpatchedClasses[23;0m in 0.00s
+[1m*** Started working on [4mapplyDevTransforms[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mapplyDevTransforms[23;0m in 0.00s
+[1m*** Started working on [4mbinaryWithNeoForge[23;0m[23;0m
+ [1m[92m♻[23;0m Used cache of [4mbinaryWithNeoForge[23;0m in 0.00s
+Total runtime: 2.23s
+
+
+> Task :chunks3:neoforge:preprocessJava
+
+> Task :chunks3:neoforge:compileJava
+/home/runner/work/mc-mods/mc-mods/mods/chunks3/neoforge/build/1.21.1/preprocessed/main/io/github/pirut/chunks3/neoforge/NeoForgeEvents.java:35: warning: [removal] bus() in EventBusSubscriber has been deprecated and marked for removal
+    @EventBusSubscriber(modid = Cubic.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
+                                              ^
+/home/runner/work/mc-mods/mc-mods/mods/chunks3/neoforge/build/1.21.1/preprocessed/main/io/github/pirut/chunks3/neoforge/NeoForgeEvents.java:35: warning: [removal] Bus in EventBusSubscriber has been deprecated and marked for removal
+    @EventBusSubscriber(modid = Cubic.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
+                                                                      ^
+/home/runner/work/mc-mods/mc-mods/mods/chunks3/neoforge/build/1.21.1/preprocessed/main/io/github/pirut/chunks3/neoforge/NeoForgeClientEvents.java:34: warning: [removal] bus() in EventBusSubscriber has been deprecated and marked for removal
+    @EventBusSubscriber(modid = Cubic.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+                                                                   ^
+/home/runner/work/mc-mods/mc-mods/mods/chunks3/neoforge/build/1.21.1/preprocessed/main/io/github/pirut/chunks3/neoforge/NeoForgeClientEvents.java:34: warning: [removal] Bus in EventBusSubscriber has been deprecated and marked for removal
+    @EventBusSubscriber(modid = Cubic.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+                                                                                           ^
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+4 warnings
+
+> Task :chunks3:neoforge:processResources
+> Task :chunks3:neoforge:classes
+> Task :chunks3:neoforge:preprocessTestJava
+
+> Task :chunks3:neoforge:compileTestJava
+Note: /home/runner/work/mc-mods/mc-mods/mods/chunks3/neoforge/build/1.21.1/preprocessed/test/io/github/pirut/chunks3/net/SpawnInfoWireTest.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1793555537609.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/mc-mods/mc-mods/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.8.2/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 34s
+13 actionable tasks: 13 executed
