@@ -29,6 +29,11 @@ jobs:
           A="--console=plain --continue -I .github/chunks3-port/maxerrs.gradle -Pmc=${{ matrix.mc }}"
           ./gradlew $A --configure-on-demand :chunks3:neoforge:compileJava :chunks3:neoforge:compileTestJava > out/neoforge.log 2>&1
           ./gradlew $A --stacktrace :chunks3:fabric:compileJava > out/fabric.log 2>&1
+          ./gradlew $A :chunks3:neoforge:test :chunks3:example:compileJava > out/test.log 2>&1
+          B=mods/chunks3/neoforge/build/${{ matrix.mc }}
+          cp $B/resources/main/chunks3.mixins.json out/ 2>/dev/null
+          mkdir -p out/test-results && cp -r $B/test-results/test/*.xml out/test-results/ 2>/dev/null
+          find mods/chunks3/neoforge -name '*.log' -path '*run*' -exec cp {} out/ \; 2>/dev/null
           git rev-parse HEAD > out/commit.txt
           true
       - run: |
