@@ -335,7 +335,11 @@ public final class ServerCubeWorld extends CubeWorld {
     }
 
     /** Keeps a chunk {@link #chunkLoaded} asked for loading; lapses five seconds after it was last asked for. */
+    //#if MC >= 1.21.5
+    //$$ // 1.21.5 made ticket types a registry, filled before mods load; the portal ticket (15 seconds) does instead.
+    //#else
     private static final TicketType<ChunkPos> LANDING = TicketType.create("earthplatform_landing", Comparator.comparingLong(ChunkPos::toLong), 100);
+    //#endif
 
     /**
      * Server thread. Whether the chunk holding a block column is loaded; until it is, asks the workers for it and those
@@ -347,7 +351,11 @@ public final class ServerCubeWorld extends CubeWorld {
         int cx = SectionPos.blockToSectionCoord(x), cz = SectionPos.blockToSectionCoord(z);
         if (server.getChunkSource().getChunkNow(cx, cz) != null) return true;
         ChunkPos chunk = new ChunkPos(cx, cz);
+        //#if MC >= 1.21.5
+        //$$ server.getChunkSource().addTicketWithRadius(TicketType.PORTAL, chunk, 1);
+        //#else
         server.getChunkSource().addRegionTicket(LANDING, chunk, 1, chunk);
+        //#endif
         return false;
     }
 
@@ -432,7 +440,7 @@ public final class ServerCubeWorld extends CubeWorld {
         if (result.surface) unpopulated.add(result.key);
         if (!result.entities.isEmpty()) unplacedEntities.put(result.key, result.entities);
         for (CompoundTag tag : result.blockEntities) {
-            BlockPos pos = BlockEntity.getPosFromTag(tag);
+            BlockPos pos = new BlockPos(Nbt.getInt(tag, "x"), Nbt.getInt(tag, "y"), Nbt.getInt(tag, "z"));
             BlockEntity entity = BlockEntity.loadStatic(pos, cube.get(pos.getX(), pos.getY(), pos.getZ()), tag, server.registryAccess());
             if (entity != null) cube.blockEntities.put(pos, entity);
         }
@@ -468,7 +476,7 @@ public final class ServerCubeWorld extends CubeWorld {
         var host = server.getServer();
         List<ServerPlayer> told = new ArrayList<>();
         for (ServerPlayer player : host.getPlayerList().getPlayers()) {
-            if (player.hasPermissions(2) || host.isSingleplayerOwner(player.getGameProfile())) told.add(player);
+            if (Mc.isOperator(player) || Mc.isSingleplayerOwner(host, player)) told.add(player);
         }
         if (told.isEmpty()) return;
         for (Component note; (note = problemNotes.poll()) != null; ) {
@@ -930,7 +938,7 @@ public final class ServerCubeWorld extends CubeWorld {
             if (cube == null) { unplacedEntities.remove(key); continue; }
             if (!Mc.canSpawnIn(server, new ChunkPos(cube.x, cube.z))) continue;
             for (CompoundTag tag : unplacedEntities.remove(key)) {
-                Entity entity = EntityType.loadEntityRecursive(tag, server, e -> e);
+                Entity entity = Mc.loadEntity(tag, server);
                 if (entity != null) server.addFreshEntity(entity);
             }
             cube.markUnsaved();

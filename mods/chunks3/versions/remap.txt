@@ -21,3 +21,4 @@
 1.21.11 .location() .identifier()
 1.21.2 PostDimensionTransition PostTeleportTransition
 1.21.2 postDimensionTransition postTeleportTransition
+1.21.2 .changeDimension( .teleport(

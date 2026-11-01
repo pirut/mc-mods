@@ -113,6 +113,28 @@ public final class Mc {
         //#endif
     }
 
+    // --- Entities.
+
+    /** An entity (with its passengers) from its saved tag, or null. */
+    public static net.minecraft.world.entity.Entity loadEntity(net.minecraft.nbt.CompoundTag tag, ServerLevel level) {
+        //#if MC >= 1.21.2
+        //$$ return net.minecraft.world.entity.EntityType.loadEntityRecursive(tag, level, net.minecraft.world.entity.EntitySpawnReason.LOAD, e -> e);
+        //#else
+        return net.minecraft.world.entity.EntityType.loadEntityRecursive(tag, level, e -> e);
+        //#endif
+    }
+
+    /** An entity saved as a passenger would be (with its own passengers), or null if it is not saved so. */
+    public static net.minecraft.nbt.CompoundTag saveEntity(net.minecraft.world.entity.Entity entity) {
+        //#if MC >= 1.21.6
+        //$$ var out = net.minecraft.world.level.storage.TagValueOutput.createWithContext(net.minecraft.util.ProblemReporter.DISCARDING, entity.registryAccess());
+        //$$ return entity.saveAsPassenger(out) ? out.buildResult() : null;
+        //#else
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        return entity.saveAsPassenger(tag) ? tag : null;
+        //#endif
+    }
+
     // --- Players and the server.
 
     public static MinecraftServer server(ServerPlayer player) {

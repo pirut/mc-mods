@@ -354,8 +354,13 @@ final class VanillaStructures {
         Frame frame = new Frame(deep || relative ? host.floor(chunk.getMiddleBlockX(), chunk.getMiddleBlockZ()) - 64 : 0, deep);
         StructureStart made;
         synchronized (STARTS) {
+            //#if MC >= 1.21.2
+            //$$ made = structure.generate(level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.STRUCTURE).wrapAsHolder(structure), level.dimension(),
+                    //$$ level.registryAccess(), frame, frame.getBiomeSource(), randomState, level.getStructureManager(), seed, chunk, 0, frame.heights, biome -> true);
+            //#else
             made = structure.generate(level.registryAccess(), frame, frame.getBiomeSource(), randomState, level.getStructureManager(),
                     seed, chunk, 0, frame.heights, biome -> true);
+            //#endif
         }
         if (!made.isValid()) return null;
         return frame.shift == 0 ? made : moved(made, chunk, frame.shift);
@@ -530,8 +535,13 @@ final class VanillaStructures {
                 ? biome -> biome.is(BiomeTags.IS_OCEAN) : structure.biomes()::contains;
         // Vanilla lays starts out on one thread; some piece builders (strongholds) keep static state
         synchronized (STARTS) {
+            //#if MC >= 1.21.2
+            //$$ return structure.generate(entry.structure(), level.dimension(), level.registryAccess(), frame, frame.getBiomeSource(), randomState, level.getStructureManager(),
+                    //$$ seed, chunk, 0, frame.heights, biomes);
+            //#else
             return structure.generate(level.registryAccess(), frame, frame.getBiomeSource(), randomState, level.getStructureManager(),
                     seed, chunk, 0, frame.heights, biomes);
+            //#endif
         }
     }
 
@@ -743,7 +753,11 @@ final class VanillaStructures {
         @Override public int getMinY() { return minY; }
         @Override public int getGenDepth() { return height; }
         @Override protected MapCodec<? extends ChunkGenerator> codec() { throw new UnsupportedOperationException("cubic structure frame"); }
+        //#if MC >= 1.21.2
+        //$$ @Override public void applyCarvers(WorldGenRegion region, long seed, RandomState random, BiomeManager biomes, StructureManager structures, ChunkAccess chunk) {}
+        //#else
         @Override public void applyCarvers(WorldGenRegion region, long seed, RandomState random, BiomeManager biomes, StructureManager structures, ChunkAccess chunk, GenerationStep.Carving step) {}
+        //#endif
         @Override public void buildSurface(WorldGenRegion region, StructureManager structures, RandomState random, ChunkAccess chunk) {}
         @Override public void spawnOriginalMobs(WorldGenRegion region) {}
         @Override public CompletableFuture<ChunkAccess> fillFromNoise(Blender blender, RandomState random, StructureManager structures, ChunkAccess chunk) {

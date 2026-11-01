@@ -56,6 +56,24 @@ public final class Nbt {
     public static CompoundTag getCompound(ListTag list, int i) { return list.getCompound(i); }
     //#endif
 
+    /** Saves a block position under {@code key} (as three ints, the same on every version). */
+    public static void putPos(CompoundTag tag, String key, net.minecraft.core.BlockPos pos) {
+        //#if MC >= 1.21.5
+        //$$ tag.store(key, net.minecraft.core.BlockPos.CODEC, pos);
+        //#else
+        tag.put(key, net.minecraft.nbt.NbtUtils.writeBlockPos(pos));
+        //#endif
+    }
+
+    /** The block position saved under {@code key}, or null. */
+    public static net.minecraft.core.BlockPos getPos(CompoundTag tag, String key) {
+        //#if MC >= 1.21.5
+        //$$ return tag.read(key, net.minecraft.core.BlockPos.CODEC).orElse(null);
+        //#else
+        return net.minecraft.nbt.NbtUtils.readBlockPos(tag, key).orElse(null);
+        //#endif
+    }
+
     /** Whether {@code tag} has an entry {@code key} of {@code type} (a {@code Tag.TAG_*}). */
     public static boolean has(CompoundTag tag, String key, int type) {
         Tag entry = tag.get(key);

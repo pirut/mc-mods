@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.compat;
 
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.Cubic;
 import io.github.pirut.chunks3.CubicLevel;
 import io.github.pirut.chunks3.ServerCubeWorld;
@@ -47,7 +48,7 @@ public final class PortalReturn {
     /** Call when an entity uses a portal in {@code level}; remembers it if that is the Earth world. */
     public static boolean rememberIfEarth(String key, ServerLevel level, Entity entity, BlockPos portal) {
         if (!Cubic.isCubic(level.dimension())) return false;
-        Platform.INSTANCE.persistentData(entity).put(key, NbtUtils.writeBlockPos(portal));
+        Nbt.putPos(Platform.INSTANCE.persistentData(entity), key, portal);
         return true;
     }
 
@@ -57,7 +58,7 @@ public final class PortalReturn {
         CompoundTag data = Platform.INSTANCE.persistentData(entity);
         if (!data.contains(key)) return null;
         ServerLevel earth = Cubic.home() == null ? null : level.getServer().getLevel(Cubic.home());
-        BlockPos portal = NbtUtils.readBlockPos(data, key).orElse(null);
+        BlockPos portal = Nbt.getPos(data, key);
         data.remove(key);
         if (earth == null || portal == null || !(CubicLevel.of(earth) instanceof ServerCubeWorld cubes)) return null;
         cubes.loadAround(portal);

@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.gen;
 
+import io.github.pirut.chunks3.mc.Mc;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.ArrayList;
@@ -204,8 +205,8 @@ final class StructureLevel implements WorldGenLevel {
 
     @Override public boolean addFreshEntity(Entity entity) {
         if (shift != 0) entity.setPos(entity.getX(), entity.getY() + shift, entity.getZ());
-        CompoundTag tag = new CompoundTag();
-        if (entity.saveAsPassenger(tag)) entities.add(tag);
+        CompoundTag tag = Mc.saveEntity(entity);
+        if (tag != null) entities.add(tag);
         return true;
     }
     @Override public <T extends Entity> List<T> getEntities(EntityTypeTest<Entity, T> test, AABB box, Predicate<? super T> predicate) { return Collections.emptyList(); }
@@ -236,7 +237,11 @@ final class StructureLevel implements WorldGenLevel {
     @Override public FeatureFlagSet enabledFeatures() { return level.enabledFeatures(); }
     @Override public LevelData getLevelData() { return level.getLevelData(); }
     @Override public DifficultyInstance getCurrentDifficultyAt(BlockPos pos) {
+        //#if MC >= 1.21.11
+        //$$ return new DifficultyInstance(level.getDifficulty(), level.getDayTime(), 0L, level.getMoonBrightness(pos));
+        //#else
         return new DifficultyInstance(level.getDifficulty(), level.getDayTime(), 0L, level.getMoonBrightness());
+        //#endif
     }
     @Override public MinecraftServer getServer() { return level.getServer(); }
     @Override public ChunkSource getChunkSource() { return level.getChunkSource(); }
@@ -246,8 +251,16 @@ final class StructureLevel implements WorldGenLevel {
     @Override public long nextSubTickCount() { return 0; }
     @Override public LevelTickAccess<net.minecraft.world.level.block.Block> getBlockTicks() { return BlackholeTickAccess.emptyLevelList(); }
     @Override public LevelTickAccess<Fluid> getFluidTicks() { return BlackholeTickAccess.emptyLevelList(); }
+    //#if MC >= 1.21.2
+    //$$ @Override public void playSound(@Nullable net.minecraft.world.entity.Entity player, BlockPos pos, SoundEvent sound, SoundSource source, float volume, float pitch) {}
+    //#else
     @Override public void playSound(@Nullable Player player, BlockPos pos, SoundEvent sound, SoundSource source, float volume, float pitch) {}
+    //#endif
     @Override public void addParticle(ParticleOptions particle, double x, double y, double z, double dx, double dy, double dz) {}
+    //#if MC >= 1.21.2
+    //$$ @Override public void levelEvent(@Nullable net.minecraft.world.entity.Entity player, int type, BlockPos pos, int data) {}
+    //#else
     @Override public void levelEvent(@Nullable Player player, int type, BlockPos pos, int data) {}
+    //#endif
     @Override public void gameEvent(Holder<GameEvent> event, Vec3 pos, GameEvent.Context context) {}
 }

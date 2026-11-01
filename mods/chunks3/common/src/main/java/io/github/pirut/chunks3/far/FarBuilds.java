@@ -236,7 +236,11 @@ public final class FarBuilds {
             if (Nbt.getInt(root, "v") != VERSION) return;
             List<BlockState> palette = new ArrayList<>();
             for (Tag entry : Nbt.getList(root, "palette", Tag.TAG_COMPOUND)) {
+                //#if MC >= 1.21.2
+                //$$ palette.add(NbtUtils.readBlockState(BuiltInRegistries.BLOCK, (CompoundTag) entry));
+                //#else
                 palette.add(NbtUtils.readBlockState(BuiltInRegistries.BLOCK.asLookup(), (CompoundTag) entry));
+                //#endif
             }
             for (Tag entry : Nbt.getList(root, "cubes", Tag.TAG_COMPOUND)) {
                 CompoundTag cube = (CompoundTag) entry;
