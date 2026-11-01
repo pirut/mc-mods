@@ -30,6 +30,8 @@ import org.joml.Vector3d;
 public final class FloodRenderer {
     private static final ResourceLocation WATER = ResourceLocation.withDefaultNamespace("block/water_still");
     private static final int ALPHA = 0xC0;
+    /** How upright a ship has to be (the cosine of its lean) for its water to be drawn. */
+    private static final double MIN_UPRIGHT = 0.25;
 
     private FloodRenderer() {
     }
@@ -69,15 +71,18 @@ public final class FloodRenderer {
             at.set(centre.x, centre.y, centre.z);
             int tint = BiomeColors.getAverageWaterColor(level, at);
             int r = (tint >> 16) & 0xFF, g = (tint >> 8) & 0xFF, b = tint & 0xFF;
-            pose.orientation().transform(up.set(0, 1, 0));
-            float nx = (float) up.x, ny = (float) up.y, nz = (float) up.z;
+            // The water lies flat in the world, not the ship. On its side or upside down it has no simple surface to draw.
+            pose.orientation().transformInverse(up.set(0, 1, 0));
+            if (up.y < MIN_UPRIGHT) return;
+            double sx = -up.x / up.y, sz = -up.z / up.y;
+            float nx = 0, ny = 1, nz = 0;
 
-            hull.surface((x, y, z, height) -> {
+            hull.surface((x, y, z, height, cx, cz, ceiling) -> {
                 double top = y + height;
-                pose.transformPosition(corner[0].set(x, top, z));
-                pose.transformPosition(corner[1].set(x, top, z + 1));
-                pose.transformPosition(corner[2].set(x + 1, top, z + 1));
-                pose.transformPosition(corner[3].set(x + 1, top, z));
+                pose.transformPosition(corner[0].set(x, flat(top, x, z, cx, cz, sx, sz, ceiling), z));
+                pose.transformPosition(corner[1].set(x, flat(top, x, z + 1, cx, cz, sx, sz, ceiling), z + 1));
+                pose.transformPosition(corner[2].set(x + 1, flat(top, x + 1, z + 1, cx, cz, sx, sz, ceiling), z + 1));
+                pose.transformPosition(corner[3].set(x + 1, flat(top, x + 1, z, cx, cz, sx, sz, ceiling), z));
                 Vector3d c0 = corner[0];
                 at.set(c0.x + 0.5 * (corner[2].x - c0.x), c0.y + 0.5 * (corner[2].y - c0.y) + 0.5, c0.z + 0.5 * (corner[2].z - c0.z));
                 int light = LevelRenderer.getLightColor(level, at);
@@ -90,6 +95,11 @@ public final class FloodRenderer {
             });
         });
         if (any[0]) buffers.endBatch(type);
+    }
+
+    /** The height in the ship of the flat water at (x, z), given its height at the middle of the surface. */
+    private static double flat(double top, double x, double z, double cx, double cz, double sx, double sz, int ceiling) {
+        return Math.min(ceiling, top + sx * (x - cx) + sz * (z - cz));
     }
 
     private static void vertex(VertexConsumer out, Matrix4f m, Vector3d p, Vec3 cam, int r, int g, int b,

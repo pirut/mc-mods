@@ -54,6 +54,10 @@ final class ShipHull {
     private static final double DISCHARGE = 0.6;
     /** The water is written to the level's saved data this often (ticks), and when the ship unloads. */
     private static final int SAVE_INTERVAL = 100;
+    /** How far the world's up can move (about 2 degrees) before the water is laid flat again. */
+    private static final double RELEVEL = 0.035;
+    /** Compartments bigger than this stay in level layers, to keep regathering them cheap. */
+    private static final int MAX_TILTED_CELLS = 200_000;
 
     private final SubLevel subLevel;
     private final Level level;
@@ -79,6 +83,7 @@ final class ShipHull {
     private double[] lumpVolume = new double[0];
     private long lastLumpBuild = Long.MIN_VALUE / 2;
     private boolean lumpsStale;
+    private final Vector3d lumpUp = new Vector3d(0, 1, 0);
 
     private float[] sent = new float[0];
     private long lastSync;
@@ -298,14 +303,28 @@ final class ShipHull {
         for (int k = 0; k < lumpVolume.length; k++) {
             if (Math.abs(s.volume()[k] - lumpVolume[k]) >= 1) return true;
         }
+        for (double volume : lumpVolume) {
+            if (volume > 0) return worldUp().distanceSquared(lumpUp) > RELEVEL * RELEVEL;
+        }
         return false;
     }
 
-    /** Regathers the hull's dry air and floodwater for buoyancy, with the filling layer spread evenly. */
+    /** Which way is up in the world, in the ship's frame. */
+    private Vector3d worldUp() {
+        return subLevel.logicalPose().orientation().transformInverse(new Vector3d(0, 1, 0));
+    }
+
+    /** Regathers the hull's dry air and floodwater for buoyancy, with the water lying flat in the world. */
     private void rebuildLumps(Scan s, SeaworthyConfig config) {
         float[] wet = new float[s.grid().volume()];
         List<Compartment> compartments = s.result().compartments();
-        for (int k = 0; k < compartments.size(); k++) Flooding.wetness(compartments.get(k), s.volume()[k], wet);
+        Vector3d up = worldUp();
+        lumpUp.set(up);
+        for (int k = 0; k < compartments.size(); k++) {
+            Compartment c = compartments.get(k);
+            if (c.size() > MAX_TILTED_CELLS) Flooding.wetness(c, s.volume()[k], wet);
+            else Flooding.wetness(s.grid(), c, s.volume()[k], up.x, up.y, up.z, wet);
+        }
         lumpVolume = s.volume().clone();
         lumps = Lumps.build(s.result(), wet, Lumps.sizeFor(s.result().interiorCells(), config.maxLumps()));
     }
@@ -397,9 +416,13 @@ final class ShipHull {
         return leaks;
     }
 
-    /** Called with each cell whose top is the water's surface, in plot coordinates, and how far up it the water is. */
+    /**
+     * Called with each cell whose top is the water's surface, in plot coordinates, and how far up it the water is. The
+     * middle of the compartment's surface ({@code cx}, {@code cz}) and the top of the compartment ({@code ceiling})
+     * are for laying the water flat in the world when the ship leans.
+     */
     interface SurfaceSink {
-        void cell(int x, int y, int z, float height);
+        void cell(int x, int y, int z, float height, double cx, double cz, int ceiling);
     }
 
     /** The water's surface in every compartment that has some, for drawing it (on the player's game). */
@@ -414,10 +437,23 @@ final class ShipHull {
         for (int k = 0; k < all.length; k++) {
             Flooding.Surface top = all[k];
             if (top.fixed().length == 0 && top.live().length == 0) continue;
-            for (int i : top.fixed()) sink.cell(o.getX() + g.x(i), o.getY() + g.y(i), o.getZ() + g.z(i), 1f);
+            Compartment c = compartments.get(k);
+            double sumX = 0, sumZ = 0;
+            for (int i : top.fixed()) {
+                sumX += g.x(i) + 0.5;
+                sumZ += g.z(i) + 0.5;
+            }
+            for (int i : top.live()) {
+                sumX += g.x(i) + 0.5;
+                sumZ += g.z(i) + 0.5;
+            }
+            int n = top.fixed().length + top.live().length;
+            double cx = o.getX() + sumX / n, cz = o.getZ() + sumZ / n;
+            int ceiling = o.getY() + c.groupY()[c.groupY().length - 1] + 1;
+            for (int i : top.fixed()) sink.cell(o.getX() + g.x(i), o.getY() + g.y(i), o.getZ() + g.z(i), 1f, cx, cz, ceiling);
             if (top.live().length == 0) continue;
-            float h = (float) Math.max(0.02, top.liveHeight(compartments.get(k), s.volume()[k]));
-            for (int i : top.live()) sink.cell(o.getX() + g.x(i), o.getY() + g.y(i), o.getZ() + g.z(i), h);
+            float h = (float) Math.max(0.02, top.liveHeight(c, s.volume()[k]));
+            for (int i : top.live()) sink.cell(o.getX() + g.x(i), o.getY() + g.y(i), o.getZ() + g.z(i), h, cx, cz, ceiling);
         }
     }
 

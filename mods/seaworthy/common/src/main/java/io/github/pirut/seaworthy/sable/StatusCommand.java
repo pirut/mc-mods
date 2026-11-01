@@ -65,7 +65,7 @@ public final class StatusCommand {
         List<ShipHull.CompartmentStatus> compartments = hull.status();
         List<String> lines = new ArrayList<>();
         lines.add(String.format(Locale.ROOT, "Ship %s at %.0f %.0f %.0f: %s", name, pose.position().x(), pose.position().y(),
-                pose.position().z(), compartments.isEmpty() ? "no compartments" : compartments.size() == 1 ? "1 compartment" : compartments.size() + " compartments"));
+                pose.position().z(), compartments.isEmpty() ? "open to the sea" : compartments.size() == 1 ? "1 compartment" : compartments.size() + " compartments"));
         int n = 1;
         for (ShipHull.CompartmentStatus c : compartments) {
             String leaks = c.leaks() == 0 ? "no leaks" : c.leaks() == 1 ? "1 leak" : c.leaks() + " leaks";

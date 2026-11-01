@@ -5,6 +5,7 @@
 - Floodwater is saved with the world, so a flooded ship is still flooded after a restart.
 - The sea only refills under a ship the first time it is seen, and big ships are done over several ticks.
 - `/seaworthy status` shows how flooded each compartment is and how many leaks it has.
+- Floodwater lies flat in the world when a ship leans, and shifts to the low side, so a part-flooded ship lists further.
 
 ## 0.1.0-alpha.1
 

@@ -12,7 +12,9 @@ Watertight hulls for [Create Aeronautics](https://modrinth.com/mod/create-aerona
   keep the water in one compartment until it tops them. The water inside is drawn at its real level, rising
   smoothly and evenly across the floor (the sea's own surface is at sea level, so Seaworthy draws the top of the
   water inside itself). Patch the hole and the leak stops. Lift the ship out of the
-  water and it drains. The water is saved with the world, so a flooded ship stays flooded across a restart.
+  water and it drains. The water is saved with the world, so a flooded ship stays flooded across a restart. Water
+  lies flat in the world when the ship leans, and shifts to the low side. In a flooded room you are under water and
+  run out of breath.
 - **Big ships.** The hull is worked out off the game thread, and buoyancy is spread over at most a few thousand
   points however big the ship gets.
 
@@ -53,7 +55,9 @@ waterline. Anyone can use it for ships within 128 blocks; operators see every sh
 
 ## Known limits
 
-- Water inside a hull levels off along the ship's own up, not the world's. That's right for a ship floating upright
-  and slightly off for one heeled far over.
+- Floodwater is only drawn on a ship that's leaning less than about 75 degrees. On its side or upside down the water
+  is still there, but isn't drawn.
+- A part-filled top layer of water counts as dry for players until it's full: full layers are real water, and the
+  part-filled one is like air.
 - Hiding the water is drawn by Sable, with its "sub-level water occlusion" client option (on by default). If water
   still shows inside your hulls with a rendering mod installed, that is Sable's renderer.

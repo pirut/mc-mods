@@ -114,4 +114,36 @@ public final class Flooding {
             for (int w = start; w < end; w++) out[cells[w]] = f;
         }
     }
+
+    /**
+     * Like {@link #wetness(Compartment, double, float[])} for a ship that isn't level: the water lies flat in the world
+     * rather than in the ship, so more of it is on the low side. The plane is found so the volume stays the same.
+     *
+     * @param ux the world's up in the ship's frame, x (also {@code uy}, {@code uz}); a ship near or past its side just
+     *           gets the level answer, since the water has no simple shape then
+     */
+    public static void wetness(HullGrid g, Compartment c, double volume, double ux, double uy, double uz, float[] out) {
+        int[] cells = c.cells();
+        if (uy < 0.25 || volume <= 0 || volume >= cells.length) {
+            wetness(c, volume, out);
+            return;
+        }
+        double sx = -ux / uy, sz = -uz / uy;
+        double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
+        double[] base = new double[cells.length];
+        for (int w = 0; w < cells.length; w++) {
+            int i = cells[w];
+            base[w] = g.y(i) - sx * (g.x(i) + 0.5) - sz * (g.z(i) + 0.5);
+            lo = Math.min(lo, base[w]);
+            hi = Math.max(hi, base[w] + 1);
+        }
+        for (int step = 0; step < 24; step++) {
+            double h = (lo + hi) / 2, sum = 0;
+            for (double b : base) sum += Math.max(0, Math.min(1, h - b));
+            if (sum < volume) lo = h;
+            else hi = h;
+        }
+        double h = (lo + hi) / 2;
+        for (int w = 0; w < cells.length; w++) out[cells[w]] = (float) Math.max(0, Math.min(1, h - base[w]));
+    }
 }

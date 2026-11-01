@@ -117,4 +117,30 @@ class FloodingTest {
         for (int i = 0; i < l.count; i++) air += l.air[i];
         assertEquals(27f, air, 1e-4);
     }
+
+    @Test
+    void waterLiesFlatInTheWorldWhenTheShipLeans() {
+        HullGrid g = new HullGrid(13, 9, 9);
+        HullAnalysisTest.box(g, 1, 1, 1, 11, 7, 7, true);
+        Compartment c = HullAnalysis.analyze(g, 2).compartments().get(0);
+        double v = c.size() * 0.3;
+        float[] wet = new float[g.volume()];
+        // Leaning 15 degrees: the world's up tips towards +x in the ship's frame, so -x is the low side.
+        double ux = Math.sin(Math.toRadians(15)), uy = Math.cos(Math.toRadians(15));
+        Flooding.wetness(g, c, v, ux, uy, 0, wet);
+        double sum = 0, low = 0, high = 0;
+        for (int i : c.cells()) {
+            sum += wet[i];
+            if (g.x(i) <= 3) low += wet[i];
+            if (g.x(i) >= 9) high += wet[i];
+        }
+        assertEquals(v, sum, 0.01, "the same water, wherever it lies");
+        assertTrue(low > high * 1.5, "more on the low side: " + low + " vs " + high);
+
+        float[] level = new float[g.volume()];
+        float[] flat = new float[g.volume()];
+        Flooding.wetness(c, v, level);
+        Flooding.wetness(g, c, v, 0, 1, 0, flat);
+        for (int i : c.cells()) assertEquals(level[i], flat[i], 0.01, "upright, it's just the layers");
+    }
 }
