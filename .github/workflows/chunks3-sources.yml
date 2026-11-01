@@ -27,9 +27,9 @@ jobs:
           ./gradlew --console=plain -Pmc=1.21.11 --configure-on-demand :chunks3:fabric:dependencies --configuration compileClasspath > deps.log 2>&1 || tail -40 deps.log
           mkdir -p out
           find ~/.gradle .gradle mods/chunks3 -name 'minecraft-merged*.jar' -o -name 'minecraft-common*.jar' -o -name 'minecraft-clientOnly*.jar' 2>/dev/null | grep -v sources | tee jars.txt
-          JAR=$(grep merged jars.txt | head -1)
+          JAR=$(realpath $(grep 'minecraftMaven/net/minecraft/minecraft-merged/1.21.11' jars.txt | head -1))
           curl -sSL -o vf.jar https://repo1.maven.org/maven2/org/vineflower/vineflower/1.11.1/vineflower-1.11.1.jar
-          mkdir -p in && cd in && unzip -q "../$JAR" 'net/minecraft/*' 'com/mojang/*' && zip -qr ../in.jar . && cd ..
+          mkdir -p in && cd in && unzip -q "$JAR" 'net/minecraft/*' 'com/mojang/*' && zip -qr ../in.jar . && cd ..
           java -Xmx6g -jar vf.jar -dgs=1 -log=WARN in.jar out/ > vf.log 2>&1 || tail -20 vf.log
           cd out
           du -sh . > SIZE
