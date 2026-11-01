@@ -14,7 +14,7 @@ Watertight hulls for [Create Aeronautics](https://modrinth.com/mod/create-aerona
   water inside itself). Patch the hole and the leak stops. Lift the ship out of the
   water and it drains. The water is saved with the world, so a flooded ship stays flooded across a restart. Water
   lies flat in the world when the ship leans, and shifts to the low side. In a flooded room you are under water and
-  run out of breath.
+  run out of breath. Holes taking on water show spray or bubbles, and you can hear them.
 - **Big ships.** The hull is worked out off the game thread, and buoyancy is spread over at most a few thousand
   points however big the ship gets.
 

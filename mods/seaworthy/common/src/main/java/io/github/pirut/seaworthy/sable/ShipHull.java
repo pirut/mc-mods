@@ -17,6 +17,9 @@ import io.github.pirut.seaworthy.hull.HullGrid;
 import io.github.pirut.seaworthy.hull.Lumps;
 import io.github.pirut.seaworthy.net.FloodSyncPayload;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
@@ -58,6 +61,13 @@ final class ShipHull {
     private static final double RELEVEL = 0.035;
     /** Compartments bigger than this stay in level layers, to keep regathering them cheap. */
     private static final int MAX_TILTED_CELLS = 200_000;
+    private static final int LEAK_INTERVAL = 5;
+    private static final int LEAK_SOUND_INTERVAL = 40;
+    /** Holes looked at, and holes shown, per compartment per interval, so a shattered hull can't flood the screen. */
+    private static final int LEAK_CHECKS = 256;
+    private static final int LEAK_SHOWN = 3;
+    private static final double LEAK_RANGE = 32;
+    private static final double LEAK_NEAR_SHIP = 128;
 
     private final SubLevel subLevel;
     private final Level level;
@@ -170,6 +180,7 @@ final class ShipHull {
 
         if (config.flooding() && now % FLOOD_INTERVAL == phase) flood(s, config, FLOOD_INTERVAL / 20.0);
 
+        if (client) leakEffects(s, now);
         long cooldown = s.grid().volume() > 2_000_000 ? 40 : 10;
         if (regionsStale || wetChanged(s)) {
             if (regionsStale || now - lastRegionBuild >= cooldown) {
@@ -396,22 +407,66 @@ final class ShipHull {
         return status;
     }
 
-    /** How many of the compartment's breaches have water outside them, above the hole. */
-    private int leaks(Scan s, Compartment c) {
-        Pose3dc pose = subLevel.logicalPose();
+    /** The water's height outside a breach, in the ship's frame relative to its grid, or NaN if it's dry there. */
+    private double outsideSurface(Scan s, Breach breach) {
         HullGrid g = s.grid();
         BlockPos o = s.origin();
-        Vector3d p = new Vector3d();
+        Pose3dc pose = subLevel.logicalPose();
+        int cell = breach.outside();
+        Vector3d p = new Vector3d(o.getX() + g.x(cell) + 0.5, o.getY() + g.y(cell) + 0.5, o.getZ() + g.z(cell) + 0.5);
+        p = pose.transformPosition(p);
+        double surface = probe.surfaceAbove(p.x, p.y, p.z);
+        if (Double.isNaN(surface)) return Double.NaN;
+        p.y = surface;
+        p = pose.transformPositionInverse(p);
+        return p.y - o.getY();
+    }
+
+    /** Spray or bubbles at the holes where water is coming in, and the sound of it, on the player's game. */
+    private void leakEffects(Scan s, long now) {
+        if (now % LEAK_INTERVAL != phase % LEAK_INTERVAL) return;
+        var position = subLevel.logicalPose().position();
+        if (level.getNearestPlayer(position.x(), position.y(), position.z(), LEAK_NEAR_SHIP, entity -> true) == null) return;
+        HullGrid g = s.grid();
+        BlockPos o = s.origin();
+        Pose3dc pose = subLevel.logicalPose();
+        List<Compartment> compartments = s.result().compartments();
+        for (int k = 0; k < compartments.size(); k++) {
+            Compartment c = compartments.get(k);
+            List<Breach> breaches = c.breaches();
+            if (breaches.isEmpty()) continue;
+            double inside = c.surface(s.volume()[k]);
+            int start = level.random.nextInt(breaches.size());
+            int shown = 0;
+            for (int j = 0; j < Math.min(breaches.size(), LEAK_CHECKS) && shown < LEAK_SHOWN; j++) {
+                Breach breach = breaches.get((start + j) % breaches.size());
+                double outside = outsideSurface(s, breach);
+                double hole = breach.height(g);
+                if (Double.isNaN(outside) || outside <= hole || outside <= inside) continue;
+                int in = breach.inside(), out = breach.outside();
+                Vector3d p = pose.transformPosition(new Vector3d(o.getX() + (g.x(in) + g.x(out)) / 2.0 + 0.5,
+                        o.getY() + (g.y(in) + g.y(out)) / 2.0 + 0.5, o.getZ() + (g.z(in) + g.z(out)) / 2.0 + 0.5));
+                if (level.getNearestPlayer(p.x, p.y, p.z, LEAK_RANGE, entity -> true) == null) return;
+                boolean underWater = inside > hole + 0.1;
+                for (int n = 0; n < 3; n++) {
+                    double dx = (level.random.nextDouble() - 0.5) * 0.5, dz = (level.random.nextDouble() - 0.5) * 0.5;
+                    level.addParticle(underWater ? ParticleTypes.BUBBLE : ParticleTypes.SPLASH, p.x + dx, p.y, p.z + dz, dx * 0.2, 0.15, dz * 0.2);
+                }
+                if (shown == 0 && now % LEAK_SOUND_INTERVAL < LEAK_INTERVAL) {
+                    level.playLocalSound(p.x, p.y, p.z, SoundEvents.WATER_AMBIENT, SoundSource.BLOCKS, 0.4f, 1.2f, false);
+                }
+                shown++;
+            }
+        }
+    }
+
+    /** How many of the compartment's breaches have water outside them, above the hole. */
+    private int leaks(Scan s, Compartment c) {
+        HullGrid g = s.grid();
         int leaks = 0;
         for (Breach breach : c.breaches()) {
-            int cell = breach.outside();
-            p.set(o.getX() + g.x(cell) + 0.5, o.getY() + g.y(cell) + 0.5, o.getZ() + g.z(cell) + 0.5);
-            p = pose.transformPosition(p);
-            double surface = probe.surfaceAbove(p.x, p.y, p.z);
-            if (Double.isNaN(surface)) continue;
-            p.y = surface;
-            p = pose.transformPositionInverse(p);
-            if (p.y - o.getY() > breach.height(g)) leaks++;
+            double outside = outsideSurface(s, breach);
+            if (!Double.isNaN(outside) && outside > breach.height(g)) leaks++;
         }
         return leaks;
     }
