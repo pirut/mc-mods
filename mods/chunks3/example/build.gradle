@@ -1,0 +1,49 @@
+// A tiny NeoForge mod showing how to use Chunks3: one cubic dimension made by the library's Highlands test
+// generator. ./gradlew :chunks3:example:runClient, make a world and type /cubes enter. Never released.
+plugins {
+    // Puts the build-logic's ModDevGradle on the classpath without applying the mod conventions (this is not a
+    // released mod and has its own id).
+    id 'mcmods.neoforge' apply false
+}
+apply plugin: 'net.neoforged.moddev'
+
+evaluationDependsOn(':chunks3:neoforge')
+def library = project(':chunks3:neoforge')
+version = mod_version
+base.archivesName = 'chunks3example'
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+repositories {
+    maven { url = 'https://maven.parchmentmc.org'; content { includeGroup 'org.parchmentmc.data' } }
+    mavenCentral()
+}
+
+dependencies {
+    implementation library
+}
+
+tasks.named('processResources', ProcessResources) {
+    def props = [neo_version_range: neo_version_range, minecraft_version_range: minecraft_version_range,
+                 loader_version_range: findProperty('loader_version_range') ?: '[1,)', mod_version: mod_version,
+                 mod_license: mod_license]
+    inputs.properties props
+    filesMatching('META-INF/neoforge.mods.toml') { expand props }
+}
+
+neoForge {
+    version = neo_version
+    parchment {
+        mappingsVersion = parchment_mappings_version
+        minecraftVersion = parchment_minecraft_version
+    }
+    runs {
+        client { client(); jvmArgument '-Xmx4G' }
+        server { server(); programArgument '--nogui' }
+    }
+    mods {
+        chunks3example { sourceSet sourceSets.main }
+        chunks3 { sourceSet library.sourceSets.main }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }

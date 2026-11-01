@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "Cubic chunks for other mods to build on. A mod registers a dimension with Chunks3 and its blocks then live in 16-block cubes from Y -16,384 to 16,383, with vanilla mining, building, light, mobs and redstone working on top and a distant terrain renderer that works with Sodium and Iris shader packs. Adds nothing to the game by itself.",
+  "authors": ["JR Bussard"],
+  "contact": {
+    "homepage": "https://github.com/pirut/mc-mods/tree/main/mods/chunks3",
+    "sources": "https://github.com/pirut/mc-mods/tree/main/mods/chunks3",
+    "issues": "https://github.com/pirut/mc-mods/issues"
+  },
+  "license": "${mod_license}",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["io.github.pirut.chunks3.fabric.Chunks3Fabric"],
+    "client": ["io.github.pirut.chunks3.fabric.Chunks3FabricClient"]
+  },
+  "mixins": [
+    "${mod_id}.mixins.json",
+    "${mod_id}.fabric.mixins.json",
+    "${mod_id}.axiom.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "java": ">=21"
+  },
+  "suggests": {
+    "sodium": "*",
+    "iris": "*"
+  },
+  "breaks": {
+    "sodium": "<0.8.12-beta.1",
+    "iris": "<1.8.14-beta.1"
+  },
+  "custom": {
+    "lithium:options": {
+      "mixin.entity.collisions.movement": false,
+      "mixin.entity.collisions.intersection": false,
+      "mixin.world.raycast": false,
+      "mixin.world.explosions.block_raycast": false,
+      "mixin.world.inline_block_access": false,
+      "mixin.block.redstone_wire": false,
+      "mixin.block_pattern_matching": false,
+      "mixin.ai.non_poi_block_search": false,
+      "mixin.ai.poi.fast_portals": false,
+      "mixin.entity.inactive_navigations": false,
+      "mixin.util.block_entity_retrieval": false
+    }
+  }
+}

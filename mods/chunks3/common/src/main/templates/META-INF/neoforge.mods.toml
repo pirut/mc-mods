@@ -1,0 +1,50 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+issueTrackerURL="https://github.com/pirut/chunks3/issues"
+
+# Lithium speeds these up by reading LevelChunk sections directly. In a cubic dimension those carrier
+# chunks are 16 blocks tall and empty (blocks live in cubes), so players and mobs fell through the
+# ground, and rays, explosions, redstone, hoppers and block patterns would miss blocks. Lithium reads
+# this from every installed mod and turns these features off; everything else in Lithium stays on.
+"lithium:options" = { "mixin.entity.collisions.movement" = false, "mixin.entity.collisions.intersection" = false, "mixin.world.raycast" = false, "mixin.world.explosions.block_raycast" = false, "mixin.world.inline_block_access" = false, "mixin.block.redstone_wire" = false, "mixin.block_pattern_matching" = false, "mixin.ai.non_poi_block_search" = false, "mixin.ai.poi.fast_portals" = false, "mixin.entity.inactive_navigations" = false, "mixin.util.block_entity_retrieval" = false }
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+displayURL="https://github.com/pirut/chunks3"
+authors="pirut"
+credits='''Split out of Earth Platform (https://github.com/pirut/earth-platform). Distant terrain is built on ideas from Voxy by Cortex (MCRcortex) and Distant Horizons by James Seibel and contributors: the voxel level pyramid, detail by on-screen size, compact GPU faces and Voxy's shader-pack interface from Voxy; exact far heights and server-built far terrain from Distant Horizons. It contains no code from either.'''
+description='''
+Cubic chunks for NeoForge: a library that lets a mod's dimensions keep their blocks in 16-block cubes from Y -16384 to 16383, with vanilla gameplay on top and its own distant terrain renderer. It adds nothing to the game by itself.
+'''
+
+[[mixins]]
+config="${mod_id}.mixins.json"
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="${neo_version_range}"
+    ordering="NONE"
+    side="BOTH"
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+# Separately installed and optional. Any 0.8.x Sodium and 1.8.x Iris from the tested ones up loads.
+[[dependencies.${mod_id}]]
+    modId="iris"
+    type="optional"
+    versionRange="[1.8.14-beta.1+mc1.21.1,1.9)"
+    ordering="AFTER"
+    side="CLIENT"
+[[dependencies.${mod_id}]]
+    modId="sodium"
+    type="optional"
+    versionRange="[0.8.12-beta.1+mc1.21.1,0.9)"
+    ordering="AFTER"
+    side="CLIENT"
