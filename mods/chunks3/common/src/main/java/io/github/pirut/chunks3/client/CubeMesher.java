@@ -18,12 +18,20 @@ import java.util.Map;
 import javax.annotation.Nullable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
+//#if MC >= 1.21.11
+//$$ import net.minecraft.client.renderer.block.model.BlockModelPart;
+//$$ import net.minecraft.client.renderer.block.model.BlockStateModel;
+//$$ import net.minecraft.client.renderer.block.model.SingleVariant;
+//$$ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+//$$ import net.minecraft.client.resources.model.WeightedVariants;
+//#else
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.block.BlockRenderDispatcher;
-import net.minecraft.client.renderer.block.ModelBlockRenderer;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.SimpleBakedModel;
 import net.minecraft.client.resources.model.WeightedBakedModel;
+//#endif
+import net.minecraft.client.renderer.block.BlockRenderDispatcher;
+import net.minecraft.client.renderer.block.ModelBlockRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
@@ -49,7 +57,13 @@ import net.minecraft.world.level.material.FluidState;
  */
 final class CubeMesher {
     private static final int SIZE = CubeLight.SIZE;
+    //#if MC >= 1.21.11
+    //$$ static final List<ChunkSectionLayer> LAYERS = List.of(ChunkSectionLayer.values());
+    //$$ static final ChunkSectionLayer TRANSLUCENT = ChunkSectionLayer.TRANSLUCENT, TRIPWIRE = ChunkSectionLayer.TRIPWIRE;
+    //#else
     static final List<RenderType> LAYERS = RenderType.chunkBufferLayers();
+    static final RenderType TRANSLUCENT = RenderType.translucent(), TRIPWIRE = RenderType.tripwire();
+    //#endif
     private static final BlockState AIR = Blocks.AIR.defaultBlockState();
 
     /** Copied on the client thread; the worker only reads it. */
@@ -102,6 +116,9 @@ final class CubeMesher {
         final PoseStack pose = new PoseStack(), placed = new PoseStack();
         final RandomSource random = RandomSource.create(), plain = RandomSource.createNewThreadLocalInstance();
         final BlockPos.MutableBlockPos near = new BlockPos.MutableBlockPos();
+        //#if MC >= 1.21.11
+        //$$ final List<BlockModelPart> parts = new java.util.ArrayList<>(), layerParts = new java.util.ArrayList<>();
+        //#endif
     }
 
     static Built build(Snapshot s) {
@@ -204,6 +221,44 @@ final class CubeMesher {
                     ShaderBlocks.end(builder, s.shaderIds);
                 }
                 if (state.getRenderShape() != RenderShape.MODEL) continue;
+                //#if MC >= 1.21.11
+                //$$ BlockStateModel model = blocks.getBlockModel(state);
+                //$$ random.setSeed(state.getSeed(pos));
+                //$$ List<BlockModelPart> parts = work.parts;
+                //$$ parts.clear();
+                //$$ ClientPlatform.INSTANCE.collectParts(model, view, pos, state, random, parts);
+                //$$ if (parts.isEmpty()) continue;
+                //$$ // Every face of a buried block is hidden, so it draws only the quads no face hides.
+                //$$ if (mode.skipBuried && plain(model) && buried(state, view, pos, work.near) && noUnculled(parts)) continue;
+                //$$ // Parts are drawn a layer at a time, so each layer's builder is begun and ended around its own block.
+                //$$ ChunkSectionLayer first = ClientPlatform.INSTANCE.layer(parts.get(0), state);
+                //$$ boolean oneLayer = true;
+                //$$ for (int i = 1; i < parts.size() && oneLayer; i++) oneLayer = ClientPlatform.INSTANCE.layer(parts.get(i), state) == first;
+                //$$ for (int layer = 0; layer < LAYERS.size(); layer++) {
+                //$$     ChunkSectionLayer type = LAYERS.get(layer);
+                //$$     List<BlockModelPart> drawn;
+                //$$     if (oneLayer) {
+                //$$         if (type != first) continue;
+                //$$         drawn = parts;
+                //$$     } else {
+                //$$         drawn = work.layerParts;
+                //$$         drawn.clear();
+                //$$         for (BlockModelPart part : parts) if (ClientPlatform.INSTANCE.layer(part, state) == type) drawn.add(part);
+                //$$         if (drawn.isEmpty()) continue;
+                //$$     }
+                //$$     BufferBuilder builder = builder(builders, memory, layer);
+                //$$     if (mode.reusePose) {
+                //$$         pose.setIdentity();
+                //$$     } else {
+                //$$         pose.pushPose();
+                //$$     }
+                //$$     pose.translate(x, y, z);
+                //$$     ShaderBlocks.begin(builder, s.shaderIds, state, false, x, y, z);
+                //$$     ClientPlatform.INSTANCE.renderBatched(blocks, state, pos, view, pose, t -> builder, drawn);
+                //$$     ShaderBlocks.end(builder, s.shaderIds);
+                //$$     if (!mode.reusePose) pose.popPose();
+                //$$ }
+                //#else
                 BakedModel model = blocks.getBlockModel(state);
                 Object data = ClientPlatform.INSTANCE.modelData(model, view, pos, state, s.modelData.get(pos));
                 long seed = state.getSeed(pos);
@@ -229,6 +284,7 @@ final class CubeMesher {
                     ShaderBlocks.end(builder, s.shaderIds);
                     if (!mode.reusePose) pose.popPose();
                 }
+                //#endif
             }
         } finally {
             ModelBlockRenderer.clearCache();
@@ -238,7 +294,7 @@ final class CubeMesher {
             if (builders[i] == null) continue;
             MeshData mesh = builders[i].build();
             if (mesh == null) { memory[i].close(); continue; }
-            if (LAYERS.get(i) == RenderType.translucent()) {
+            if (LAYERS.get(i) == TRANSLUCENT) {
                 mesh.sortQuads(memory[i], VertexSorting.byDistance(s.camX - x0, s.camY - y0, s.camZ - z0));
             }
             layers.add(new Layer(i, mesh, memory[i]));
@@ -251,10 +307,22 @@ final class CubeMesher {
      * says, and the quads no face hides. A model of any other kind, such as a mod's connected textures, always goes
      * through the model pass.
      */
+    //#if MC >= 1.21.11
+    //$$ private static boolean plain(BlockStateModel model) {
+    //$$     Class<?> kind = model.getClass();
+    //$$     return kind == SingleVariant.class || kind == WeightedVariants.class;
+    //$$ }
+    //$$
+    //$$ private static boolean noUnculled(List<BlockModelPart> parts) {
+    //$$     for (BlockModelPart part : parts) if (!part.getQuads(null).isEmpty()) return false;
+    //$$     return true;
+    //$$ }
+    //#else
     private static boolean plain(BakedModel model) {
         Class<?> kind = model.getClass();
         return kind == SimpleBakedModel.class || kind == WeightedBakedModel.class;
     }
+    //#endif
 
     /** Faces in the order most likely to show, so a block in sight is found out at once. */
     private static final Direction[] FACES = {Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST, Direction.DOWN};
@@ -262,7 +330,13 @@ final class CubeMesher {
     /** Whether vanilla's face check hides all six faces of the block, as the model pass asks it. */
     private static boolean buried(BlockState state, View view, BlockPos pos, BlockPos.MutableBlockPos near) {
         for (Direction face : FACES) {
+            //#if MC >= 1.21.11 && NEOFORGE
+            //$$ if (Block.shouldRenderFace(view, pos, state, view.getBlockState(near.setWithOffset(pos, face)), face)) return false;
+            //#elseif MC >= 1.21.11
+            //$$ if (Block.shouldRenderFace(state, view.getBlockState(near.setWithOffset(pos, face)), face)) return false;
+            //#else
             if (Block.shouldRenderFace(state, view, pos, face, near.setWithOffset(pos, face))) return false;
+            //#endif
         }
         return true;
     }

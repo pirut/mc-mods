@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.client;
 
+import io.github.pirut.chunks3.mc.Mc;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.github.pirut.chunks3.gen.SurfacePacketFixtures;
@@ -26,17 +27,17 @@ class FarCoverTest {
     @BeforeAll static void tags() {
         SurfacePacketFixtures.biomes();
         var blocks = BuiltInRegistries.BLOCK;
-        previous = blocks.getTags().collect(Collectors.toMap(p -> p.getFirst(), p -> p.getSecond().stream().toList()));
+        previous = io.github.pirut.chunks3.TestTags.current(blocks);
         var tags = new java.util.HashMap<>(previous);
         tags.put(BlockTags.LEAVES, blocks.stream().filter(b -> b instanceof LeavesBlock).map(blocks::wrapAsHolder).toList());
         tags.put(BlockTags.LOGS, List.of(blocks.wrapAsHolder(Blocks.OAK_LOG)));
-        blocks.bindTags(tags);
+        io.github.pirut.chunks3.TestTags.bind(blocks, tags);
     }
 
-    @AfterAll static void restore() { BuiltInRegistries.BLOCK.bindTags(previous); }
+    @AfterAll static void restore() { io.github.pirut.chunks3.TestTags.bind(BuiltInRegistries.BLOCK, previous); }
 
     @Test void clearingKeepsItsGrassAmongLeavesOnStone() {
-        LevelChunkSection section = new LevelChunkSection(SurfacePacketFixtures.biomes());
+        LevelChunkSection section = Mc.emptySection(SurfacePacketFixtures.biomes());
         BlockState stone = Blocks.STONE.defaultBlockState(), grass = Blocks.GRASS_BLOCK.defaultBlockState();
         for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
             boolean clearing = x == 7 && z == 7;

@@ -9,7 +9,6 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.ambient.Bat;
-import net.minecraft.world.entity.animal.WaterAnimal;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.Blocks;
 
@@ -37,7 +36,7 @@ public final class CubicSpawns {
         surfaceWater(rules, EntityType.DOLPHIN);
     }
 
-    private static <T extends WaterAnimal> void surfaceWater(Rules rules, EntityType<T> type) {
+    private static <T extends Mob> void surfaceWater(Rules rules, EntityType<T> type) {
         rules.or(type, CubicSpawns::nearWaterTop);
     }
 
@@ -49,7 +48,7 @@ public final class CubicSpawns {
     }
 
     /** As vanilla's surface water animals, but within 13 blocks under the top of the water they are in. */
-    private static <T extends WaterAnimal> boolean nearWaterTop(EntityType<T> type, ServerLevelAccessor level, MobSpawnType spawn, BlockPos pos, RandomSource random) {
+    private static <T extends Mob> boolean nearWaterTop(EntityType<T> type, ServerLevelAccessor level, MobSpawnType spawn, BlockPos pos, RandomSource random) {
         if (CubicLevel.of(level.getLevel()) == null || !level.getFluidState(pos.below()).is(FluidTags.WATER)
                 || !level.getBlockState(pos.above()).is(Blocks.WATER)) return false;
         for (int dy = 2; dy <= 14; dy++) if (!level.getFluidState(pos.above(dy)).is(FluidTags.WATER)) return true;

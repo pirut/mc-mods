@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.mixin;
 
+import io.github.pirut.chunks3.mc.Mc;
 import io.github.pirut.chunks3.CubeWorld;
 import io.github.pirut.chunks3.CubicLevel;
 import javax.annotation.Nullable;
@@ -34,7 +35,7 @@ abstract class CubicSpreadPlayersMixin {
     /** The first open Y over the column's ground, or -1 when the limit is below that ground. */
     @Unique private int chunks3$spawnY(CubeWorld cubes, Level level, int limit) {
         int top = cubes.skyTop(Mth.floor(x), Mth.floor(z)) + 1;
-        return limit == level.getMaxBuildHeight() || top <= limit ? top : -1;
+        return limit == Mc.maxBuildHeight(level) || top <= limit ? top : -1;
     }
 
     @Inject(method = "getSpawnY", at = @At("HEAD"), cancellable = true)

@@ -141,8 +141,19 @@ final class TreeLevel implements WorldGenLevel {
     @Override public void scheduleTick(BlockPos pos, Block block, int delay) {}
     @Override public void scheduleTick(BlockPos pos, Fluid fluid, int delay, TickPriority priority) {}
     @Override public void scheduleTick(BlockPos pos, Fluid fluid, int delay) {}
+    //#if MC >= 1.21.2
+    //$$ @Override public void playSound(@Nullable net.minecraft.world.entity.Entity player, BlockPos pos, SoundEvent sound, SoundSource source, float volume, float pitch) {}
+    //#else
     @Override public void playSound(@Nullable Player player, BlockPos pos, SoundEvent sound, SoundSource source, float volume, float pitch) {}
+    //#endif
     @Override public void addParticle(ParticleOptions particle, double x, double y, double z, double dx, double dy, double dz) {}
+    //#if MC >= 1.21.2
+    //$$ @Override public void levelEvent(@Nullable net.minecraft.world.entity.Entity player, int type, BlockPos pos, int data) {}
+    //#else
     @Override public void levelEvent(@Nullable Player player, int type, BlockPos pos, int data) {}
+    //#endif
     @Override public void gameEvent(Holder<GameEvent> event, Vec3 pos, GameEvent.Context context) {}
+    //#if MC >= 1.21.11
+    //$$ @Override public net.minecraft.world.attribute.EnvironmentAttributeReader environmentAttributes() { return net.minecraft.world.attribute.EnvironmentAttributeReader.EMPTY; }
+    //#endif
 }

@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.compat;
 
+import io.github.pirut.chunks3.mc.Mc;
 import io.github.pirut.chunks3.Cube;
 import io.github.pirut.chunks3.CubeWorld;
 import io.github.pirut.chunks3.Cubic;
@@ -106,7 +107,7 @@ public final class SableCompat {
      * Sable's own check stops. Below it, and in other levels, Sable answers.
      */
     public static boolean highShade(Level level, BlockPos pos) {
-        if (!LOADED || !Cubic.isCubic(level.dimension()) || pos.getY() < level.getMaxBuildHeight()) return false;
+        if (!LOADED || !Cubic.isCubic(level.dimension()) || pos.getY() < Mc.maxBuildHeight(level)) return false;
         if (!shadeTried) {
             shadeTried = true;
             try {

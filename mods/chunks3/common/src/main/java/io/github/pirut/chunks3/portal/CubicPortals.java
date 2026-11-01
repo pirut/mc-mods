@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.portal;
 
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.Cubic;
 import io.github.pirut.chunks3.CubeWorld;
 import io.github.pirut.chunks3.CubicLevel;
@@ -184,26 +185,48 @@ public final class CubicPortals {
         private static final String NAME = "earthplatform_cubic_portals";
         final Set<BlockPos> portals = new HashSet<>();
 
+        //#if MC >= 1.21.5
+        //$$ private static final com.mojang.serialization.Codec<Registry> CODEC = com.mojang.serialization.Codec.INT_STREAM.fieldOf("portals").codec()
+        //$$         .xmap(ints -> unpack(ints.toArray()), registry -> java.util.stream.IntStream.of(registry.pack()));
+        //#if NEOFORGE
+        //$$ private static final net.minecraft.world.level.saveddata.SavedDataType<Registry> TYPE =
+        //$$         new net.minecraft.world.level.saveddata.SavedDataType<>(NAME, Registry::new, CODEC);
+        //#else
+        //$$ // Vanilla's saved data must name a data fixer: the command storage's fixes touch none of this file's fields.
+        //$$ private static final net.minecraft.world.level.saveddata.SavedDataType<Registry> TYPE = new net.minecraft.world.level.saveddata.SavedDataType<>(
+        //$$         NAME, Registry::new, CODEC, net.minecraft.util.datafix.DataFixTypes.SAVED_DATA_COMMAND_STORAGE);
+        //#endif
+        //$$
+        //$$ static Registry of(ServerLevel cubic) { return cubic.getDataStorage().computeIfAbsent(TYPE); }
+        //#else
         static Registry of(ServerLevel cubic) {
             return cubic.getDataStorage().computeIfAbsent(new SavedData.Factory<>(Registry::new, Registry::load, null), NAME);
         }
 
         private static Registry load(CompoundTag tag, HolderLookup.Provider registries) {
+            return unpack(Nbt.getIntArray(tag, "portals"));
+        }
+
+        @Override public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+            tag.putIntArray("portals", pack());
+            return tag;
+        }
+        //#endif
+
+        private static Registry unpack(int[] packed) {
             Registry registry = new Registry();
-            int[] packed = tag.getIntArray("portals");
             for (int i = 0; i + 2 < packed.length; i += 3) registry.portals.add(new BlockPos(packed[i], packed[i + 1], packed[i + 2]));
             return registry;
         }
 
-        void add(BlockPos pos) { if (portals.add(pos)) setDirty(); }
-        void remove(BlockPos pos) { if (portals.remove(pos)) setDirty(); }
-
-        @Override public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+        private int[] pack() {
             int[] packed = new int[portals.size() * 3];
             int i = 0;
             for (BlockPos pos : portals) { packed[i++] = pos.getX(); packed[i++] = pos.getY(); packed[i++] = pos.getZ(); }
-            tag.putIntArray("portals", packed);
-            return tag;
+            return packed;
         }
+
+        void add(BlockPos pos) { if (portals.add(pos)) setDirty(); }
+        void remove(BlockPos pos) { if (portals.remove(pos)) setDirty(); }
     }
 }

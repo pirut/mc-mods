@@ -101,6 +101,10 @@
   ],
   "client": [
     "FrustumAccess",
+    "GlCommandEncoderAccess",
+    "CubicLevelFrameMixin",
+    "CubicSectionGroupMixin",
+    "CubicFogMixin",
     "CubicPredictionMixin",
     "CubicDestroyProgressMixin",
     "CubicFarPlaneMixin",

@@ -29,6 +29,11 @@ public final class NeoForgeLoader implements Loader {
 
     @Override public boolean hasClass(String className) {
         String path = className.replace('.', '/') + ".class";
+        //#if MC >= 1.21.9
+        //$$ // FML 8 no longer hands out mod files' contents; ask the class loader, and leave unsure cases to Mixin.
+        //$$ ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        //$$ return loader == null || loader.getResource(path) != null;
+        //#else
         try {
             for (ModFileInfo file : FMLLoader.getLoadingModList().getModFiles()) {
                 Path found = file.getFile().findResource(path);
@@ -40,11 +45,16 @@ public final class NeoForgeLoader implements Loader {
         }
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
         return loader != null && loader.getResource(path) != null;
+        //#endif
     }
 
     @Override public Path gameDir() { return FMLPaths.GAMEDIR.get(); }
 
+    //#if MC >= 1.21.9
+    //$$ @Override public boolean isClient() { return FMLEnvironment.getDist().isClient(); }
+    //#else
     @Override public boolean isClient() { return FMLEnvironment.dist.isClient(); }
+    //#endif
 
     /** Mods naming a handler class under {@code frex:flawless_frames_handler}, whose static acceptController takes the switch. */
     @Override public List<FlawlessRequester> flawlessFrameRequesters() {

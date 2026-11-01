@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.compat;
 
+import io.github.pirut.chunks3.mc.Mc;
 import io.github.pirut.chunks3.Cube;
 import io.github.pirut.chunks3.CubeKey;
 import io.github.pirut.chunks3.CubeWorld;
@@ -54,7 +55,7 @@ public final class CubeSections {
 
     private static LevelChunkSection empty(Level level) {
         LevelChunkSection section = empty;
-        if (section == null) empty = section = new LevelChunkSection(level.registryAccess().registryOrThrow(Registries.BIOME));
+        if (section == null) empty = section = Mc.emptySection(level.registryAccess().registryOrThrow(Registries.BIOME));
         return section;
     }
 }

@@ -1,5 +1,7 @@
 package io.github.pirut.chunks3;
 
+import io.github.pirut.chunks3.mc.Mc;
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.util.NamedThreads;
 import io.github.pirut.chunks3.util.TickShare;
 import io.github.pirut.chunks3.far.FarServer;
@@ -44,7 +46,6 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.NaturalSpawner;
 import net.minecraft.world.level.block.Block;
@@ -164,8 +165,8 @@ public final class ServerCubeWorld extends CubeWorld {
         lows.defaultReturnValue(UNKNOWN_LOW);
         var biomes = level.registryAccess().registryOrThrow(Registries.BIOME);
         this.standIn = CubeCodec.sectionBytes(new LevelChunkSection(
-                new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), PalettedContainer.Strategy.SECTION_STATES),
-                new PalettedContainer<>(biomes.asHolderIdMap(), biomes.getHolderOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS), PalettedContainer.Strategy.SECTION_BIOMES)));
+                Mc.states(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState()),
+                Mc.biomes(biomes.asHolderIdMap(), biomes.getHolderOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS))));
         this.storage = new CubeStorage(DimensionType.getStorageFolder(level.dimension(),
                 level.getServer().getWorldPath(LevelResource.ROOT)).resolve("cubes"));
         storage.onProblem(problem -> problemNotes.add(problemNote(problem)));
@@ -269,7 +270,7 @@ public final class ServerCubeWorld extends CubeWorld {
             if (saved != null) {
                 CubeCodec.Decoded decoded = codec.read(saved);
                 return new Ready(key, x, y, z, decoded.section(), decoded.blockEntities(), CubeCodec.tags(saved, CubeCodec.ENTITIES), true,
-                        !saved.getBoolean(CubeCodec.UNTOUCHED), saved.getBoolean(CubeCodec.UNPOPULATED), false, null, openFaces(decoded.section()));
+                        !Nbt.getBoolean(saved, CubeCodec.UNTOUCHED), Nbt.getBoolean(saved, CubeCodec.UNPOPULATED), false, null, openFaces(decoded.section()));
             }
         } catch (IOException | RuntimeException failure) {
             Cubic.LOGGER.error("Could not read saved cube {}; regenerating it", CubeKey.toString(key), failure);
@@ -334,7 +335,11 @@ public final class ServerCubeWorld extends CubeWorld {
     }
 
     /** Keeps a chunk {@link #chunkLoaded} asked for loading; lapses five seconds after it was last asked for. */
+    //#if MC >= 1.21.5
+    //$$ // 1.21.5 made ticket types a registry, filled before mods load; the portal ticket (15 seconds) does instead.
+    //#else
     private static final TicketType<ChunkPos> LANDING = TicketType.create("earthplatform_landing", Comparator.comparingLong(ChunkPos::toLong), 100);
+    //#endif
 
     /**
      * Server thread. Whether the chunk holding a block column is loaded; until it is, asks the workers for it and those
@@ -346,7 +351,11 @@ public final class ServerCubeWorld extends CubeWorld {
         int cx = SectionPos.blockToSectionCoord(x), cz = SectionPos.blockToSectionCoord(z);
         if (server.getChunkSource().getChunkNow(cx, cz) != null) return true;
         ChunkPos chunk = new ChunkPos(cx, cz);
+        //#if MC >= 1.21.5
+        //$$ server.getChunkSource().addTicketWithRadius(TicketType.PORTAL, chunk, 1);
+        //#else
         server.getChunkSource().addRegionTicket(LANDING, chunk, 1, chunk);
+        //#endif
         return false;
     }
 
@@ -431,7 +440,7 @@ public final class ServerCubeWorld extends CubeWorld {
         if (result.surface) unpopulated.add(result.key);
         if (!result.entities.isEmpty()) unplacedEntities.put(result.key, result.entities);
         for (CompoundTag tag : result.blockEntities) {
-            BlockPos pos = BlockEntity.getPosFromTag(tag);
+            BlockPos pos = new BlockPos(Nbt.getInt(tag, "x"), Nbt.getInt(tag, "y"), Nbt.getInt(tag, "z"));
             BlockEntity entity = BlockEntity.loadStatic(pos, cube.get(pos.getX(), pos.getY(), pos.getZ()), tag, server.registryAccess());
             if (entity != null) cube.blockEntities.put(pos, entity);
         }
@@ -467,7 +476,7 @@ public final class ServerCubeWorld extends CubeWorld {
         var host = server.getServer();
         List<ServerPlayer> told = new ArrayList<>();
         for (ServerPlayer player : host.getPlayerList().getPlayers()) {
-            if (player.hasPermissions(2) || host.isSingleplayerOwner(player.getGameProfile())) told.add(player);
+            if (Mc.isOperator(player) || Mc.isSingleplayerOwner(host, player)) told.add(player);
         }
         if (told.isEmpty()) return;
         for (Component note; (note = problemNotes.poll()) != null; ) {
@@ -852,7 +861,7 @@ public final class ServerCubeWorld extends CubeWorld {
     }
 
     private void randomTicks(int v) {
-        int speed = server.getGameRules().getInt(GameRules.RULE_RANDOMTICKING);
+        int speed = Mc.randomTickSpeed(server);
         if (speed <= 0 || watchers.isEmpty()) return;
         RandomSource random = server.getRandom();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -912,7 +921,7 @@ public final class ServerCubeWorld extends CubeWorld {
             Cube cube = cubes.get(it.nextLong());
             if (cube == null) { it.remove(); continue; }
             ChunkPos chunk = new ChunkPos(cube.x, cube.z);
-            if (!cubes.containsKey(CubeKey.pack(cube.x, cube.y + 1, cube.z)) || !server.isNaturalSpawningAllowed(chunk)) continue;
+            if (!cubes.containsKey(CubeKey.pack(cube.x, cube.y + 1, cube.z)) || !Mc.canSpawnIn(server, chunk)) continue;
             it.remove();
             int x = chunk.getMiddleBlockX(), z = chunk.getMiddleBlockZ();
             NaturalSpawner.spawnMobsForChunkGeneration(server, server.getBiome(new BlockPos(x, skyTop(x, z) + 1, z)), chunk, server.getRandom());
@@ -927,9 +936,9 @@ public final class ServerCubeWorld extends CubeWorld {
         for (long key : unplacedEntities.keySet().toLongArray()) {
             Cube cube = cubes.get(key);
             if (cube == null) { unplacedEntities.remove(key); continue; }
-            if (!server.isNaturalSpawningAllowed(new ChunkPos(cube.x, cube.z))) continue;
+            if (!Mc.canSpawnIn(server, new ChunkPos(cube.x, cube.z))) continue;
             for (CompoundTag tag : unplacedEntities.remove(key)) {
-                Entity entity = EntityType.loadEntityRecursive(tag, server, e -> e);
+                Entity entity = Mc.loadEntity(tag, server);
                 if (entity != null) server.addFreshEntity(entity);
             }
             cube.markUnsaved();

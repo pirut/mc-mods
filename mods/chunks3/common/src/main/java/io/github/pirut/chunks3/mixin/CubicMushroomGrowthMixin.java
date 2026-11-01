@@ -20,6 +20,6 @@ abstract class CubicMushroomGrowthMixin {
 
     @WrapOperation(method = "isValidPosition", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/LevelAccessor;getMaxBuildHeight()I"))
     private int chunks3$cubicTop(LevelAccessor level, Operation<Integer> original) {
-        return level instanceof Level live && CubicLevel.of(live) != null ? CubeWorld.MAX_Y + 1 : original.call(level);
+        return level instanceof Level live && CubicLevel.of(live) != null ? CubeWorld.VANILLA_TOP : original.call(level);
     }
 }

@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3;
 
+import io.github.pirut.chunks3.mc.Nbt;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -64,7 +65,7 @@ class CubeStorageTest {
         reopened.close();
         CubeStorage again = new CubeStorage(directory);
         again.onProblem(problem -> fail("no problem expected after the new edit saved: " + problem));
-        assertEquals(3, again.read(CUBE).getInt("mark"), "an edit after setting aside saves normally");
+        assertEquals(3, Nbt.getInt(again.read(CUBE), "mark"), "an edit after setting aside saves normally");
         assertEquals(4 - 2, names(directory).stream().filter(name -> name.contains(".corrupt-")).count());
     }
 
@@ -107,6 +108,6 @@ class CubeStorageTest {
         assertArrayEquals(original, Files.readAllBytes(region));
         assertEquals(1, names(directory).size(), "files " + names(directory));
 
-        assertEquals(1, new CubeStorage(directory).read(CUBE).getInt("mark"), "after a restart the original contents load");
+        assertEquals(1, Nbt.getInt(new CubeStorage(directory).read(CUBE), "mark"), "after a restart the original contents load");
     }
 }

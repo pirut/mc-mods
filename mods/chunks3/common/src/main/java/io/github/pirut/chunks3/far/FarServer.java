@@ -1,5 +1,7 @@
 package io.github.pirut.chunks3.far;
 
+import io.github.pirut.chunks3.mc.Mc;
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.Cubic;
 import io.github.pirut.chunks3.util.NamedThreads;
 import io.github.pirut.chunks3.CubeCodec;
@@ -252,7 +254,7 @@ public final class FarServer {
         for (long key : storage.savedIn(minX, minX + cubes - 1, minZ, minZ + cubes - 1)) {
             CompoundTag tag = storage.read(key);
             // Cubes saved just as generated already match the far terrain made from the generator.
-            if (tag == null || tag.getBoolean(CubeCodec.UNTOUCHED)) continue;
+            if (tag == null || Nbt.getBoolean(tag, CubeCodec.UNTOUCHED)) continue;
             LevelChunkSection cube = codec.read(tag).section();
             int voxelY = (CubeKey.y(key) * 16) >> level, sectionIndex = (voxelY >> 4) - column.bottom;
             // Edits below the column's ground are out of sight from afar.
@@ -315,7 +317,7 @@ public final class FarServer {
         try {
             storage.forEachSaved((cubeKey, tag) -> {
                 if (closed) throw new java.util.concurrent.CancellationException();
-                if (tag.getBoolean(CubeCodec.UNTOUCHED) || summarized.contains(cubeKey)) return;
+                if (Nbt.getBoolean(tag, CubeCodec.UNTOUCHED) || summarized.contains(cubeKey)) return;
                 counts[0]++;
                 FarBuilds.Summary summary = FarBuilds.summarize(codec.read(tag).section().getStates(),
                         CubeKey.x(cubeKey), CubeKey.y(cubeKey), CubeKey.z(cubeKey), generator::surfaceY);
@@ -344,8 +346,8 @@ public final class FarServer {
         Holder<Biome> biome = null;
         for (LevelChunkSection other : column.sections) if (other != null) { biome = other.getBiomes().get(2, 2, 2); break; }
         if (biome == null) biome = biomeIds.byIdOrThrow(0);
-        section = new LevelChunkSection(new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, AIR, PalettedContainer.Strategy.SECTION_STATES),
-                new PalettedContainer<>(biomeIds, biome, PalettedContainer.Strategy.SECTION_BIOMES));
+        section = new LevelChunkSection(Mc.states(AIR),
+                Mc.biomes(biomeIds, biome));
         column.sections.set(index, section);
         return section;
     }

@@ -1,0 +1,22 @@
+# TEMPORARY: dumps Minecraft API listings for the Chunks3 multi-version port. Removed before merge.
+name: Chunks3 API dump
+on:
+  push:
+    branches: [claude/project-thread-27i95n]
+    paths: [.github/workflows/chunks3-api-dump.yml, .github/chunks3-port/**]
+permissions:
+  contents: write
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 25 }
+      - run: python3 .github/chunks3-port/dump.py out 1.21.1,1.21.11
+      - run: |
+          cd out
+          git init -q -b dump
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "Chunks3 API dump"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" dump:claude/chunks3-api-dump-scratch

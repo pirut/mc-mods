@@ -2,6 +2,9 @@ plugins {
     id 'mcmods.neoforge'
 }
 
+// Sources hold the code for every Minecraft version Chunks3 builds for (see ../preprocess.gradle).
+apply from: '../preprocess.gradle'
+
 dependencies {
     // The far renderer reads shader packs through Iris when it is installed; never bundled.
     compileOnly("maven.modrinth:iris:${iris_neoforge_version}") { transitive = false }

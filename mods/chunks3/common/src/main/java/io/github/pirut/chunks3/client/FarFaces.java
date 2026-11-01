@@ -9,13 +9,19 @@ import javax.annotation.Nullable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+//#if MC >= 1.21.11
+//$$ import net.minecraft.client.renderer.block.model.BlockModelPart;
+//$$ import net.minecraft.client.renderer.block.model.BlockStateModel;
+//$$ import net.minecraft.data.AtlasIds;
+//#else
 import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.world.inventory.InventoryMenu;
+//#endif
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.biome.Biome;
@@ -68,6 +74,26 @@ final class FarFaces {
             java.util.Arrays.fill(baked, face);
             return baked;
         }
+        //#if MC >= 1.21.11
+        //$$ BlockStateModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
+        //$$ BiomeView view = new BiomeView(null);
+        //$$ List<BlockModelPart> parts = new java.util.ArrayList<>();
+        //$$ ClientPlatform.INSTANCE.collectParts(model, view, BlockPos.ZERO, state, RandomSource.create(42L), parts);
+        //$$ for (Direction direction : Direction.values()) {
+        //$$     BakedQuad quad = null;
+        //$$     for (BlockModelPart part : parts) {
+        //$$         List<BakedQuad> quads = part.getQuads(direction);
+        //$$         if (!quads.isEmpty()) { quad = quads.get(0); break; }
+        //$$     }
+        //$$     if (quad == null) for (BlockModelPart part : parts) {
+        //$$         for (BakedQuad q : part.getQuads(null)) if (q.direction() == direction) { quad = q; break; }
+        //$$         if (quad != null) break;
+        //$$     }
+        //$$     baked[direction.get3DDataValue()] = quad == null
+        //$$             ? face(ClientPlatform.INSTANCE.particleIcon(model, view, BlockPos.ZERO, state), -1)
+        //$$             : face(quad.sprite(), quad.isTinted() ? quad.tintIndex() : -1);
+        //$$ }
+        //#else
         BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
         RandomSource random = RandomSource.create();
         for (Direction direction : Direction.values()) {
@@ -82,6 +108,7 @@ final class FarFaces {
                     ? face(ClientPlatform.INSTANCE.particleIcon(model), -1)
                     : face(quad.getSprite(), quad.isTinted() ? quad.getTintIndex() : -1);
         }
+        //#endif
         return baked;
     }
 
@@ -90,7 +117,11 @@ final class FarFaces {
     }
 
     static TextureAtlasSprite sprite(ResourceLocation name) {
+        //#if MC >= 1.21.11
+        //$$ return Minecraft.getInstance().getAtlasManager().getAtlasOrThrow(AtlasIds.BLOCKS).getSprite(name);
+        //#else
         return Minecraft.getInstance().getModelManager().getAtlas(InventoryMenu.BLOCK_ATLAS).getSprite(name);
+        //#endif
     }
 
     /** Mean ARGB of a sprite's first frame: colour over its mostly opaque pixels, alpha over all of them. */
@@ -101,7 +132,11 @@ final class FarFaces {
                 int width = sprite.contents().width(), height = sprite.contents().height();
                 long r = 0, g = 0, b = 0, n = 0, a = 0;
                 for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) {
+                    //#if MC >= 1.21.11
+                    //$$ int abgr = net.minecraft.util.ARGB.toABGR(image.getPixel(x, y));
+                    //#else
                     int abgr = image.getPixelRGBA(x, y);
+                    //#endif
                     a += abgr >>> 24;
                     if ((abgr >>> 24) < 128) continue;
                     r += abgr & 255; g += abgr >> 8 & 255; b += abgr >> 16 & 255; n++;

@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.fabric.axiom;
 
+import io.github.pirut.chunks3.mc.Mc;
 import io.github.pirut.chunks3.Cube;
 import io.github.pirut.chunks3.CubeKey;
 import io.github.pirut.chunks3.CubeWorld;
@@ -65,10 +66,10 @@ public final class AxiomCubes {
     // Height -------------------------------------------------------------------------------------
 
     public static int minBuildHeight(LevelHeightAccessor of) { return cubic(of) != null ? CubeWorld.MIN_Y : of.getMinBuildHeight(); }
-    public static int maxBuildHeight(LevelHeightAccessor of) { return cubic(of) != null ? CubeWorld.MAX_Y + 1 : of.getMaxBuildHeight(); }
+    public static int maxBuildHeight(LevelHeightAccessor of) { return cubic(of) != null ? CubeWorld.MAX_Y + 1 : Mc.maxBuildHeight(of); }
     public static int height(LevelHeightAccessor of) { return cubic(of) != null ? CubeWorld.MAX_Y + 1 - CubeWorld.MIN_Y : of.getHeight(); }
     public static int minSection(LevelHeightAccessor of) { return cubic(of) != null ? MIN_SECTION : of.getMinSection(); }
-    public static int maxSection(LevelHeightAccessor of) { return cubic(of) != null ? MAX_SECTION : of.getMaxSection(); }
+    public static int maxSection(LevelHeightAccessor of) { return cubic(of) != null ? MAX_SECTION : Mc.maxSection(of); }
     public static int sectionsCount(LevelHeightAccessor of) { return cubic(of) != null ? MAX_SECTION - MIN_SECTION : of.getSectionsCount(); }
     public static int sectionIndex(LevelHeightAccessor of, int y) { return cubic(of) != null ? (y >> 4) - MIN_SECTION : of.getSectionIndex(y); }
     public static int sectionIndexFromSectionY(LevelHeightAccessor of, int sectionY) {
@@ -99,7 +100,7 @@ public final class AxiomCubes {
         LAST_EMPTY_WORLD.set(cubes);
         Level level = ((LevelChunk) chunk).getLevel();
         return EMPTY.computeIfAbsent(level, l -> {
-            LevelChunkSection empty = new LevelChunkSection(l.registryAccess().registryOrThrow(Registries.BIOME));
+            LevelChunkSection empty = Mc.emptySection(l.registryAccess().registryOrThrow(Registries.BIOME));
             EMPTIES.add(empty);
             return empty;
         });
@@ -129,7 +130,7 @@ public final class AxiomCubes {
         Map<CubeWorld, Set<Cube>> due = new IdentityHashMap<>();
         synchronized (WRITTEN) {
             WRITTEN.entrySet().removeIf(entry -> {
-                if (entry.getKey().level().isClientSide != client) return false;
+                if (entry.getKey().level().isClientSide() != client) return false;
                 due.put(entry.getKey(), entry.getValue());
                 return true;
             });

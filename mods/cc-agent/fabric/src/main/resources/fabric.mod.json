@@ -22,6 +22,6 @@
     "fabric-api": "*",
     "minecraft": "${minecraft_version}",
     "computercraft": ">=${cc_version_min}",
-    "java": ">=21"
+    "java": ">=${java_version}"
   }
 }

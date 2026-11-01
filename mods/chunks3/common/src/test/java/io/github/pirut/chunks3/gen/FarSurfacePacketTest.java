@@ -141,7 +141,7 @@ class FarSurfacePacketTest {
         assertNull(FarSurfacePacket.fromDense(2,column.bottom,sections,drops));
         var section=java.util.Arrays.stream(sections).filter(java.util.Objects::nonNull).findFirst().orElseThrow();
         var different=SurfacePacketFixtures.biomes().holders().filter(h->h!=section.getBiomes().get(0,0,0)).findFirst().orElseThrow();
-        var changedBiomes=new net.minecraft.world.level.chunk.PalettedContainer<net.minecraft.core.Holder<Biome>>(SurfacePacketFixtures.biomes().asHolderIdMap(),section.getBiomes().get(0,0,0),net.minecraft.world.level.chunk.PalettedContainer.Strategy.SECTION_BIOMES);
+        var changedBiomes=io.github.pirut.chunks3.mc.Mc.biomes(SurfacePacketFixtures.biomes().asHolderIdMap(),section.getBiomes().get(0,0,0));
         for(int z=0;z<4;z++)for(int x=0;x<4;x++)for(int y=0;y<4;y++)changedBiomes.set(x,y,z,section.getBiomes().get(x,y,z));
         changedBiomes.set(0,1,0,different);
         var changedSection=new LevelChunkSection(section.getStates(),changedBiomes);changedSection.recalcBlockCounts();

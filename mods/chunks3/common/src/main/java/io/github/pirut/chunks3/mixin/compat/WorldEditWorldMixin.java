@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.mixin.compat;
 
+import io.github.pirut.chunks3.mc.Mc;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Share;
@@ -90,7 +91,7 @@ abstract class WorldEditWorldMixin {
         if (cubes == null) return original.call(chunk, index);
         LevelChunkSection section = WorldEditCompat.biomeSection(cubes, pos);
         // A cube that can't be had takes the biome in a throwaway section rather than the carrier's.
-        return section != null ? section : new LevelChunkSection(chunk.getLevel().registryAccess().registryOrThrow(Registries.BIOME));
+        return section != null ? section : Mc.emptySection(chunk.getLevel().registryAccess().registryOrThrow(Registries.BIOME));
     }
 
     @WrapOperation(method = "doRegen", require = 0,

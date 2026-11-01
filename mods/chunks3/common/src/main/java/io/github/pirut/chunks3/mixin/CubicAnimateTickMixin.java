@@ -25,7 +25,9 @@ import org.spongepowered.asm.mixin.injection.At;
  */
 @Mixin(ClientLevel.class)
 abstract class CubicAnimateTickMixin {
+    //#if MC < 1.21.11
     private static final Predicate<Holder<Biome>> PARTICLES = biome -> biome.value().getAmbientParticle().isPresent();
+    //#endif
 
     @WrapOperation(method = "doAnimateTick", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/multiplayer/ClientLevel;getFluidState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/material/FluidState;"))
@@ -33,6 +35,7 @@ abstract class CubicAnimateTickMixin {
         return CubicLevel.at(level, pos.getX(), pos.getZ()) != null ? state.getFluidState() : original.call(level, pos);
     }
 
+    //#if MC < 1.21.11
     @WrapOperation(method = "doAnimateTick", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/multiplayer/ClientLevel;getBiome(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/core/Holder;"))
     private Holder<Biome> chunks3$biome(ClientLevel level, BlockPos pos, Operation<Holder<Biome>> original) {
@@ -41,4 +44,5 @@ abstract class CubicAnimateTickMixin {
         if (cube == null || cube.section.getBiomes().maybeHas(PARTICLES)) return original.call(level, pos);
         return cube.section.getNoiseBiome((pos.getX() & 15) >> 2, (pos.getY() & 15) >> 2, (pos.getZ() & 15) >> 2);
     }
+    //#endif
 }

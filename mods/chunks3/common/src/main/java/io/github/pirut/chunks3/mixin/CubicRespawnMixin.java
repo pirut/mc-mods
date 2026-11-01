@@ -15,8 +15,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(ServerPlayer.class)
 abstract class CubicRespawnMixin {
     @Inject(method = "findRespawnAndUseSpawnBlock", at = @At("HEAD"))
+    //#if MC >= 1.21.11
+    //$$ private static void chunks3$loadBed(ServerLevel level, ServerPlayer.RespawnConfig config, boolean keepInventory,
+    //$$                                           CallbackInfoReturnable<Optional<?>> info) {
+    //$$     BlockPos pos = config.respawnData().pos();
+    //#else
     private static void chunks3$loadBed(ServerLevel level, BlockPos pos, float angle, boolean forced, boolean keepInventory,
                                               CallbackInfoReturnable<Optional<?>> info) {
+    //#endif
         if (CubicLevel.of(level) instanceof ServerCubeWorld cubes) cubes.loadAround(pos);
     }
 }

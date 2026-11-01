@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.far;
 
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.Cubic;
 import io.github.pirut.chunks3.CubeKey;
 import io.github.pirut.chunks3.gen.FarColumn;
@@ -232,19 +233,23 @@ public final class FarBuilds {
         synchronized void load() throws IOException {
             if (!Files.exists(file)) return;
             CompoundTag root = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap());
-            if (root.getInt("v") != VERSION) return;
+            if (Nbt.getInt(root, "v") != VERSION) return;
             List<BlockState> palette = new ArrayList<>();
-            for (Tag entry : root.getList("palette", Tag.TAG_COMPOUND)) {
+            for (Tag entry : Nbt.getList(root, "palette", Tag.TAG_COMPOUND)) {
+                //#if MC >= 1.21.2
+                //$$ palette.add(NbtUtils.readBlockState(BuiltInRegistries.BLOCK, (CompoundTag) entry));
+                //#else
                 palette.add(NbtUtils.readBlockState(BuiltInRegistries.BLOCK.asLookup(), (CompoundTag) entry));
+                //#endif
             }
-            for (Tag entry : root.getList("cubes", Tag.TAG_COMPOUND)) {
+            for (Tag entry : Nbt.getList(root, "cubes", Tag.TAG_COMPOUND)) {
                 CompoundTag cube = (CompoundTag) entry;
-                byte[] tops = cube.getByteArray("t");
-                int block = cube.getInt("b");
+                byte[] tops = Nbt.getByteArray(cube, "t");
+                int block = Nbt.getInt(cube, "b");
                 if (tops.length != 256 || block < 0 || block >= palette.size()) continue;
                 BlockState state = palette.get(block);
                 // A block from a mod since removed reads as air; stone stands in for it from afar.
-                cubes.put(cube.getLong("k"), new Summary(tops, cube.getInt("lo"), state.isAir() ? Blocks.STONE.defaultBlockState() : state));
+                cubes.put(Nbt.getLong(cube, "k"), new Summary(tops, Nbt.getInt(cube, "lo"), state.isAir() ? Blocks.STONE.defaultBlockState() : state));
             }
         }
 

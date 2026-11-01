@@ -30,10 +30,19 @@ public final class CubicTravel {
      */
     public static DimensionTransition home(ServerPlayer player, DimensionTransition target) {
         if (!CubicPortals.livesInCubic(player) || Cubic.isCubic(target.newLevel().dimension())) return target;
+        //#if MC >= 1.21.5
+        //$$ if (player.getRespawnConfig() != null && !target.missingRespawnBlock()) return target;
+        //#else
         if (player.getRespawnPosition() != null && !target.missingRespawnBlock()) return target;
+        //#endif
         ServerLevel cubic = CubicPortals.cubicLevel(player.serverLevel());
         if (cubic == null || !(CubicLevel.of(cubic) instanceof ServerCubeWorld cubes)) return target;
+        //#if MC >= 1.21.2
+        //$$ return new TeleportTransition(cubic, CubicEvents.arrival(cubes), Vec3.ZERO, target.yRot(), 0.0F,
+                //$$ target.missingRespawnBlock(), false, java.util.Set.of(), target.postTeleportTransition());
+        //#else
         return new DimensionTransition(cubic, CubicEvents.arrival(cubes), Vec3.ZERO, target.yRot(), 0.0F,
                 target.missingRespawnBlock(), target.postDimensionTransition());
+        //#endif
     }
 }

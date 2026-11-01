@@ -1,5 +1,7 @@
 package io.github.pirut.chunks3.gen;
 
+import io.github.pirut.chunks3.mc.Mc;
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.far.Far;
 import java.util.ArrayList;
 import java.util.List;
@@ -370,7 +372,7 @@ public abstract class SurfaceGenerator implements CubeGenerator {
         LevelChunkSection[] stack = new LevelChunkSection[sections];
         for (int si = 0; si < sections; si++) {
             LevelChunkSection section = new LevelChunkSection(
-                    new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, AIR, PalettedContainer.Strategy.SECTION_STATES), farBiomes(biome));
+                    Mc.states(AIR), farBiomes(biome));
             int sectionY = (bottom + si) * width;
             for (int vy = 0; vy < 16; vy++) {
                 int y0 = sectionY + vy * v;
@@ -427,7 +429,7 @@ public abstract class SurfaceGenerator implements CubeGenerator {
     }
 
     private PalettedContainer<Holder<Biome>> farBiomes(Holder<Biome>[] biome) {
-        PalettedContainer<Holder<Biome>> container = new PalettedContainer<>(biomeIds, biome[8 * 16 + 8], PalettedContainer.Strategy.SECTION_BIOMES);
+        PalettedContainer<Holder<Biome>> container = Mc.biomes(biomeIds, biome[8 * 16 + 8]);
         for (int qz = 0; qz < 4; qz++) for (int qx = 0; qx < 4; qx++) {
             Holder<Biome> b = biome[(qz * 4 + 1) * 16 + qx * 4 + 1];
             for (int qy = 0; qy < 4; qy++) container.set(qx, qy, qz, b);
@@ -517,10 +519,10 @@ public abstract class SurfaceGenerator implements CubeGenerator {
      */
     private static void dropStrayBlockEntities(LevelChunkSection section, int cx, int cy, int cz, List<CompoundTag> blockEntities) {
         blockEntities.removeIf(tag -> {
-            if (tag.getInt("x") >> 4 != cx || tag.getInt("y") >> 4 != cy || tag.getInt("z") >> 4 != cz) return false; // another cube's
-            ResourceLocation id = ResourceLocation.tryParse(tag.getString("id"));
-            BlockEntityType<?> type = id == null ? null : BuiltInRegistries.BLOCK_ENTITY_TYPE.get(id);
-            BlockState state = section.getBlockState(tag.getInt("x") & 15, tag.getInt("y") & 15, tag.getInt("z") & 15);
+            if (Nbt.getInt(tag, "x") >> 4 != cx || Nbt.getInt(tag, "y") >> 4 != cy || Nbt.getInt(tag, "z") >> 4 != cz) return false; // another cube's
+            ResourceLocation id = ResourceLocation.tryParse(Nbt.getString(tag, "id"));
+            BlockEntityType<?> type = id == null ? null : Mc.value(BuiltInRegistries.BLOCK_ENTITY_TYPE, id);
+            BlockState state = section.getBlockState(Nbt.getInt(tag, "x") & 15, Nbt.getInt(tag, "y") & 15, Nbt.getInt(tag, "z") & 15);
             return type == null || !type.isValid(state);
         });
     }
@@ -659,8 +661,8 @@ public abstract class SurfaceGenerator implements CubeGenerator {
         }
         Holder<Biome> caveBiome = caves == null ? null : below.biome(caves);
         LevelChunkSection section = new LevelChunkSection(
-                new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, AIR, PalettedContainer.Strategy.SECTION_STATES),
-                caveBiome != null ? new PalettedContainer<>(biomeIds, caveBiome, PalettedContainer.Strategy.SECTION_BIOMES) : biomes(col, fallback));
+                Mc.states(AIR),
+                caveBiome != null ? Mc.biomes(biomeIds, caveBiome) : biomes(col, fallback));
         // Empty sky cubes: nothing generated, not even trees, above the tallest possible tree.
         if (y0 > Math.max(col.max + vegetation.tallest(cx, cz), col.maxWater)) { section.recalcBlockCounts(); return section; }
         double[] caveField = y0 > col.max ? null : below.caveField(x0, y0, z0);
@@ -700,7 +702,7 @@ public abstract class SurfaceGenerator implements CubeGenerator {
     }
 
     private PalettedContainer<Holder<Biome>> biomes(Column col, Holder<Biome> fallback) {
-        PalettedContainer<Holder<Biome>> container = new PalettedContainer<>(biomeIds, fallback, PalettedContainer.Strategy.SECTION_BIOMES);
+        PalettedContainer<Holder<Biome>> container = Mc.biomes(biomeIds, fallback);
         for (int qz = 0; qz < 4; qz++) for (int qx = 0; qx < 4; qx++) {
             Holder<Biome> b = col.surface[(qz * 4 + 1) * 16 + qx * 4 + 1].biome();
             for (int qy = 0; qy < 4; qy++) container.set(qx, qy, qz, b);

@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3;
 
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.util.NamedThreads;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongList;
@@ -89,10 +90,10 @@ public final class CubeStorage {
     }
 
     private static Map<Long, CompoundTag> parse(byte[] bytes) throws IOException {
-        CompoundTag all = NbtIo.readCompressed(new ByteArrayInputStream(bytes), NbtAccounter.unlimitedHeap()).getCompound("cubes");
+        CompoundTag all = Nbt.getCompound(NbtIo.readCompressed(new ByteArrayInputStream(bytes), NbtAccounter.unlimitedHeap()), "cubes");
         Map<Long, CompoundTag> cubes = new HashMap<>();
-        for (String name : all.getAllKeys()) {
-            try { cubes.put(Long.parseLong(name), all.getCompound(name)); }
+        for (String name : Nbt.keys(all)) {
+            try { cubes.put(Long.parseLong(name), Nbt.getCompound(all, name)); }
             catch (NumberFormatException ignored) {}
         }
         return cubes;

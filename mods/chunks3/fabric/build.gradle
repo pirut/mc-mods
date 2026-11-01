@@ -2,6 +2,9 @@ plugins {
     id 'mcmods.fabric'
 }
 
+// Sources hold the code for every Minecraft version Chunks3 builds for (see ../preprocess.gradle).
+apply from: '../preprocess.gradle'
+
 loom {
     mixin {
         // Fabric Loader 0.16's Mixin and MixinExtras need the refmap (see Earth Platform's Fabric notes).

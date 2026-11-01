@@ -1,0 +1,41 @@
+# TEMPORARY: saves the decompiled Minecraft + NeoForge sources for the Chunks3 port. Removed before merge.
+name: Chunks3 sources
+on:
+  push:
+    branches: [claude/project-thread-27i95n]
+    paths: [.github/workflows/chunks3-sources.yml]
+permissions:
+  contents: write
+jobs:
+  sources:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mc: [1.21.11-fabric]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - uses: gradle/actions/setup-gradle@v4
+      - run: |
+          rm -rf mods/bug-courier mods/cc-agent mods/seaworthy
+          ./gradlew --console=plain -Pmc=1.21.11 --configure-on-demand :chunks3:fabric:dependencies --configuration compileClasspath > deps.log 2>&1 || tail -40 deps.log
+          mkdir -p out
+          find ~/.gradle .gradle mods/chunks3 -name 'minecraft-merged*.jar' -o -name 'minecraft-common*.jar' -o -name 'minecraft-clientOnly*.jar' 2>/dev/null | grep -v sources | tee jars.txt
+          JAR=$(realpath $(grep 'minecraftMaven/net/minecraft/minecraft-merged/1.21.11' jars.txt | head -1))
+          curl -sSL -o vf.jar https://repo1.maven.org/maven2/org/vineflower/vineflower/1.11.1/vineflower-1.11.1.jar
+          mkdir -p in && cd in && unzip -q "$JAR" 'net/minecraft/*' 'com/mojang/*' && zip -qr ../in.jar . && cd ..
+          java -Xmx6g -jar vf.jar -dgs=1 -log=WARN in.jar out/ > vf.log 2>&1 || tail -20 vf.log
+          cd out
+          du -sh . > SIZE
+      - run: |
+          cd out
+          git init -q -b s
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "sources ${{ matrix.mc }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" s:claude/chunks3-src-${{ matrix.mc }}

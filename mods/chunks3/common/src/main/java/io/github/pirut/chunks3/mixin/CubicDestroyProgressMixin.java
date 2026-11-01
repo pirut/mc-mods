@@ -38,7 +38,11 @@ abstract class CubicDestroyProgressMixin {
         if (!destructionProgress.containsKey(key)) chunks3$crackPositions.remove(key);
     }
 
+    //#if MC >= 1.21.11
+    //$$ @WrapOperation(method = "extractBlockDestroyAnimation", at = @At(value = "INVOKE", target = "Lnet/minecraft/core/BlockPos;of(J)Lnet/minecraft/core/BlockPos;"))
+    //#else
     @WrapOperation(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/core/BlockPos;of(J)Lnet/minecraft/core/BlockPos;"))
+    //#endif
     private BlockPos chunks3$realPosition(long key, Operation<BlockPos> original) {
         BlockPos pos = chunks3$crackPositions.get(key);
         return pos != null ? pos : original.call(key);

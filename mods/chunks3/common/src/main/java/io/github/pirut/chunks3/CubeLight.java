@@ -105,7 +105,11 @@ public final class CubeLight {
 
     /** How much light a block takes on top of the one level every step costs. */
     public static int opacity(BlockState state) {
+        //#if MC >= 1.21.2
+        //$$ return state.isAir() ? 0 : state.getLightBlock();
+        //#else
         return state.isAir() ? 0 : state.getLightBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+        //#endif
     }
 
     private static void light(Field field, @Nullable int[][] tops, int cy) {

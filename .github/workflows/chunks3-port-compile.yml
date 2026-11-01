@@ -1,0 +1,44 @@
+# TEMPORARY: compiles Chunks3 for a Minecraft version and saves the errors, for the port. Removed before merge.
+name: Chunks3 port compile
+on:
+  push:
+    branches: [claude/project-thread-27i95n]
+    paths: [.github/workflows/chunks3-port-compile.yml, .github/chunks3-port/maxerrs.gradle, mods/chunks3/**, build-logic/**]
+permissions:
+  contents: write
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mc: [1.21.1, 1.21.11]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - uses: gradle/actions/setup-gradle@v4
+      - run: |
+          set +e
+          rm -rf mods/bug-courier mods/cc-agent mods/seaworthy
+          mkdir -p out
+          A="--console=plain --continue -I .github/chunks3-port/maxerrs.gradle -Pmc=${{ matrix.mc }}"
+          ./gradlew $A --configure-on-demand :chunks3:neoforge:compileJava :chunks3:neoforge:compileTestJava > out/neoforge.log 2>&1
+          ./gradlew $A --stacktrace :chunks3:fabric:compileJava > out/fabric.log 2>&1
+          ./gradlew $A :chunks3:neoforge:test :chunks3:example:compileJava > out/test.log 2>&1
+          B=mods/chunks3/neoforge/build/${{ matrix.mc }}
+          cp $B/resources/main/chunks3.mixins.json out/ 2>/dev/null
+          mkdir -p out/test-results && cp -r $B/test-results/test/*.xml out/test-results/ 2>/dev/null
+          find mods/chunks3/neoforge -name '*.log' -path '*run*' -exec cp {} out/ \; 2>/dev/null
+          git rev-parse HEAD > out/commit.txt
+          true
+      - run: |
+          cd out
+          git init -q -b c
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "Chunks3 compile ${{ matrix.mc }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" c:claude/chunks3-compile-${{ matrix.mc }}

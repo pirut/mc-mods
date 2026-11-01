@@ -11,5 +11,6 @@ repositories {
 // The loader plugins the convention plugins apply. Bump them here for every mod at once.
 dependencies {
     implementation 'net.neoforged.moddev:net.neoforged.moddev.gradle.plugin:2.0.148'
-    implementation 'fabric-loom:fabric-loom.gradle.plugin:1.17.21'
+    // Loom's jar has both its remapping plugin (Minecraft up to 1.21.11) and its plain one (26.1 and later).
+    implementation 'net.fabricmc:fabric-loom:1.18.4'
 }

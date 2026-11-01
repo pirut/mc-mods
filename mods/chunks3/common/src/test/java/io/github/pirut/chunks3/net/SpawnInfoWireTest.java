@@ -37,16 +37,27 @@ class SpawnInfoWireTest {
         net.minecraft.SharedConstants.tryDetectVersion();
         net.minecraft.server.Bootstrap.bootStrap();
         MappedRegistry<DimensionType> types = new MappedRegistry<>(Registries.DIMENSION_TYPE, Lifecycle.stable());
+        //#if MC >= 1.21.11
+        //$$ type = Registry.registerForHolder(types, BuiltinDimensionTypes.OVERWORLD, new DimensionType(false, true, false,
+        //$$         1.0, -64, 384, 384, BlockTags.INFINIBURN_OVERWORLD, 0f,
+        //$$         new DimensionType.MonsterSettings(net.minecraft.util.valueproviders.UniformInt.of(0, 7), 0), DimensionType.Skybox.OVERWORLD,
+        //$$         DimensionType.CardinalLightType.DEFAULT, net.minecraft.world.attribute.EnvironmentAttributeMap.EMPTY, net.minecraft.core.HolderSet.empty()));
+        //#else
         type = Registry.registerForHolder(types, BuiltinDimensionTypes.OVERWORLD, new DimensionType(OptionalLong.empty(), true, false, false, true,
                 1.0, true, false, -64, 384, 384, BlockTags.INFINIBURN_OVERWORLD, BuiltinDimensionTypes.OVERWORLD_EFFECTS, 0f,
                 new DimensionType.MonsterSettings(false, true, net.minecraft.util.valueproviders.UniformInt.of(0, 7), 0)));
+        //#endif
         types.freeze();
         access = new RegistryAccess.ImmutableRegistryAccess(List.of(types));
     }
 
     private static RegistryFriendlyByteBuf write(BlockPos death) {
         var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), access);
+        //#if MC >= 1.21.2
+        //$$ new CommonPlayerSpawnInfo(type, CUBIC, 42L, GameType.SURVIVAL, null, false, true, Optional.of(GlobalPos.of(CUBIC, death)), 0, 63).write(buffer);
+        //#else
         new CommonPlayerSpawnInfo(type, CUBIC, 42L, GameType.SURVIVAL, null, false, true, Optional.of(GlobalPos.of(CUBIC, death)), 0).write(buffer);
+        //#endif
         return buffer;
     }
 
@@ -63,6 +74,9 @@ class SpawnInfoWireTest {
         buffer.readResourceKey(Registries.DIMENSION);
         BlockPos death = BlockPos.of(buffer.readLong());
         buffer.readVarInt();
+        //#if MC >= 1.21.2
+        //$$ buffer.readVarInt(); // sea level
+        //#endif
         assertEquals(0, buffer.readableBytes(), "bytes past the vanilla layout");
         return death;
     }

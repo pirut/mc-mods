@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3;
 
+import io.github.pirut.chunks3.mc.Mc;
 import com.mojang.brigadier.CommandDispatcher;
 import io.github.pirut.chunks3.gen.CubeGenerator;
 import io.github.pirut.chunks3.net.CubePayloads;
@@ -83,7 +84,7 @@ public final class CubicEvents {
             ARRIVALS.remove(i);
             Vec3 stand = standOn(cubes, arrival.x, arrival.z);
             float yaw = lookOut(cubes, stand, facing(stand, arrival.view, arrival.player.getYRot()));
-            arrival.player.teleportTo(level, stand.x, stand.y, stand.z, yaw, 0.0F);
+            Mc.teleport(arrival.player, level, stand.x, stand.y, stand.z, yaw, 0.0F);
             Cubic.arrived(arrival.player);
             tellPlace(arrival.source, cubes, BlockPos.containing(stand));
         }
@@ -143,7 +144,7 @@ public final class CubicEvents {
         if (!(cubes.level() instanceof ServerLevel level)) return spot;
         // An Earth world sets the rule to 0 so vanilla never searches the stand-in overworld for a
         // spawn; the Earth then scatters over vanilla's default instead.
-        int rule = level.getServer().getSpawnRadius(level), radius = rule > 0 ? rule : DEFAULT_SPAWN_RADIUS;
+        int rule = Mc.spawnRadius(level), radius = rule > 0 ? rule : DEFAULT_SPAWN_RADIUS;
         CubeGenerator generator = cubes.generator();
         int ground = generator.surfaceY(spot[0], spot[1]);
         for (int attempt = 0; attempt < 16; attempt++) {
@@ -257,9 +258,9 @@ public final class CubicEvents {
         root.then(Commands.literal("enter").executes(context -> enter(context.getSource())));
         root.then(Commands.literal("leave").executes(context -> {
             ServerPlayer player = context.getSource().getPlayerOrException();
-            ServerLevel overworld = player.server.overworld();
-            var spawn = overworld.getSharedSpawnPos();
-            player.teleportTo(overworld, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5, player.getYRot(), player.getXRot());
+            ServerLevel overworld = Mc.server(player).overworld();
+            var spawn = Mc.sharedSpawn(overworld);
+            Mc.teleport(player, overworld, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5, player.getYRot(), player.getXRot());
             return 1;
         }));
         root.then(Commands.literal("find").then(Commands.argument("block", net.minecraft.commands.arguments.ResourceLocationArgument.id())
@@ -309,7 +310,7 @@ public final class CubicEvents {
             return 0;
         }
         Vec3 spot = arrival(cubes);
-        player.teleportTo(level, spot.x, spot.y, spot.z, player.getYRot(), player.getXRot());
+        Mc.teleport(player, level, spot.x, spot.y, spot.z, player.getYRot(), player.getXRot());
         tellPlace(source, cubes, BlockPos.containing(spot));
         String credits = cubes.generator().credits();
         if (!credits.isEmpty()) source.sendSuccess(() -> Component.literal(credits).withStyle(ChatFormatting.GRAY), false);
@@ -329,7 +330,7 @@ public final class CubicEvents {
         if (!(CubicLevel.of(player.level()) instanceof ServerCubeWorld cubes)) { source.sendFailure(Component.literal("Not in the cubic world.")); return 0; }
         var from = player.blockPosition();
         source.sendSuccess(() -> Component.literal("Looking for " + structure + "...").withStyle(ChatFormatting.GRAY), false);
-        var wanted = source.getServer().registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE).get(structure);
+        var wanted = Mc.value(source.getServer().registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.STRUCTURE), structure);
         if (wanted == null) { source.sendFailure(Component.literal("No structure " + structure)); return 0; }
         java.util.concurrent.CompletableFuture.supplyAsync(() -> cubes.generator().locate(s -> s == wanted, from.getX(), from.getZ(), 100), net.minecraft.Util.backgroundExecutor())
                 .thenAcceptAsync(found -> {
@@ -361,7 +362,7 @@ public final class CubicEvents {
     /** Test helper: stand next to the nearest loaded block of a kind, facing it. */
     private static int approach(CommandSourceStack source, net.minecraft.resources.ResourceLocation id) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
-        var block = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(id);
+        var block = Mc.value(net.minecraft.core.registries.BuiltInRegistries.BLOCK, id);
         if (!(CubicLevel.of(player.level()) instanceof ServerCubeWorld cubes)) { source.sendFailure(Component.literal("Not in the cubic world.")); return 0; }
         net.minecraft.core.BlockPos origin = player.blockPosition(), best = null;
         double bestDistance = Double.MAX_VALUE;
@@ -380,7 +381,7 @@ public final class CubicEvents {
         double dx = best.getX() - stand.getX(), dz = best.getZ() - stand.getZ(), dy = best.getY() + 0.5 - (stand.getY() + 1.62);
         float yaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
         float pitch = (float) (-Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz))));
-        player.teleportTo(player.serverLevel(), stand.getX() + 0.5, stand.getY(), stand.getZ() + 0.5, yaw, pitch);
+        Mc.teleport(player, player.serverLevel(), stand.getX() + 0.5, stand.getY(), stand.getZ() + 0.5, yaw, pitch);
         net.minecraft.core.BlockPos target = best;
         source.sendSuccess(() -> Component.literal(id + " at " + target.toShortString()), false);
         return 1;

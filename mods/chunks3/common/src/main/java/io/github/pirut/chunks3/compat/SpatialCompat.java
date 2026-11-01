@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.compat;
 
+import io.github.pirut.chunks3.mc.Mc;
 import io.github.pirut.chunks3.Cube;
 import io.github.pirut.chunks3.CubeKey;
 import io.github.pirut.chunks3.CubeWorld;
@@ -34,7 +35,7 @@ public final class SpatialCompat {
         CubeWorld cubes = cubes(chunk);
         boolean[] real = {false};
         LevelChunkSection section = CubeSections.section(chunk, index, cube -> { TOUCHED.put(cube, cubes); real[0] = true; });
-        return real[0] || cubes == null ? section : new LevelChunkSection(chunk.getLevel().registryAccess().registryOrThrow(Registries.BIOME));
+        return real[0] || cubes == null ? section : Mc.emptySection(chunk.getLevel().registryAccess().registryOrThrow(Registries.BIOME));
     }
 
     /** The block entities of a chunk column's loaded cubes, as AE2 reads a chunk's own map. */

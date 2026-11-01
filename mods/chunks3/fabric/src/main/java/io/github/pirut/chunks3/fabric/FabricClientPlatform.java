@@ -12,12 +12,20 @@ import javax.annotation.Nullable;
 import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandler;
 import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandlerRegistry;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
+//#if MC >= 1.21.11
+//$$ import net.minecraft.client.renderer.block.model.BlockModelPart;
+//$$ import net.minecraft.client.renderer.block.model.BlockStateModel;
+//$$ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+//#else
 import net.minecraft.client.renderer.RenderType;
+//#endif
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
+//#if MC < 1.21.11
 import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.resources.model.BakedModel;
+//#endif
 import net.minecraft.client.renderer.texture.SpriteContents;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
@@ -31,6 +39,23 @@ import net.minecraft.world.level.material.FluidState;
  * data) and Fabric API's fluid render handlers, which Sodium and modded fluids use too.
  */
 public final class FabricClientPlatform implements ClientPlatform {
+    //#if MC >= 1.21.11
+    //$$ @Override public void collectParts(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, List<BlockModelPart> parts) {
+    //$$     model.collectParts(random, parts);
+    //$$ }
+    //$$
+    //$$ @Override public ChunkSectionLayer layer(BlockModelPart part, BlockState state) { return ItemBlockRenderTypes.getChunkRenderType(state); }
+    //$$
+    //$$ @Override public TextureAtlasSprite particleIcon(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state) {
+    //$$     return model.particleIcon();
+    //$$ }
+    //$$
+    //$$ @Override public void renderBatched(BlockRenderDispatcher blocks, BlockState state, BlockPos pos, BlockAndTintGetter level, PoseStack pose,
+    //$$                                    java.util.function.Function<ChunkSectionLayer, VertexConsumer> builders, List<BlockModelPart> parts) {
+    //$$     blocks.renderBatched(state, pos, level, pose, builders.apply(ItemBlockRenderTypes.getChunkRenderType(state)), true, parts);
+    //$$ }
+    //$$
+    //#else
     /** One unchanging list per chunk layer, so meshing a block allocates nothing. */
     private final Map<RenderType, List<RenderType>> layers = new IdentityHashMap<>();
 
@@ -56,6 +81,8 @@ public final class FabricClientPlatform implements ClientPlatform {
                                         VertexConsumer builder, RandomSource random, @Nullable Object data, RenderType type) {
         blocks.renderBatched(state, pos, level, pose, builder, true, random);
     }
+
+    //#endif
 
     @Override public int fluidTint(FluidState fluid, BlockAndTintGetter level, BlockPos pos) {
         FluidRenderHandler handler = FluidRenderHandlerRegistry.INSTANCE.get(fluid.getType());

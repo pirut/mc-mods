@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.far;
 
+import io.github.pirut.chunks3.mc.Mc;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -28,7 +29,7 @@ class FarBuildsTest {
     @BeforeAll static void registries() { net.minecraft.SharedConstants.tryDetectVersion(); net.minecraft.server.Bootstrap.bootStrap(); }
 
     private static PalettedContainer<BlockState> states() {
-        return new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, Blocks.AIR.defaultBlockState(), PalettedContainer.Strategy.SECTION_STATES);
+        return Mc.states(Blocks.AIR.defaultBlockState());
     }
 
     @Test void countsOnlySolidBlocksAboveTheGround() {
@@ -166,12 +167,12 @@ class FarBuildsTest {
             plains = biomes.getOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS);
         }
         Holder<Biome> biome = plains;
-        return new LevelChunkSection(states(), new PalettedContainer<>(new net.minecraft.core.IdMap<>() {
+        return new LevelChunkSection(states(), Mc.biomes(new net.minecraft.core.IdMap<>() {
             @Override public int getId(Holder<Biome> value) { return 0; }
             @Override public Holder<Biome> byId(int id) { return biome; }
             @Override public int size() { return 1; }
             @Override public java.util.Iterator<Holder<Biome>> iterator() { return java.util.List.of(biome).iterator(); }
-        }, biome, PalettedContainer.Strategy.SECTION_BIOMES));
+        }, biome));
     }
 
     /** One section of ground two voxels deep, lowered by {@code drop} blocks. */

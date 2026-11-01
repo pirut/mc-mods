@@ -1,5 +1,7 @@
 package io.github.pirut.chunks3.gen;
 
+import io.github.pirut.chunks3.mc.Mc;
+import io.github.pirut.chunks3.mc.Nbt;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -73,8 +75,8 @@ class UndergroundTest {
                 cubes++;
                 // Every block entity a cube starts with sits on a block that takes it.
                 for (CompoundTag tag : blockEntities.subList(before, blockEntities.size())) {
-                    var type = BuiltInRegistries.BLOCK_ENTITY_TYPE.get(net.minecraft.resources.ResourceLocation.parse(tag.getString("id")));
-                    assertTrue(type != null && type.isValid(section.getBlockState(tag.getInt("x") & 15, tag.getInt("y") & 15, tag.getInt("z") & 15)), "block under " + tag);
+                    var type = Mc.value(BuiltInRegistries.BLOCK_ENTITY_TYPE, net.minecraft.resources.ResourceLocation.parse(Nbt.getString(tag, "id")));
+                    assertTrue(type != null && type.isValid(section.getBlockState(Nbt.getInt(tag, "x") & 15, Nbt.getInt(tag, "y") & 15, Nbt.getInt(tag, "z") & 15)), "block under " + tag);
                 }
                 for (int i = 0; i < 4096; i++) {
                     Block block = section.getBlockState(i & 15, i >> 8, i >> 4 & 15).getBlock();
@@ -94,7 +96,7 @@ class UndergroundTest {
             assertTrue(counts.getOrDefault(ore, 0) > 0, ore);
         assertTrue(counts.getOrDefault("spawner", 0) > 0, "spawners");
         assertTrue(counts.getOrDefault("budding_amethyst", 0) > 0, "geodes");
-        assertEquals(counts.getOrDefault("spawner", 0), (int) blockEntities.stream().filter(t -> t.getString("id").endsWith("mob_spawner")).count());
+        assertEquals(counts.getOrDefault("spawner", 0), (int) blockEntities.stream().filter(t -> io.github.pirut.chunks3.mc.Nbt.getString(t, "id").endsWith("mob_spawner")).count());
         assertTrue(ms < 25, "generation time per cube " + ms);
     }
 }
