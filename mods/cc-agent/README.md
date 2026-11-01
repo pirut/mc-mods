@@ -161,15 +161,18 @@ Say what you typed, what you expected and what happened, and attach `logs/latest
 
 ## Building
 
-From the root of the [mc-mods](../../README.md) repo, with Java 21:
+From the root of the [mc-mods](../../README.md) repo, with Java 21 (and Java 25 for Minecraft 26.x):
 
 ```sh
-./gradlew :cc-agent:build              # both jars, and the tests
-./gradlew :cc-agent:neoforge:runClient # a dev game (also :cc-agent:fabric:runClient)
+./gradlew :cc-agent:build                        # both jars for Minecraft 1.21.1, and the tests
+./gradlew :cc-agent:build -Pmc=26.3              # the same for another Minecraft version
+./gradlew :cc-agent:neoforge:runClient -Pmc=1.21.8 # a dev game (also :cc-agent:fabric:runClient)
 ```
 
-Jars land in `mods/cc-agent/neoforge/build/libs` and `mods/cc-agent/fabric/build/libs`. `common/` holds the
-shared code and the Lua programs; each loader folder adds only its entry point.
+Jars land in `mods/cc-agent/<loader>/build/<minecraft>/libs`. `common/` holds the shared code and the Lua
+programs; each loader folder adds only its entry point. Code that differs between Minecraft versions lives in
+small classes under `common/src/before-<mc>` and `since-<mc>` (and the same in each loader folder), picked per
+version by `extra_src` in `versions/<mc>.properties`.
 
 ## License
 
