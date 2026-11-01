@@ -41,6 +41,6 @@ public final class SeaworthyNeoForge {
                 .playToClient(FloodSyncPayload.TYPE, FloodSyncPayload.CODEC,
                         (payload, context) -> context.enqueueWork(() -> ClientFlood.handle(payload))));
         NeoForge.EVENT_BUS.addListener((RegisterCommandsEvent e) -> StatusCommand.register(e.getDispatcher()));
-        if (FMLEnvironment.dist.isClient()) SeaworthyNeoForgeClient.init();
+        if (FMLEnvironment.dist.isClient()) SeaworthyNeoForgeClient.init(modBus);
     }
 }
