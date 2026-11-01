@@ -17,6 +17,9 @@ import io.github.pirut.seaworthy.hull.HullGrid;
 import io.github.pirut.seaworthy.hull.Lumps;
 import io.github.pirut.seaworthy.net.FloodSyncPayload;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
@@ -191,6 +194,7 @@ final class ShipHull {
     /** Takes over a fresh analysis, carrying the water over: each new compartment keeps the flooded cells it got. */
     private void adopt(Scan next) {
         Scan old = scan;
+        if (old == null && level instanceof ServerLevel server) wakeSea(server);
         if (old != null) {
             HullGrid og = old.grid(), ng = next.grid();
             BlockPos shift = old.origin().subtract(next.origin());
@@ -211,6 +215,58 @@ final class ShipHull {
         regionsStale = true;
         lumpsStale = true;
     }
+
+    /** Most blocks of the sea under a ship (positions) checked at once, so a giant ship can't stall the server. */
+    private static final int WAKE_LIMIT = 4_000_000;
+
+    /**
+     * When a ship is put together on the water, its blocks leave the world, and the hole they leave in the sea can
+     * stay dry: water only fills a gap when something nudges it. A ship floating over a dry hole has nothing to
+     * displace, and sits blocks too low. So the first time we see a ship, every bit of sea beside an air gap under
+     * it is told to flow, and the hole fills as it would if you dug it out by hand.
+     */
+    private void wakeSea(ServerLevel server) {
+        BoundingBox3ic b = subLevel.getPlot().getBoundingBox();
+        Pose3dc pose = subLevel.logicalPose();
+        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE, minZ = Double.MAX_VALUE;
+        double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE, maxZ = -Double.MAX_VALUE;
+        Vector3d p = new Vector3d();
+        for (int c = 0; c < 8; c++) {
+            p.set((c & 1) == 0 ? b.minX() : b.maxX() + 1, (c & 2) == 0 ? b.minY() : b.maxY() + 1, (c & 4) == 0 ? b.minZ() : b.maxZ() + 1);
+            p = pose.transformPosition(p);
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            minZ = Math.min(minZ, p.z);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+            maxZ = Math.max(maxZ, p.z);
+        }
+        int x0 = (int) Math.floor(minX) - 1, y0 = Math.max(server.getMinBuildHeight(), (int) Math.floor(minY) - 1);
+        int z0 = (int) Math.floor(minZ) - 1;
+        int x1 = (int) Math.ceil(maxX) + 1, y1 = Math.min(server.getMaxBuildHeight() - 1, (int) Math.ceil(maxY) + 1);
+        int z1 = (int) Math.ceil(maxZ) + 1;
+        if ((long) (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1) > WAKE_LIMIT) return;
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        BlockPos.MutableBlockPos next = new BlockPos.MutableBlockPos();
+        for (int x = x0; x <= x1; x++) {
+            for (int z = z0; z <= z1; z++) {
+                if (!server.hasChunk(x >> 4, z >> 4)) continue;
+                for (int y = y0; y <= y1; y++) {
+                    at.set(x, y, z);
+                    FluidState fluid = server.getFluidState(at);
+                    if (!fluid.is(FluidTags.WATER)) continue;
+                    for (Direction d : WAKE_DIRECTIONS) {
+                        if (server.getBlockState(next.setWithOffset(at, d)).isAir()) {
+                            server.scheduleTick(at.immutable(), fluid.getType(), fluid.getType().getTickDelay(server));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static final Direction[] WAKE_DIRECTIONS = {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
 
     private void flood(Scan s, SeaworthyConfig config, double seconds) {
         Pose3dc pose = subLevel.logicalPose();

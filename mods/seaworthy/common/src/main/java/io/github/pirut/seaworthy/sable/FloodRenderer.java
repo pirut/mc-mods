@@ -81,15 +81,11 @@ public final class FloodRenderer {
                 Vector3d c0 = corner[0];
                 at.set(c0.x + 0.5 * (corner[2].x - c0.x), c0.y + 0.5 * (corner[2].y - c0.y) + 0.5, c0.z + 0.5 * (corner[2].z - c0.z));
                 int light = LevelRenderer.getLightColor(level, at);
-                // Both sides, so it shows from below the surface too.
+                // One quad: this render type doesn't cull, so it shows from below the surface too.
                 vertex(out, m, corner[0], cam, r, g, b, u0, v0, light, nx, ny, nz);
                 vertex(out, m, corner[1], cam, r, g, b, u0, v1, light, nx, ny, nz);
                 vertex(out, m, corner[2], cam, r, g, b, u1, v1, light, nx, ny, nz);
                 vertex(out, m, corner[3], cam, r, g, b, u1, v0, light, nx, ny, nz);
-                vertex(out, m, corner[3], cam, r, g, b, u1, v0, light, -nx, -ny, -nz);
-                vertex(out, m, corner[2], cam, r, g, b, u1, v1, light, -nx, -ny, -nz);
-                vertex(out, m, corner[1], cam, r, g, b, u0, v1, light, -nx, -ny, -nz);
-                vertex(out, m, corner[0], cam, r, g, b, u0, v0, light, -nx, -ny, -nz);
                 any[0] = true;
             });
         });
