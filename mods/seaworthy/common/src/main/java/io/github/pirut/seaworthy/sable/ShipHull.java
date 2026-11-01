@@ -241,10 +241,9 @@ final class ShipHull {
             maxY = Math.max(maxY, p.y);
             maxZ = Math.max(maxZ, p.z);
         }
-        int x0 = (int) Math.floor(minX) - 1, y0 = Math.max(server.getMinBuildHeight(), (int) Math.floor(minY) - 1);
-        int z0 = (int) Math.floor(minZ) - 1;
-        int x1 = (int) Math.ceil(maxX) + 1, y1 = Math.min(server.getMaxBuildHeight() - 1, (int) Math.ceil(maxY) + 1);
-        int z1 = (int) Math.ceil(maxZ) + 1;
+        // Not clamped to the level's build height: some dimensions (Earth Platform's) report -64..320 and reach far beyond.
+        int x0 = (int) Math.floor(minX) - 1, y0 = (int) Math.floor(minY) - 1, z0 = (int) Math.floor(minZ) - 1;
+        int x1 = (int) Math.ceil(maxX) + 1, y1 = (int) Math.ceil(maxY) + 1, z1 = (int) Math.ceil(maxZ) + 1;
         if ((long) (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1) > WAKE_LIMIT) return;
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
         BlockPos.MutableBlockPos next = new BlockPos.MutableBlockPos();
