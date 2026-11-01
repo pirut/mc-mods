@@ -153,4 +153,7 @@ final class TreeLevel implements WorldGenLevel {
     @Override public void levelEvent(@Nullable Player player, int type, BlockPos pos, int data) {}
     //#endif
     @Override public void gameEvent(Holder<GameEvent> event, Vec3 pos, GameEvent.Context context) {}
+    //#if MC >= 1.21.11
+    //$$ @Override public net.minecraft.world.attribute.EnvironmentAttributeReader environmentAttributes() { return net.minecraft.world.attribute.EnvironmentAttributeReader.EMPTY; }
+    //#endif
 }

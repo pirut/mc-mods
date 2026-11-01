@@ -207,8 +207,21 @@ public abstract class CubeWorld {
         updateTop(pos, state);
         onStateStored(cube, pos, old, state);
         boolean hadEntity = old.hasBlockEntity();
+        //#if MC >= 1.21.5
+        //$$ // 1.21.5 split onRemove: the block entity's side effects (dropping a chest's items), then the block's own.
+        //$$ if (!old.is(block) && hadEntity && !state.shouldChangedStateKeepBlockEntity(old)) {
+            //$$ if (!level.isClientSide()) {
+                //$$ BlockEntity entity = getBlockEntity(pos, false);
+                //$$ if (entity != null) entity.preRemoveSideEffects(pos, old);
+            //$$ }
+            //$$ removeBlockEntity(pos);
+        //$$ }
+        //$$ if ((!old.is(block) || block instanceof net.minecraft.world.level.block.BaseRailBlock)
+                //$$ && level instanceof net.minecraft.server.level.ServerLevel serverLevel) old.affectNeighborsAfterRemoval(serverLevel, pos, moving);
+        //#else
         if (!level.isClientSide()) old.onRemove(level, pos, state, moving);
         else if (!old.is(block) && hadEntity) removeBlockEntity(pos);
+        //#endif
         if (!cube.section.getBlockState(lx, ly, lz).is(block)) return null;
         if (place && !level.isClientSide() && !Platform.INSTANCE.capturingSnapshots(level)) state.onPlace(level, pos, old, moving);
         if (state.hasBlockEntity()) {
@@ -238,7 +251,11 @@ public abstract class CubeWorld {
         if (old != now) level.setBlocksDirty(pos, old, now);
         if ((flags & 2) != 0 && (!level.isClientSide() || (flags & 4) == 0)) level.sendBlockUpdated(pos, old, state, flags);
         if ((flags & 1) != 0) {
+            //#if MC >= 1.21.2
+            //$$ level.updateNeighborsAt(pos, old.getBlock());
+            //#else
             level.blockUpdated(pos, old.getBlock());
+            //#endif
             if (!level.isClientSide() && state.hasAnalogOutputSignal()) level.updateNeighbourForOutputSignal(pos, state.getBlock());
         }
         if ((flags & 16) == 0 && depth > 0) {
@@ -247,8 +264,13 @@ public abstract class CubeWorld {
             state.updateNeighbourShapes(level, pos, neighbourFlags, depth - 1);
             state.updateIndirectNeighbourShapes(level, pos, neighbourFlags, depth - 1);
         }
+        //#if MC >= 1.21.11
+        //$$ level.updatePOIOnBlockStateChange(pos, old, now);
+        //$$ Platform.INSTANCE.onBlockStateChange(state, level, pos, old);
+        //#else
         level.onBlockStateChange(pos, old, now);
         Platform.INSTANCE.onBlockStateChange(state, level, pos, old);
+        //#endif
     }
 
     /**

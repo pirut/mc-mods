@@ -101,7 +101,11 @@ final class StructureLevel implements WorldGenLevel {
         this.random = random;
         this.biomes = new BiomeManager(this, BiomeManager.obfuscateSeed(seed));
         var biomeRegistry = level.registryAccess().registryOrThrow(Registries.BIOME);
+        //#if MC >= 1.21.5
+        //$$ this.scratch = new ProtoChunk(ChunkPos.ZERO, UpgradeData.EMPTY, net.minecraft.world.level.LevelHeightAccessor.create(0, 16), net.minecraft.world.level.chunk.PalettedContainerFactory.create(level.registryAccess()), null) {
+        //#else
         this.scratch = new ProtoChunk(ChunkPos.ZERO, UpgradeData.EMPTY, net.minecraft.world.level.LevelHeightAccessor.create(0, 16), biomeRegistry, null) {
+        //#endif
             @Override public void markPosForPostprocessing(BlockPos pos) { postProcess.add(key(real(pos))); }
         };
         this.light = new LevelLightEngine(new net.minecraft.world.level.chunk.LightChunkGetter() {
@@ -263,4 +267,7 @@ final class StructureLevel implements WorldGenLevel {
     @Override public void levelEvent(@Nullable Player player, int type, BlockPos pos, int data) {}
     //#endif
     @Override public void gameEvent(Holder<GameEvent> event, Vec3 pos, GameEvent.Context context) {}
+    //#if MC >= 1.21.11
+    //$$ @Override public net.minecraft.world.attribute.EnvironmentAttributeReader environmentAttributes() { return net.minecraft.world.attribute.EnvironmentAttributeReader.EMPTY; }
+    //#endif
 }

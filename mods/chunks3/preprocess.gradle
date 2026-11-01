@@ -164,3 +164,30 @@ ext.chunks3Preprocess = { String text, String fileName ->
     set.java.srcDirs = []
     set.java.srcDir(project.files(outDir).builtBy(task))
 }
+
+// Mixin configs list every mixin; one that this version leaves out (exclude_src, or a file whose code is all inside an
+// #if that doesn't hold) is dropped from the config too, so Mixin doesn't look for a class that isn't there.
+def mixinClassDeclared = { File file, String name ->
+    file.exists() && file.readLines('UTF-8').any { it ==~ /^\s*(?:@\S+\s+)*(?:(?:public|abstract|final|sealed)\s+)*(?:class|interface)\s+${java.util.regex.Pattern.quote(name)}\b.*/ }
+}
+tasks.named('processResources', ProcessResources) {
+    def compiledRoot = layout.buildDirectory.dir('preprocessed/main').get().asFile
+    def javaSet = sourceSets.main.java
+    dependsOn 'preprocessJava'
+    inputs.property 'minecraft_version', mc
+    filesMatching('*.mixins.json') { details ->
+        details.exclude()
+        def json = new groovy.json.JsonSlurper().parse(details.file)
+        def pkg = json.package.replace('.', '/')
+        def compiled = javaSet.files.collect { compiledRoot.toPath().relativize(it.toPath()).toString().replace('\\', '/') } as Set
+        ['mixins', 'client', 'server'].each { key ->
+            if (json[key] instanceof List) json[key] = json[key].findAll { String entry ->
+                def rel = "$pkg/${entry.replace('.', '/')}.java"
+                compiled.contains(rel) && mixinClassDeclared(new File(compiledRoot, rel), entry.tokenize('.').last())
+            }
+        }
+        def target = new File(destinationDir, details.path)
+        target.parentFile.mkdirs()
+        target.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(json)), 'UTF-8')
+    }
+}
