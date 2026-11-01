@@ -1,0 +1,34 @@
+package net.minecraft.client.resources.language;
+
+import java.util.IllegalFormatException;
+import net.minecraft.locale.Language;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.fml.i18n.I18nManager;
+
+@OnlyIn(Dist.CLIENT)
+public class I18n {
+   private static volatile Language language = Language.getInstance();
+
+   private I18n() {
+   }
+
+   static void setLanguage(Language p_118942_) {
+      language = p_118942_;
+      I18nManager.injectTranslations(p_118942_.getLanguageData());
+   }
+
+   public static String get(String p_118939_, Object... p_118940_) {
+      String s = language.getOrDefault(p_118939_);
+
+      try {
+         return String.format(s, p_118940_);
+      } catch (IllegalFormatException var4) {
+         return "Format error: " + s;
+      }
+   }
+
+   public static boolean exists(String p_118937_) {
+      return language.has(p_118937_);
+   }
+}

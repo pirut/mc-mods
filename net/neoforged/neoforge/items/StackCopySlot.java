@@ -1,0 +1,53 @@
+package net.neoforged.neoforge.items;
+
+import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
+
+public abstract class StackCopySlot extends Slot {
+   private static final Container emptyInventory = new SimpleContainer(0);
+   @Nullable
+   private ItemStack cachedReturnedStack = null;
+
+   public StackCopySlot(int slot, int x, int y) {
+      super(emptyInventory, slot, x, y);
+   }
+
+   @Deprecated
+   public StackCopySlot(int x, int y) {
+      this(0, x, y);
+   }
+
+   protected abstract ItemStack getStackCopy();
+
+   protected abstract void setStackCopy(ItemStack var1);
+
+   @Override
+   public final ItemStack getItem() {
+      return this.cachedReturnedStack = this.getStackCopy();
+   }
+
+   @Override
+   public final void set(ItemStack stack) {
+      this.setStackCopy(stack);
+      this.cachedReturnedStack = stack;
+   }
+
+   @Override
+   public final void setChanged() {
+      if (this.cachedReturnedStack != null) {
+         this.set(this.cachedReturnedStack);
+      }
+   }
+
+   @Override
+   public final ItemStack remove(int amount) {
+      ItemStack stack = this.getStackCopy().copy();
+      ItemStack ret = stack.split(amount);
+      this.set(stack);
+      this.cachedReturnedStack = null;
+      return ret;
+   }
+}

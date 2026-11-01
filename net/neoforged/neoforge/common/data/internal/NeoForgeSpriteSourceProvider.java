@@ -1,0 +1,21 @@
+package net.neoforged.neoforge.common.data.internal;
+
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import net.minecraft.client.renderer.texture.atlas.sources.SingleFile;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.data.PackOutput;
+import net.minecraft.resources.ResourceLocation;
+import net.neoforged.neoforge.common.data.ExistingFileHelper;
+import net.neoforged.neoforge.common.data.SpriteSourceProvider;
+
+public class NeoForgeSpriteSourceProvider extends SpriteSourceProvider {
+   public NeoForgeSpriteSourceProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider, ExistingFileHelper fileHelper) {
+      super(output, lookupProvider, "neoforge", fileHelper);
+   }
+
+   @Override
+   protected void gather() {
+      this.atlas(SpriteSourceProvider.BLOCKS_ATLAS).addSource(new SingleFile(ResourceLocation.fromNamespaceAndPath("neoforge", "white"), Optional.empty()));
+   }
+}
