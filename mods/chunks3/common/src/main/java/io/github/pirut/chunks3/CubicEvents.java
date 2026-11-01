@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3;
 
+import io.github.pirut.chunks3.mc.Mc;
 import com.mojang.brigadier.CommandDispatcher;
 import io.github.pirut.chunks3.gen.CubeGenerator;
 import io.github.pirut.chunks3.net.CubePayloads;
@@ -257,7 +258,7 @@ public final class CubicEvents {
         root.then(Commands.literal("enter").executes(context -> enter(context.getSource())));
         root.then(Commands.literal("leave").executes(context -> {
             ServerPlayer player = context.getSource().getPlayerOrException();
-            ServerLevel overworld = player.server.overworld();
+            ServerLevel overworld = Mc.server(player).overworld();
             var spawn = overworld.getSharedSpawnPos();
             player.teleportTo(overworld, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5, player.getYRot(), player.getXRot());
             return 1;

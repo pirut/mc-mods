@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.portal;
 
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.Cubic;
 import io.github.pirut.chunks3.CubeWorld;
 import io.github.pirut.chunks3.CubicLevel;
@@ -190,7 +191,7 @@ public final class CubicPortals {
 
         private static Registry load(CompoundTag tag, HolderLookup.Provider registries) {
             Registry registry = new Registry();
-            int[] packed = tag.getIntArray("portals");
+            int[] packed = Nbt.getIntArray(tag, "portals");
             for (int i = 0; i + 2 < packed.length; i += 3) registry.portals.add(new BlockPos(packed[i], packed[i + 1], packed[i + 2]));
             return registry;
         }

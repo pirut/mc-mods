@@ -1,5 +1,7 @@
 package io.github.pirut.chunks3;
 
+import io.github.pirut.chunks3.mc.Mc;
+import io.github.pirut.chunks3.mc.Nbt;
 import com.mojang.serialization.Codec;
 import io.netty.buffer.Unpooled;
 import java.util.ArrayList;
@@ -31,15 +33,13 @@ public final class CubeCodec {
     public static final String UNPOPULATED = "unpopulated";
     /** Entities a fresh cube starts with (chest minecarts), not yet placed in the level. */
     public static final String ENTITIES = "entities";
-    private static final Codec<PalettedContainer<BlockState>> STATES = PalettedContainer.codecRW(
-            Block.BLOCK_STATE_REGISTRY, BlockState.CODEC, PalettedContainer.Strategy.SECTION_STATES, Blocks.AIR.defaultBlockState());
+    private static final Codec<PalettedContainer<BlockState>> STATES = Mc.statesCodec();
     private final Codec<PalettedContainerRO<Holder<Biome>>> biomes;
     private final Registry<Biome> biomeRegistry;
 
     public CubeCodec(Registry<Biome> biomeRegistry) {
         this.biomeRegistry = biomeRegistry;
-        this.biomes = PalettedContainer.codecRO(biomeRegistry.asHolderIdMap(), biomeRegistry.holderByNameCodec(),
-                PalettedContainer.Strategy.SECTION_BIOMES, biomeRegistry.getHolderOrThrow(Biomes.PLAINS));
+        this.biomes = Mc.biomesCodec(biomeRegistry);
     }
 
     public record Decoded(LevelChunkSection section, List<CompoundTag> blockEntities) {}
@@ -80,7 +80,7 @@ public final class CubeCodec {
     /** Any thread: the entity tags saved under a key, or none. */
     public static List<CompoundTag> tags(CompoundTag tag, String key) {
         List<CompoundTag> list = new ArrayList<>();
-        for (Tag entry : tag.getList(key, Tag.TAG_COMPOUND)) list.add((CompoundTag) entry);
+        for (Tag entry : Nbt.getList(tag, key, Tag.TAG_COMPOUND)) list.add((CompoundTag) entry);
         return list;
     }
 
@@ -100,7 +100,7 @@ public final class CubeCodec {
     }
 
     private static void missing(CompoundTag tag, String error) {
-        Cubic.LOGGER.warn("Saved cube [{},{},{}]: {}", tag.getInt("x"), tag.getInt("y"), tag.getInt("z"), error);
+        Cubic.LOGGER.warn("Saved cube [{},{},{}]: {}", Nbt.getInt(tag, "x"), Nbt.getInt(tag, "y"), Nbt.getInt(tag, "z"), error);
     }
 
     public static byte[] sectionBytes(LevelChunkSection section) {
@@ -112,7 +112,7 @@ public final class CubeCodec {
     }
 
     public static LevelChunkSection readSection(byte[] bytes, Registry<Biome> biomes) {
-        LevelChunkSection section = new LevelChunkSection(biomes);
+        LevelChunkSection section = Mc.emptySection(biomes);
         section.read(new FriendlyByteBuf(Unpooled.wrappedBuffer(bytes)));
         section.recalcBlockCounts();
         return section;

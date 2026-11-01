@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.client;
 
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.Cube;
 import io.github.pirut.chunks3.CubeCodec;
 import io.github.pirut.chunks3.CubeKey;
@@ -75,7 +76,7 @@ public final class ClientCubeWorld extends CubeWorld {
         Cube cube = new Cube(payload.x(), payload.y(), payload.z(), CubeCodec.readSection(payload.section(), biomes));
         adopt(cube);
         for (CompoundTag tag : payload.blockEntities()) {
-            BlockEntity entity = getBlockEntity(new BlockPos(tag.getInt("x"), tag.getInt("y"), tag.getInt("z")), true);
+            BlockEntity entity = getBlockEntity(new BlockPos(Nbt.getInt(tag, "x"), Nbt.getInt(tag, "y"), Nbt.getInt(tag, "z")), true);
             if (entity != null) Platform.INSTANCE.handleUpdateTag(entity, tag, client.registryAccess());
         }
         renderer.cubeArrived(cube.key);

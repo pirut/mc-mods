@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3;
 
+import io.github.pirut.chunks3.mc.Mc;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -92,7 +93,7 @@ class CubeLightTest {
             for (int c = 0; c < 27; c++) {
                 int kind = random.nextInt(6);
                 if (kind == 0) continue;
-                PalettedContainer<BlockState> container = new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, palette[0], PalettedContainer.Strategy.SECTION_STATES);
+                PalettedContainer<BlockState> container = Mc.states(palette[0]);
                 states[c] = container;
                 if (kind == 1) continue;
                 BlockState only = palette[random.nextInt(palette.length)];

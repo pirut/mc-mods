@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.gen;
 
+import io.github.pirut.chunks3.mc.Mc;
 import io.github.pirut.chunks3.far.Far;
 import java.io.*;
 import java.util.*;
@@ -190,11 +191,10 @@ public final class FarSurfacePacket {
         List<LevelChunkSection> result = new ArrayList<>(height / 16);
         BlockState air = Blocks.AIR.defaultBlockState();
         for (int si = 0; si < height / 16; si++) {
-            var palette = new PalettedContainer<>(biomeIds, initialBiome, PalettedContainer.Strategy.SECTION_BIOMES);
+            var palette = Mc.biomes(biomeIds, initialBiome);
             for (int z = 0; z < 4; z++) for (int x = 0; x < 4; x++) for (int y = 0; y < 4; y++)
                 palette.set(x, y, z, biomes.get(z * 4 + x));
-            var section = new LevelChunkSection(new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, air,
-                    PalettedContainer.Strategy.SECTION_STATES), palette);
+            var section = new LevelChunkSection(Mc.states(air), palette);
             for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
                 BlockState state = block(x, si * 16 + y, z);
                 if (state != air) section.setBlockState(x, y, z, state, false);

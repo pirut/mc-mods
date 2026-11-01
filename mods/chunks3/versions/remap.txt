@@ -19,3 +19,5 @@
 1.21.2 getMinSection getMinSectionY
 1.21.6 .serverLevel() .level()
 1.21.11 .location() .identifier()
+1.21.2 PostDimensionTransition PostTeleportTransition
+1.21.2 postDimensionTransition postTeleportTransition

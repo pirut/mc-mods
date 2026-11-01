@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.compat;
 
+import io.github.pirut.chunks3.mc.Mc;
 import io.github.pirut.chunks3.Cube;
 import io.github.pirut.chunks3.CubeKey;
 import io.github.pirut.chunks3.CubeWorld;
@@ -235,7 +236,7 @@ public final class CubicMaps {
                 sections[y - from] = new LevelChunkSection(cube.section.getStates().copy(), cube.section.getBiomes());
                 any = true;
             } else {
-                if (empty == null) empty = new LevelChunkSection(biomes);
+                if (empty == null) empty = Mc.emptySection(biomes);
                 sections[y - from] = empty;
             }
         }

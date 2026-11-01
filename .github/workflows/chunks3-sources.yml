@@ -1,0 +1,36 @@
+# TEMPORARY: saves the decompiled Minecraft + NeoForge sources for the Chunks3 port. Removed before merge.
+name: Chunks3 sources
+on:
+  push:
+    branches: [claude/project-thread-27i95n]
+    paths: [.github/workflows/chunks3-sources.yml]
+permissions:
+  contents: write
+jobs:
+  sources:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mc: [1.21.1, 1.21.11]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - uses: gradle/actions/setup-gradle@v4
+      - run: |
+          rm -rf mods/bug-courier mods/cc-agent mods/seaworthy
+          ./gradlew --console=plain -Pmc=${{ matrix.mc }} --configure-on-demand :chunks3:neoforge:createMinecraftArtifacts
+          find mods/chunks3/neoforge/build -name '*sources*.jar' | head
+          mkdir -p out && cd out
+          unzip -q -o "$(find ../mods/chunks3/neoforge/build -name '*sources*.jar' | head -1)" 'net/*' 'com/mojang/*'
+          echo ok > README
+      - run: |
+          cd out
+          git init -q -b s
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "sources ${{ matrix.mc }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" s:claude/chunks3-src-${{ matrix.mc }}

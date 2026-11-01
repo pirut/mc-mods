@@ -1,5 +1,7 @@
 package io.github.pirut.chunks3.gen;
 
+import io.github.pirut.chunks3.mc.Mc;
+import io.github.pirut.chunks3.mc.Nbt;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.MapCodec;
 import io.github.pirut.chunks3.CubeWorld;
@@ -210,7 +212,7 @@ final class VanillaStructures {
                 // Whatever the terrain had at a written position is gone.
                 Set<Integer> written = new java.util.HashSet<>();
                 for (short at : patch.at) written.add((int) at);
-                blockEntities.removeIf(tag -> written.contains((tag.getInt("y") & 15) << 8 | (tag.getInt("z") & 15) << 4 | tag.getInt("x") & 15));
+                blockEntities.removeIf(tag -> written.contains((Nbt.getInt(tag, "y") & 15) << 8 | (Nbt.getInt(tag, "z") & 15) << 4 | Nbt.getInt(tag, "x") & 15));
             }
             for (CompoundTag tag : patch.blockEntities) blockEntities.add(tag.copy());
             for (CompoundTag tag : patch.entities) entities.add(tag.copy());
@@ -593,11 +595,11 @@ final class VanillaStructures {
             states.computeIfAbsent(cube, k -> new ArrayList<>()).add(entry.getValue());
         }
         for (CompoundTag tag : world.blockEntityTags())
-            blockEntities.computeIfAbsent(SectionPos.asLong(tag.getInt("x") >> 4, tag.getInt("y") >> 4, tag.getInt("z") >> 4), k -> new ArrayList<>()).add(tag);
+            blockEntities.computeIfAbsent(SectionPos.asLong(Nbt.getInt(tag, "x") >> 4, Nbt.getInt(tag, "y") >> 4, Nbt.getInt(tag, "z") >> 4), k -> new ArrayList<>()).add(tag);
         for (CompoundTag tag : world.entities) {
-            ListTag pos = tag.getList("Pos", Tag.TAG_DOUBLE);
+            ListTag pos = Nbt.getList(tag, "Pos", Tag.TAG_DOUBLE);
             if (pos.size() != 3) continue;
-            int x = (int) Math.floor(pos.getDouble(0)), y = (int) Math.floor(pos.getDouble(1)), z = (int) Math.floor(pos.getDouble(2));
+            int x = (int) Math.floor(Nbt.getDouble(pos, 0)), y = (int) Math.floor(Nbt.getDouble(pos, 1)), z = (int) Math.floor(Nbt.getDouble(pos, 2));
             entities.computeIfAbsent(SectionPos.asLong(x >> 4, y >> 4, z >> 4), k -> new ArrayList<>()).add(tag);
         }
         Long2ObjectOpenHashMap<Patch> patches = new Long2ObjectOpenHashMap<>();
@@ -728,7 +730,7 @@ final class VanillaStructures {
             int ground = host.ground(x, z), water = host.water(x, z);
             // Down to the bottom of a shifted frame, so searches down a column find rock, not air; plain stone deep down.
             int lo = shift != 0 ? heights.getMinBuildHeight() : Math.max(heights.getMinBuildHeight(), ground - 128);
-            int hi = Math.min(heights.getMaxBuildHeight(), Math.max(ground, water) - shift + 32);
+            int hi = Math.min(Mc.maxBuildHeight(heights), Math.max(ground, water) - shift + 32);
             BlockState[] states = new BlockState[Math.max(0, hi - lo)];
             for (int i = 0; i < states.length; i++) {
                 int y = lo + i + shift;

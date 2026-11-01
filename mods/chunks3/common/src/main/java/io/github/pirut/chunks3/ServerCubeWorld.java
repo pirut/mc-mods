@@ -1,5 +1,7 @@
 package io.github.pirut.chunks3;
 
+import io.github.pirut.chunks3.mc.Mc;
+import io.github.pirut.chunks3.mc.Nbt;
 import io.github.pirut.chunks3.util.NamedThreads;
 import io.github.pirut.chunks3.util.TickShare;
 import io.github.pirut.chunks3.far.FarServer;
@@ -164,8 +166,8 @@ public final class ServerCubeWorld extends CubeWorld {
         lows.defaultReturnValue(UNKNOWN_LOW);
         var biomes = level.registryAccess().registryOrThrow(Registries.BIOME);
         this.standIn = CubeCodec.sectionBytes(new LevelChunkSection(
-                new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), PalettedContainer.Strategy.SECTION_STATES),
-                new PalettedContainer<>(biomes.asHolderIdMap(), biomes.getHolderOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS), PalettedContainer.Strategy.SECTION_BIOMES)));
+                Mc.states(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState()),
+                Mc.biomes(biomes.asHolderIdMap(), biomes.getHolderOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS))));
         this.storage = new CubeStorage(DimensionType.getStorageFolder(level.dimension(),
                 level.getServer().getWorldPath(LevelResource.ROOT)).resolve("cubes"));
         storage.onProblem(problem -> problemNotes.add(problemNote(problem)));
@@ -269,7 +271,7 @@ public final class ServerCubeWorld extends CubeWorld {
             if (saved != null) {
                 CubeCodec.Decoded decoded = codec.read(saved);
                 return new Ready(key, x, y, z, decoded.section(), decoded.blockEntities(), CubeCodec.tags(saved, CubeCodec.ENTITIES), true,
-                        !saved.getBoolean(CubeCodec.UNTOUCHED), saved.getBoolean(CubeCodec.UNPOPULATED), false, null, openFaces(decoded.section()));
+                        !Nbt.getBoolean(saved, CubeCodec.UNTOUCHED), Nbt.getBoolean(saved, CubeCodec.UNPOPULATED), false, null, openFaces(decoded.section()));
             }
         } catch (IOException | RuntimeException failure) {
             Cubic.LOGGER.error("Could not read saved cube {}; regenerating it", CubeKey.toString(key), failure);

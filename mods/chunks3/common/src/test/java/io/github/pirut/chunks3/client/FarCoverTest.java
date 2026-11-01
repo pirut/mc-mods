@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.client;
 
+import io.github.pirut.chunks3.mc.Mc;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.github.pirut.chunks3.gen.SurfacePacketFixtures;
@@ -36,7 +37,7 @@ class FarCoverTest {
     @AfterAll static void restore() { BuiltInRegistries.BLOCK.bindTags(previous); }
 
     @Test void clearingKeepsItsGrassAmongLeavesOnStone() {
-        LevelChunkSection section = new LevelChunkSection(SurfacePacketFixtures.biomes());
+        LevelChunkSection section = Mc.emptySection(SurfacePacketFixtures.biomes());
         BlockState stone = Blocks.STONE.defaultBlockState(), grass = Blocks.GRASS_BLOCK.defaultBlockState();
         for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
             boolean clearing = x == 7 && z == 7;
