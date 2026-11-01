@@ -6,6 +6,9 @@ plugins {
     id 'mcmods.neoforge' apply false
 }
 apply plugin: 'net.neoforged.moddev'
+// Its sources go through the library's version preprocessor too, as a NeoForge project.
+ext.chunks3Loader = 'neoforge'
+apply from: '../preprocess.gradle'
 
 evaluationDependsOn(':chunks3:neoforge')
 def library = project(':chunks3:neoforge')

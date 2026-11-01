@@ -17,10 +17,11 @@
 // everywhere (ResourceLocation became Identifier in 1.21.11). Each line is "<version> <old> <new>"; <old> can hold
 // punctuation, such as ".location()".
 //
-// Applied by neoforge/build.gradle and fabric/build.gradle after their loader plugin.
+// Applied by neoforge/build.gradle and fabric/build.gradle after their loader plugin, and by example/build.gradle,
+// which sets ext.chunks3Loader = 'neoforge' first.
 
 def modDir = project.parent.projectDir
-def loader = project.name
+def loader = (project.findProperty('chunks3Loader') ?: project.name).toString()
 def mc = minecraft_version.toString()
 
 def versionKey = { String v ->
