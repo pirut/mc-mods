@@ -1,6 +1,6 @@
 # Chunks3
 
-Cubic chunks for Minecraft 1.21.1, on NeoForge and Fabric. Chunks3 is a library mod: another mod registers a
+Cubic chunks for Minecraft 1.21.1 and 1.21.11, on NeoForge and Fabric. Chunks3 is a library mod: another mod registers a
 dimension with it, and that dimension's blocks then live in 16-block cubes from Y -16,384 to 16,383 (32,768
 blocks of height), with vanilla gameplay working on top (mining, building, light, mobs, redstone, structures,
 portals) and a distant terrain renderer that draws to the horizon. It adds nothing to the game by itself.
@@ -45,6 +45,10 @@ The rest of the API:
 
 ## Compatibility
 
+On 1.21.11 the engine and both renderers are ported, but the mixins into other mods (including Sodium and Iris)
+are left out until each is checked against that mod's 1.21.11 build, so shader packs are not drawn with there yet,
+and the cube and far terrain lines are missing from the debug screen. The rest of this section is about 1.21.1.
+
 Sodium and Iris, with shader packs that support Voxy-style far terrain (Photon is the one it is tested with, but
 any Voxy-compatible pack should work). Lithium: Chunks3 turns off the Lithium features that read chunk sections
 directly. FerriteCore. Many content mods: Create, Mekanism, AE2, Waystones, Xaero's maps, JourneyMap, Chunky,
@@ -62,8 +66,15 @@ Java 21. From the repo root:
 
 ```sh
 ./gradlew :chunks3:build                      # both loaders' jars, and the engine tests
+./gradlew :chunks3:build -Pmc=1.21.11         # the same for 1.21.11
 ./gradlew :chunks3:example:runClient          # a dev game with the example dimension
 ```
+
+One source tree builds every version. Code that differs sits side by side in the same file between
+`//#if MC >= 1.21.11`, `//#else` and `//#endif` lines, written for 1.21.1 with the other branches commented out
+with `//$$ `; `preprocess.gradle` switches them for the version being built, and `versions/remap.txt` renames what
+Mojang renamed everywhere (`ResourceLocation` became `Identifier`). `versions/<mc>.properties` holds each version's
+dependency versions and the files it leaves out.
 
 The far renderer compiles against Iris, which Gradle fetches from Modrinth's Maven (the tested build's version
 ids are in `gradle.properties`). It is never bundled. The engine's tests live in `common/src/test` and run in the
