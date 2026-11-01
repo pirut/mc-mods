@@ -10,7 +10,8 @@ plugins {
 }
 
 def unobfuscated = findProperty('unobfuscated')?.toString() == 'true'
-apply plugin: unobfuscated ? 'net.fabricmc.fabric-loom' : 'net.fabricmc.fabric-loom-remap'
+// pluginManager, not apply plugin: a precompiled script plugin has no ClassLoaderScope for the latter.
+pluginManager.apply(unobfuscated ? 'net.fabricmc.fabric-loom' : 'net.fabricmc.fabric-loom-remap')
 
 loom {
     runs {
