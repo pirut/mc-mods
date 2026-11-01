@@ -26,10 +26,11 @@ jobs:
           rm -rf mods/bug-courier mods/cc-agent mods/seaworthy
           ./gradlew --console=plain -Pmc=${{ matrix.mc }} --configure-on-demand :chunks3:neoforge:createMinecraftArtifacts
           mkdir -p out
-          find / -name '*.jar' -path '*moddev*' 2>/dev/null | grep -i sources > out/JARS || true
-          find mods/chunks3 -name '*.jar' >> out/JARS || true
+          JAR=$(ls mods/chunks3/neoforge/build/${{ matrix.mc }}/moddev/artifacts/neoforge-*.jar | grep -v resources | head -1)
+          curl -sSL -o vf.jar https://repo1.maven.org/maven2/org/vineflower/vineflower/1.11.1/vineflower-1.11.1.jar
+          mkdir -p in && cd in && unzip -q "../$JAR" 'net/minecraft/*' 'com/mojang/*' 'net/neoforged/*' && zip -qr ../in.jar . && cd ..
+          java -Xmx6g -jar vf.jar -dgs=1 -log=WARN in.jar out/ > vf.log 2>&1 || tail -20 vf.log
           cd out
-          for j in $(grep -i 'sources' JARS); do unzip -q -o "$j" 'net/minecraft/*' 'com/mojang/*' 'net/neoforged/*' || true; done
           du -sh . > SIZE
       - run: |
           cd out
