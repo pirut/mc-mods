@@ -22,6 +22,8 @@ jobs:
       - run: |
           set +e
           P="-Pminecraft_version=${{ matrix.mc }} -Pneo_version=${{ matrix.neo }} -Pparchment_minecraft_version=${{ matrix.pmc }} -Pparchment_mappings_version=${{ matrix.parch }} -Pfabric_api_version=${{ matrix.fapi }}"
+          rm -rf mods/bug-courier mods/cc-agent template
+          sed -i "s/^addMod(file(.template.))//" settings.gradle
           mkdir -p out
           ./gradlew --console=plain --continue -I .github/chunks3-port/maxerrs.gradle $P :chunks3:neoforge:compileJava :chunks3:neoforge:compileTestJava > out/neoforge-${{ matrix.mc }}.log 2>&1
           ./gradlew --console=plain --continue -I .github/chunks3-port/maxerrs.gradle $P :chunks3:fabric:compileJava > out/fabric-${{ matrix.mc }}.log 2>&1
