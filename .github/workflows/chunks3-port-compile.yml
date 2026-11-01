@@ -27,8 +27,8 @@ jobs:
           rm -rf mods/bug-courier mods/cc-agent mods/seaworthy
           mkdir -p out
           A="--console=plain --continue -I .github/chunks3-port/maxerrs.gradle -Pmc=${{ matrix.mc }}"
-          ./gradlew $A :chunks3:neoforge:compileJava :chunks3:neoforge:compileTestJava > out/neoforge.log 2>&1
-          ./gradlew $A :chunks3:fabric:compileJava > out/fabric.log 2>&1
+          ./gradlew $A --configure-on-demand :chunks3:neoforge:compileJava :chunks3:neoforge:compileTestJava > out/neoforge.log 2>&1
+          ./gradlew $A --stacktrace :chunks3:fabric:compileJava > out/fabric.log 2>&1
           git rev-parse HEAD > out/commit.txt
           true
       - run: |

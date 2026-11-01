@@ -2,3 +2,13 @@
 # See ../preprocess.gradle.
 1.21.11 ResourceLocation Identifier
 1.21.11 ResourceLocationArgument IdentifierArgument
+1.21.5 com.mojang.blaze3d.platform.GlStateManager com.mojang.blaze3d.opengl.GlStateManager
+1.21.2 MobSpawnType EntitySpawnReason
+1.21.2 DimensionTransition TeleportTransition
+1.21.5 PinkPetalsBlock FlowerBedBlock
+1.21.11 net.minecraft.Util net.minecraft.util.Util
+1.21.11 net.minecraft.BlockUtil net.minecraft.util.BlockUtil
+1.21.11 net.minecraft.client.renderer.RenderType net.minecraft.client.renderer.rendertype.RenderType
+1.21.11 net.minecraft.world.entity.npc.Villager net.minecraft.world.entity.npc.villager.Villager
+1.21.11 net.minecraft.world.entity.animal.WaterAnimal net.minecraft.world.entity.animal.fish.WaterAnimal
+1.21.11 net.minecraft.world.level.GameRules net.minecraft.world.level.gamerules.GameRules
