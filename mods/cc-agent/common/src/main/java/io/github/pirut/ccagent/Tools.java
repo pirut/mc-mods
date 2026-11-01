@@ -60,7 +60,7 @@ public final class Tools implements McpServer.Backend {
         var tool = tools.get(name);
         if (tool == null) return McpServer.toolResult("unknown tool " + name, true);
         var result = run(tool, args);
-        var who = Access.current() == null ? "" : Access.current().player().getGameProfile().getName() + ": ";
+        var who = Access.current() == null ? "" : McNames.name(Access.current().player()) + ": ";
         ActivityLog.add(name, Json.str(args, "computer", null), who + summary(name, args), !result.get("isError").getAsBoolean());
         return result;
     }
@@ -179,7 +179,7 @@ public final class Tools implements McpServer.Backend {
                 for (var d : computers.dormant()) {
                     asleep.add(obj("computer", d.pos().getX() + "," + d.pos().getY() + "," + d.pos().getZ(),
                         "block", net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(d.block().getBlockState().getBlock()).toString(),
-                        "dimension", d.level().dimension().location().toString()));
+                        "dimension", McNames.dimension(d.level())));
                 }
                 var result = obj("computers", out, "count", out.size());
                 if (!asleep.isEmpty()) {

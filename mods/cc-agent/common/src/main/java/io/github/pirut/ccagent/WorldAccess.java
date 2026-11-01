@@ -8,7 +8,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
@@ -27,7 +26,7 @@ public final class WorldAccess {
     public ServerLevel level(String dimension) {
         var server = computers.server();
         if (dimension == null || dimension.isBlank()) return server.overworld();
-        var key = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(dimension.contains(":") ? dimension : "minecraft:" + dimension));
+        var key = ResourceKey.create(Registries.DIMENSION, McNames.parseId(dimension.contains(":") ? dimension : "minecraft:" + dimension));
         var level = server.getLevel(key);
         if (level == null) throw new ToolException("unknown dimension " + dimension);
         return level;
