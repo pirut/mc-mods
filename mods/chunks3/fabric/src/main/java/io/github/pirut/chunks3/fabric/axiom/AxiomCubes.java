@@ -129,7 +129,7 @@ public final class AxiomCubes {
         Map<CubeWorld, Set<Cube>> due = new IdentityHashMap<>();
         synchronized (WRITTEN) {
             WRITTEN.entrySet().removeIf(entry -> {
-                if (entry.getKey().level().isClientSide != client) return false;
+                if (entry.getKey().level().isClientSide() != client) return false;
                 due.put(entry.getKey(), entry.getValue());
                 return true;
             });

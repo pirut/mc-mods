@@ -36,7 +36,7 @@ public final class NeoForgePlatform implements Platform {
     @Override public boolean capturingSnapshots(Level level) { return level.captureBlockSnapshots; }
 
     @Override @Nullable public Object captureSnapshot(Level level, BlockPos pos, int flags) {
-        if (!level.captureBlockSnapshots || level.isClientSide) return null;
+        if (!level.captureBlockSnapshots || level.isClientSide()) return null;
         BlockSnapshot snapshot = BlockSnapshot.create(level.dimension(), level, pos, flags);
         level.capturedBlockSnapshots.add(snapshot);
         return snapshot;

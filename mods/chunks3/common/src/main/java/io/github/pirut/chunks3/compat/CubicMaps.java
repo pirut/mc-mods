@@ -83,7 +83,7 @@ public final class CubicMaps {
 
     /** The client cube store behind this level, if it is the cubic world and we are on its thread. */
     @Nullable public static ClientCubeWorld cubes(@Nullable Level level) {
-        if (level == null || !level.isClientSide || !Cubic.isCubic(level.dimension())) return null;
+        if (level == null || !level.isClientSide() || !Cubic.isCubic(level.dimension())) return null;
         return CubicLevel.of(level) instanceof ClientCubeWorld world && world.isOwnerThread() ? world : null;
     }
 

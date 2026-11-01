@@ -12,3 +12,10 @@
 1.21.11 net.minecraft.world.entity.npc.Villager net.minecraft.world.entity.npc.villager.Villager
 1.21.11 net.minecraft.world.entity.animal.WaterAnimal net.minecraft.world.entity.animal.fish.WaterAnimal
 1.21.11 net.minecraft.world.level.GameRules net.minecraft.world.level.gamerules.GameRules
+1.21.2 registryOrThrow lookupOrThrow
+1.21.2 getHolderOrThrow getOrThrow
+1.21.2 .holders() .listElements()
+1.21.2 getMinBuildHeight getMinY
+1.21.2 getMinSection getMinSectionY
+1.21.6 .serverLevel() .level()
+1.21.11 .location() .identifier()

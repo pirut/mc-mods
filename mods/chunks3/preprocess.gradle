@@ -14,7 +14,8 @@
 // loader (NEOFORGE, FABRIC), joined with && and ||, and negated with !. #if, #elseif, #else and #endif nest.
 //
 // versions/remap.txt renames whole words in the code that is kept, from a version on, for renames Mojang made
-// everywhere (ResourceLocation became Identifier in 1.21.11). Each line is "<version> <old> <new>".
+// everywhere (ResourceLocation became Identifier in 1.21.11). Each line is "<version> <old> <new>"; <old> can hold
+// punctuation, such as ".location()".
 //
 // Applied by neoforge/build.gradle and fabric/build.gradle after their loader plugin.
 
@@ -69,8 +70,10 @@ if (remapFile.exists()) {
         if (mcKey >= versionKey(parts[0])) remaps[parts[1]] = parts[2]
     }
 }
-def remapPattern = remaps ? java.util.regex.Pattern.compile('(?<![\\w$])(' + remaps.keySet()
-        .sort { -it.length() }.collect { java.util.regex.Pattern.quote(it) }.join('|') + ')(?![\\w$])') : null
+// A rename is matched as a whole word at the ends that are word characters (so ".location()" also matches).
+def remapPattern = remaps ? java.util.regex.Pattern.compile('(' + remaps.keySet().sort { -it.length() }.collect { key ->
+    (key[0] ==~ '[\\w$]' ? '(?<![\\w$])' : '') + java.util.regex.Pattern.quote(key) + (key[-1] ==~ '[\\w$]' ? '(?![\\w$])' : '')
+}.join('|') + ')') : null
 
 def DIRECTIVE = ~/^\s*\/\/#(if|elseif|else|endif)\b\s*(.*)$/
 def DISABLED = ~/^(\s*)\/\/\$\$ ?(.*)$/

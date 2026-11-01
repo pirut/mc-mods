@@ -42,3 +42,4 @@ net.minecraft.client.renderer.WeatherEffectRenderer
 net.minecraft.client.Camera
 net.minecraft.world.entity.animal.
 net.minecraft.world.entity.npc.
+*

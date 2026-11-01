@@ -15,7 +15,8 @@ for c in WANT:
         acc.append(p)
         if p[:1].isupper(): outers.add(".".join(acc)); break
 EXTRA = [l.strip() for l in open(os.path.join(here, "extra.txt")) if l.strip() and not l.startswith("#")]
-def want(cls): return cls.split("$")[0] in outers or any(cls == e or cls.startswith(e + "$") or (e.endswith(".") and cls.startswith(e)) for e in EXTRA)
+ALL = "*" in EXTRA
+def want(cls): return ALL or cls.split("$")[0] in outers or any(cls == e or cls.startswith(e + "$") or (e.endswith(".") and cls.startswith(e)) for e in EXTRA)
 def get(url):
     with urllib.request.urlopen(url, timeout=300) as r: return r.read()
 manifest = json.loads(get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
