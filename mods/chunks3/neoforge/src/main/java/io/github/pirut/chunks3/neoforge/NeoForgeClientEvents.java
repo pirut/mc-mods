@@ -26,7 +26,11 @@ public final class NeoForgeClientEvents {
     private NeoForgeClientEvents() {}
 
     /** Client setup and registration, on the mod's own event bus. */
+    //#if MC >= 1.21.9
+    //$$ @EventBusSubscriber(modid = Cubic.MOD_ID, value = Dist.CLIENT)
+    //#else
     @EventBusSubscriber(modid = Cubic.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+    //#endif
     public static final class Setup {
         private Setup() {}
 

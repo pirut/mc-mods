@@ -29,7 +29,11 @@ public final class NeoForgeEvents {
     private NeoForgeEvents() {}
 
     /** Setup and registration, on the mod's own event bus. */
+    //#if MC >= 1.21.9
+    //$$ @EventBusSubscriber(modid = Cubic.MOD_ID)
+    //#else
     @EventBusSubscriber(modid = Cubic.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
+    //#endif
     public static final class Setup {
         private Setup() {}
 

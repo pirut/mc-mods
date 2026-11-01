@@ -26,7 +26,11 @@ public final class NeoForgePlatform implements Platform {
 
     @Override public void sendToPlayer(ServerPlayer player, CustomPacketPayload payload) { PacketDistributor.sendToPlayer(player, payload); }
 
+    //#if MC >= 1.21.9
+    //$$ @Override public void sendToServer(CustomPacketPayload payload) { net.neoforged.neoforge.client.network.ClientPacketDistributor.sendToServer(payload); }
+    //#else
     @Override public void sendToServer(CustomPacketPayload payload) { PacketDistributor.sendToServer(payload); }
+    //#endif
 
     @Override @Nullable public Channel channel(ServerPlayer player) {
         Connection connection = player.connection == null ? null : player.connection.getConnection();
@@ -53,7 +57,13 @@ public final class NeoForgePlatform implements Platform {
     /** NeoForge's BlockEntity.setRemoved already drops the capabilities cached for it. */
     @Override public void removedBlockEntity(BlockEntity entity) {}
 
+    //#if MC >= 1.21.6
+    //$$ @Override public void handleUpdateTag(BlockEntity entity, CompoundTag tag, HolderLookup.Provider registries) {
+        //$$ entity.handleUpdateTag(net.minecraft.world.level.storage.TagValueInput.create(net.minecraft.util.ProblemReporter.DISCARDING, registries, tag));
+    //$$ }
+    //#else
     @Override public void handleUpdateTag(BlockEntity entity, CompoundTag tag, HolderLookup.Provider registries) { entity.handleUpdateTag(tag, registries); }
+    //#endif
 
     @Override public CompoundTag persistentData(net.minecraft.world.entity.Entity entity) { return entity.getPersistentData(); }
 

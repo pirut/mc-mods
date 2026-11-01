@@ -22,3 +22,5 @@
 1.21.2 PostDimensionTransition PostTeleportTransition
 1.21.2 postDimensionTransition postTeleportTransition
 1.21.2 .changeDimension( .teleport(
+1.21.2 getDimensionTransition getTeleportTransition
+1.21.2 setDimensionTransition setTeleportTransition
