@@ -7,9 +7,12 @@ plugins {
 
 neoForge {
     version = neo_version
-    parchment {
-        mappingsVersion = parchment_mappings_version
-        minecraftVersion = parchment_minecraft_version
+    // Minecraft 26.1 and later ship without obfuscation and need no Parchment names.
+    if (findProperty('parchment_mappings_version')) {
+        parchment {
+            mappingsVersion = parchment_mappings_version
+            minecraftVersion = parchment_minecraft_version
+        }
     }
     runs {
         client { client() }

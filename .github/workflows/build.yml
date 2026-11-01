@@ -1,25 +1,46 @@
 name: Build
 
+# Builds every mod for every Minecraft version it targets (minecraft_targets in its gradle.properties), one job
+# per Minecraft version.
+
 on:
   push:
     branches: [main]
   pull_request:
 
 jobs:
-  build:
+  targets:
     runs-on: ubuntu-latest
+    outputs:
+      mc: ${{ steps.targets.outputs.mc }}
     steps:
       - uses: actions/checkout@v4
+      - id: targets
+        run: echo "mc=$(.github/scripts/targets.sh)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: targets
+    name: Minecraft ${{ matrix.mc }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mc: ${{ fromJson(needs.targets.outputs.mc) }}
+    steps:
+      - uses: actions/checkout@v4
+      # Java 21 for Minecraft 1.21.x, 25 for 26.x; Gradle itself runs on the last one listed.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: |
+            21
+            25
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew build --console=plain
+      - run: ./gradlew build -Pmc=${{ matrix.mc }} --console=plain
       - uses: actions/upload-artifact@v4
         with:
-          name: jars
+          name: jars-${{ matrix.mc }}
           path: |
-            mods/*/neoforge/build/libs/*.jar
-            mods/*/fabric/build/libs/*.jar
+            mods/*/neoforge/build/${{ matrix.mc }}/libs/*.jar
+            mods/*/fabric/build/${{ matrix.mc }}/libs/*.jar
             !**/*-sources.jar

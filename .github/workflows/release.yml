@@ -1,7 +1,8 @@
 name: Release
 
 # Each mod releases on its own, as the tag <folder>-v<mod_version> (for example cc-agent-v0.5.1), with its jars
-# and the notes from its CHANGELOG.md section. Only the mods being released are built.
+# for every Minecraft version it targets and the notes from its CHANGELOG.md section. Only the mods being released
+# are built, one job per Minecraft version; the release is made only once every one of them has built.
 #
 # - Push to main: every mod whose current mod_version has no release yet. So bumping mod_version and adding a
 #   '## <version>' section to the mod's CHANGELOG.md releases it on merge.
@@ -30,8 +31,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  pick:
     runs-on: ubuntu-latest
+    outputs:
+      mods: ${{ steps.pick.outputs.mods }}
+      mc: ${{ steps.pick.outputs.mc }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,24 +67,62 @@ jobs:
           done
           echo "mods=${mods[*]}" >> "$GITHUB_OUTPUT"
           echo "Releasing: ${mods[*]:-nothing}"
+          if [ ${#mods[@]} -gt 0 ]; then
+            echo "mc=$(.github/scripts/targets.sh "${mods[@]}")" >> "$GITHUB_OUTPUT"
+          else
+            echo "mc=[]" >> "$GITHUB_OUTPUT"
+          fi
 
+  build:
+    needs: pick
+    if: needs.pick.outputs.mods != ''
+    name: Build for Minecraft ${{ matrix.mc }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mc: ${{ fromJson(needs.pick.outputs.mc) }}
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        if: steps.pick.outputs.mods != ''
         with:
           distribution: temurin
-          java-version: 21
-
+          java-version: |
+            21
+            25
       - uses: gradle/actions/setup-gradle@v4
-        if: steps.pick.outputs.mods != ''
-
       - name: Build
-        if: steps.pick.outputs.mods != ''
-        run: ./gradlew --console=plain $(for m in ${{ steps.pick.outputs.mods }}; do echo ":$m:build"; done)
+        env:
+          MC: ${{ matrix.mc }}
+          MODS: ${{ needs.pick.outputs.mods }}
+        run: |
+          mods=$(.github/scripts/targets.sh --mods "$MC" $MODS)
+          echo "Building for Minecraft $MC: $mods"
+          ./gradlew --console=plain -Pmc="$MC" $(for m in $mods; do echo ":$m:build"; done)
+          for m in $mods; do
+            mkdir -p "dist/$m"
+            cp mods/"$m"/*/build/"$MC"/libs/*.jar "dist/$m/"
+          done
+          rm -f dist/*/*-sources.jar
+          ls -R dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-jars-${{ matrix.mc }}
+          path: dist/
+          if-no-files-found: error
 
+  release:
+    needs: [pick, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-jars-*
+          path: dist
+          merge-multiple: true
       - name: Release
-        if: steps.pick.outputs.mods != ''
         env:
           GH_TOKEN: ${{ github.token }}
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
         run: |
-          for m in ${{ steps.pick.outputs.mods }}; do .github/scripts/release-mod.sh "$m"; done
+          for m in ${{ needs.pick.outputs.mods }}; do .github/scripts/release-mod.sh "$m" "dist/$m"; done

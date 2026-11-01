@@ -14,17 +14,44 @@ plugins {
 
 rootProject.name = 'mc-mods'
 
+// Every build is for one Minecraft version: mc_default from gradle.properties, or -Pmc=<version>. Its versions
+// (Minecraft, NeoForge, Fabric, Parchment, Java) come from versions/<mc>.properties.
+def mc = providers.gradleProperty('mc').orElse(providers.gradleProperty('mc_default')).get()
+def versionFile = file("versions/${mc}.properties")
+if (!versionFile.exists()) {
+    def known = file('versions').list().findAll { it.endsWith('.properties') }.collect { it - '.properties' }.sort()
+    throw new GradleException("No versions/${mc}.properties: Minecraft ${mc} isn't set up. Known: ${known.join(', ')}")
+}
+
+def readProps = { File f ->
+    def p = new Properties()
+    if (f.exists()) f.withReader('UTF-8') { p.load(it) }
+    p.findAll { k, v -> !k.startsWith('org.gradle.') }
+}
+def list = { String s -> (s ?: '').split(',').collect { it.trim() }.findAll() }
+
+// The Minecraft versions a mod is built for: minecraft_targets in its gradle.properties, or only mc_default.
+def targetsOf = { File dir ->
+    def targets = list(readProps(new File(dir, 'gradle.properties')).minecraft_targets)
+    targets ?: [providers.gradleProperty('mc_default').get()]
+}
+
 // The internal library a mod can bundle into its jars (uses_common_lib=true in the mod's gradle.properties).
 include 'common-lib'
 
-// Every folder in mods/ with a gradle.properties is a mod, and becomes the project :<folder>. Its loader folders
-// (neoforge/, fabric/) with a build.gradle become :<folder>:neoforge and :<folder>:fabric. common/ is not a
-// project: its sources are compiled into each loader's jar.
+// Every folder in mods/ with a gradle.properties is a mod, and becomes the project :<folder>, but only in builds
+// for one of its minecraft_targets. Its loader folders (neoforge/, fabric/) with a build.gradle become
+// :<folder>:neoforge and :<folder>:fabric, unless mods/<mod>/versions/<mc>.properties limits them with
+// loaders=neoforge (or fabric). common/ is not a project: its sources are compiled into each loader's jar.
+def modDirs = []
 def addMod = { File dir ->
+    if (!targetsOf(dir).contains(mc)) return
+    modDirs << dir
     def name = dir.name
     include ":$name"
     project(":$name").projectDir = dir
-    ['neoforge', 'fabric'].each { loader ->
+    def loaders = list(readProps(new File(dir, "versions/${mc}.properties")).loaders) ?: ['neoforge', 'fabric']
+    loaders.each { loader ->
         if (new File(dir, "$loader/build.gradle").exists()) {
             include ":$name:$loader"
             project(":$name:$loader").projectDir = new File(dir, loader)
@@ -41,3 +68,23 @@ file('mods').listFiles().findAll { it.isDirectory() && new File(it, 'gradle.prop
 
 // The template is built too, so it never goes stale. It is never released.
 addMod(file('template'))
+
+// Every project sees the merged properties for this Minecraft version, lowest first: the repo's gradle.properties,
+// versions/<mc>.properties, the mod's gradle.properties, then the mod's own mods/<mod>/versions/<mc>.properties.
+// So a mod's gradle.properties holds what is the same for every Minecraft version, and its versions/<mc>.properties
+// what differs. A -P on the command line still wins. The merged map is also kept as mcmodsProperties: it fills
+// ${...} in neoforge.mods.toml and fabric.mod.json.
+def rootProps = readProps(file('gradle.properties'))
+def versionProps = readProps(versionFile)
+def commandLine = gradle.startParameter.projectProperties.keySet()
+gradle.beforeProject { p ->
+    def modDir = modDirs.find { d -> p.projectDir == d || p.projectDir.toPath().startsWith(d.toPath()) }
+    def merged = [:] + rootProps + versionProps
+    if (modDir != null) {
+        merged += readProps(new File(modDir, 'gradle.properties'))
+        merged += readProps(new File(modDir, "versions/${mc}.properties"))
+    }
+    merged.mc = mc
+    merged.each { k, v -> if (!commandLine.contains(k)) p.ext.set(k, v) }
+    p.ext.set('mcmodsProperties', merged.collectEntries { k, v -> [k, p.findProperty(k)?.toString() ?: v] })
+}
