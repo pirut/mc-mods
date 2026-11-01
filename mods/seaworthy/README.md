@@ -18,7 +18,8 @@ Watertight hulls for [Create Aeronautics](https://modrinth.com/mod/create-aerona
 - **Big ships.** The hull is worked out off the game thread, and buoyancy is spread over at most a few thousand
   points however big the ship gets.
 
-Needs Sable 2.0 or later. NeoForge and Fabric, Minecraft 1.21.1. Install it on the server and on players' games
+Needs Sable 2.0 or later. NeoForge and Fabric, Minecraft 1.21.1. Tested with Sable 2.0.0 and 2.0.6, Create Aeronautics
+1.3.0 and 1.3.2, and Create 6.0.10, the newest of each. Create is optional; it adds pumps. Install it on the server and on players' games
 (players without it can still join, and just see the water as before).
 
 ## How a hull is worked out
@@ -64,6 +65,11 @@ waterline. Anyone can use it for ships within 128 blocks; operators see every sh
 
 - When a ship is first put together on the water, the hole its blocks leave in the sea is told to fill back in, so the
   ship floats at its proper height right where it was built. This happens once per ship, not after every restart.
+
+## Testing
+
+`tools/float-check.sh` starts the dev server with Sable, floats a test hull in a real ocean, floods it and checks the
+heights, and exits non-zero if anything is off. It takes about seven minutes, so it isn't part of the normal build.
 
 ## Known limits
 
