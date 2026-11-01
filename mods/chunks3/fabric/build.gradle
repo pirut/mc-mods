@@ -1,0 +1,21 @@
+plugins {
+    id 'mcmods.fabric'
+}
+
+loom {
+    mixin {
+        // Fabric Loader 0.16's Mixin and MixinExtras need the refmap (see Earth Platform's Fabric notes).
+        useLegacyMixinAp = true
+        defaultRefmapName = 'chunks3.refmap.json'
+    }
+}
+
+dependencies {
+    // The far renderer reads shader packs through Iris when it is installed; never bundled.
+    modCompileOnly("maven.modrinth:iris:${iris_fabric_version}") { transitive = false }
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+}
+
+// The engine's tests share common/src/test and run in the NeoForge project, where the mixins they check are
+// applied (see ../neoforge/build.gradle).
+tasks.named('test', Test) { enabled = false }
