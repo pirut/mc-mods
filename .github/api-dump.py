@@ -9,7 +9,7 @@ PREFIXES = ["net/minecraft/client/gui/", "net/minecraft/client/Minecraft", "net/
             "net/minecraft/util/ARGB", "net/minecraft/network/chat/Component", "net/minecraft/util/Util", "net/minecraft/client/gui/render/"]
 def get(url):
     with urllib.request.urlopen(url, timeout=120) as r: return r.read()
-def want(name): return any(name.startswith(p) for p in PREFIXES)
+def want(name): return name.startswith("net/minecraft/") or name.startswith("com/mojang/")
 manifest = json.loads(get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
 with open(f"{out}/releases.txt", "w") as f:
     for v in manifest["versions"]:
@@ -51,15 +51,15 @@ for ver in VERSIONS:
                 body = line.strip().split(" -> ")[0]
                 body = re.sub(r"^\d+:\d+:", "", body); body = re.sub(r":\d+:\d+$", "", body)
                 lines.append("    " + body)
-        open(f"{out}/{ver}.txt", "w").write("\n".join(lines) + "\n")
+        import gzip; gzip.open(f"{out}/{ver}.txt.gz", "wt").write("\n".join(lines) + "\n")
     else:
         jar = f"/tmp/{ver}.jar"
         open(jar, "wb").write(get(dl["client"]["url"]))
         with zipfile.ZipFile(jar) as z:
             classes = sorted(n[:-6] for n in z.namelist() if n.endswith(".class") and want(n))
         res = []
-        for i in range(0, len(classes), 200):
-            r = subprocess.run(["javap", "-p", "-cp", jar] + [c.replace("/", ".") for c in classes[i:i+200]],
+        for i in range(0, len(classes), 400):
+            r = subprocess.run(["javap", "-p", "-cp", jar] + [c.replace("/", ".") for c in classes[i:i+400]],
                                capture_output=True, text=True)
             res.append(r.stdout + r.stderr)
-        open(f"{out}/{ver}.txt", "w").write("".join(res))
+        import gzip; gzip.open(f"{out}/{ver}.txt.gz", "wt").write("".join(res))
