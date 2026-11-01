@@ -1,0 +1,29 @@
+package net.minecraft.client.particle;
+
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.particles.SimpleParticleType;
+import net.minecraft.util.RandomSource;
+
+@Environment(EnvType.CLIENT)
+public class LargeSmokeParticle extends SmokeParticle {
+   protected LargeSmokeParticle(ClientLevel level, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed, SpriteSet sprites) {
+      super(level, x, y, z, xSpeed, ySpeed, zSpeed, 2.5F, sprites);
+   }
+
+   @Environment(EnvType.CLIENT)
+   public static class Provider implements ParticleProvider<SimpleParticleType> {
+      private final SpriteSet sprites;
+
+      public Provider(SpriteSet sprites) {
+         this.sprites = sprites;
+      }
+
+      public Particle createParticle(
+         SimpleParticleType simpleParticleType, ClientLevel clientLevel, double d, double e, double f, double g, double h, double i, RandomSource randomSource
+      ) {
+         return new LargeSmokeParticle(clientLevel, d, e, f, g, h, i, this.sprites);
+      }
+   }
+}

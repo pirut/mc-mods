@@ -1,0 +1,48 @@
+package net.minecraft.world.entity.ai.behavior;
+
+import java.util.List;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.world.entity.ai.behavior.declarative.BehaviorBuilder;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
+import net.minecraft.world.entity.npc.villager.Villager;
+import org.apache.commons.lang3.mutable.MutableLong;
+
+public class StrollToPoiList {
+   public static BehaviorControl<Villager> create(
+      MemoryModuleType<List<GlobalPos>> poiListMemory,
+      float speedModifier,
+      int closeEnoughDist,
+      int maxDistFromPoi,
+      MemoryModuleType<GlobalPos> mustBeCloseToMemory
+   ) {
+      MutableLong mutableLong = new MutableLong(0L);
+      return BehaviorBuilder.create(
+         instance -> instance.group(instance.registered(MemoryModuleType.WALK_TARGET), instance.present(poiListMemory), instance.present(mustBeCloseToMemory))
+            .apply(
+               instance,
+               (memoryAccessor, memoryAccessor2, memoryAccessor3) -> (serverLevel, villager, l) -> {
+                  List<GlobalPos> list = instance.get(memoryAccessor2);
+                  GlobalPos globalPos = instance.get(memoryAccessor3);
+                  if (list.isEmpty()) {
+                     return false;
+                  } else {
+                     GlobalPos globalPos2 = list.get(serverLevel.getRandom().nextInt(list.size()));
+                     if (globalPos2 != null
+                        && serverLevel.dimension() == globalPos2.dimension()
+                        && globalPos.pos().closerToCenterThan(villager.position(), maxDistFromPoi)) {
+                        if (l > mutableLong.longValue()) {
+                           memoryAccessor.set(new WalkTarget(globalPos2.pos(), speedModifier, closeEnoughDist));
+                           mutableLong.setValue(l + 100L);
+                        }
+
+                        return true;
+                     } else {
+                        return false;
+                     }
+                  }
+               }
+            )
+      );
+   }
+}
