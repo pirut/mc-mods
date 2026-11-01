@@ -36,7 +36,7 @@ jobs:
             21
             25
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew build -Pmc=${{ matrix.mc }} --console=plain
+      - run: ./gradlew build -Pmc=${{ matrix.mc }} --console=plain --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: jars-${{ matrix.mc }}
