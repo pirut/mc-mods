@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: [1.21.1, 1.21.11]
+        mc: [1.21.11-fabric]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -24,11 +24,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: |
           rm -rf mods/bug-courier mods/cc-agent mods/seaworthy
-          ./gradlew --console=plain -Pmc=${{ matrix.mc }} --configure-on-demand :chunks3:neoforge:createMinecraftArtifacts
+          ./gradlew --console=plain -Pmc=1.21.11 --configure-on-demand :chunks3:fabric:dependencies --configuration compileClasspath > deps.log 2>&1 || tail -40 deps.log
           mkdir -p out
-          JAR=$(ls mods/chunks3/neoforge/build/${{ matrix.mc }}/moddev/artifacts/neoforge-*.jar | grep -v resources | head -1)
+          find ~/.gradle .gradle mods/chunks3 -name 'minecraft-merged*.jar' -o -name 'minecraft-common*.jar' -o -name 'minecraft-clientOnly*.jar' 2>/dev/null | grep -v sources | tee jars.txt
+          JAR=$(grep merged jars.txt | head -1)
           curl -sSL -o vf.jar https://repo1.maven.org/maven2/org/vineflower/vineflower/1.11.1/vineflower-1.11.1.jar
-          mkdir -p in && cd in && unzip -q "../$JAR" 'net/minecraft/*' 'com/mojang/*' 'net/neoforged/*' && zip -qr ../in.jar . && cd ..
+          mkdir -p in && cd in && unzip -q "../$JAR" 'net/minecraft/*' 'com/mojang/*' && zip -qr ../in.jar . && cd ..
           java -Xmx6g -jar vf.jar -dgs=1 -log=WARN in.jar out/ > vf.log 2>&1 || tail -20 vf.log
           cd out
           du -sh . > SIZE
