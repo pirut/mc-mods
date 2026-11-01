@@ -107,7 +107,7 @@ final class ShipHull {
     private Lumps lumps = Lumps.NONE;
     private @Nullable SeaWake wake;
 
-    private record Scan(HullSnapshot snapshot, HullAnalysis.Result result, double[] volume) {
+    private record Scan(HullSnapshot snapshot, HullAnalysis.Result result, double[] volume, double[][] centres) {
         HullGrid grid() {
             return snapshot.grid();
         }
@@ -174,7 +174,9 @@ final class ShipHull {
                 int holeWidth = config.maxHoleWidth();
                 pending = CompletableFuture.supplyAsync(() -> {
                     HullAnalysis.Result result = HullAnalysis.analyze(snapshot.grid(), holeWidth);
-                    return new Scan(snapshot, result, new double[result.compartments().size()]);
+                    double[][] centres = new double[result.compartments().size()][];
+                    for (int k = 0; k < centres.length; k++) centres[k] = Flooding.centre(snapshot.grid(), result.compartments().get(k));
+                    return new Scan(snapshot, result, new double[centres.length], centres);
                 }, ANALYSIS);
             }
         }
@@ -313,6 +315,7 @@ final class ShipHull {
         HullGrid g = s.grid();
         BlockPos o = s.origin();
         Vector3d p = new Vector3d();
+        Vector3d up = worldUp();
         List<Compartment> compartments = s.result().compartments();
         for (int k = 0; k < compartments.size(); k++) {
             Compartment c = compartments.get(k);
@@ -332,7 +335,8 @@ final class ShipHull {
                     outside[b] = p.y - o.getY();
                 }
             }
-            s.volume()[k] = Flooding.step(g, c, s.volume()[k], outside, GRAVITY, DISCHARGE * config.floodSpeed(), seconds);
+            double[] lean = Flooding.lean(g, c, s.centres()[k], up.x, up.y, up.z);
+            s.volume()[k] = Flooding.step(g, c, s.volume()[k], outside, lean, GRAVITY, DISCHARGE * config.floodSpeed(), seconds);
         }
     }
 

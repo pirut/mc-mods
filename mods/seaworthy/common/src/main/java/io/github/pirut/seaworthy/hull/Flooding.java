@@ -26,6 +26,17 @@ public final class Flooding {
      */
     public static double step(HullGrid grid, Compartment c, double volume, double[] outside, double gravity,
                               double discharge, double seconds) {
+        return step(grid, c, volume, outside, new double[outside.length], gravity, discharge, seconds);
+    }
+
+    /**
+     * Like {@link #step(HullGrid, Compartment, double, double[], double, double, double)} for a ship that may be leaning.
+     *
+     * @param lean for each breach, how much higher the water inside is at that hole than its average height, since it
+     *             lies flat in the world (see {@link #lean})
+     */
+    public static double step(HullGrid grid, Compartment c, double volume, double[] outside, double[] lean, double gravity,
+                              double discharge, double seconds) {
         List<Breach> breaches = c.breaches();
         if (breaches.isEmpty() || discharge <= 0) return volume;
         double dt = seconds / SUB_STEPS;
@@ -34,11 +45,12 @@ public final class Flooding {
             double change = 0;
             for (int i = 0; i < breaches.size(); i++) {
                 double hole = breaches.get(i).height(grid);
+                double here = inside + lean[i];
                 double out = Double.isNaN(outside[i]) ? Double.NEGATIVE_INFINITY : outside[i];
-                if (out > inside && out > hole) {
-                    change += discharge * Math.sqrt(2 * gravity * (out - Math.max(hole, inside))) * dt;
-                } else if (inside > out && inside > hole) {
-                    change -= discharge * Math.sqrt(2 * gravity * (inside - Math.max(hole, out))) * dt;
+                if (out > here && out > hole) {
+                    change += discharge * Math.sqrt(2 * gravity * (out - Math.max(hole, here))) * dt;
+                } else if (here > out && here > hole) {
+                    change -= discharge * Math.sqrt(2 * gravity * (here - Math.max(hole, out))) * dt;
                 }
             }
             volume = Math.max(0, Math.min(c.size(), volume + change));
@@ -150,5 +162,34 @@ public final class Flooding {
     /** The compartment's water volume after a pump has moved {@code rate} blocks a second out of it for {@code seconds}. */
     public static double pump(double volume, double rate, double seconds) {
         return Math.max(0, volume - rate * seconds);
+    }
+
+    /** The middle of the compartment's floor plan, in grid x and z, for {@link #lean}. */
+    public static double[] centre(HullGrid g, Compartment c) {
+        double x = 0, z = 0;
+        for (int i : c.cells()) {
+            x += g.x(i) + 0.5;
+            z += g.z(i) + 0.5;
+        }
+        int n = Math.max(1, c.size());
+        return new double[]{x / n, z / n};
+    }
+
+    /**
+     * For each of the compartment's breaches, how much higher the water inside is at that hole than its average height,
+     * when the water lies flat in the world.
+     *
+     * @param centre from {@link #centre}
+     * @param ux the world's up in the ship's frame, x (also {@code uy}, {@code uz}); near or past its side, none
+     */
+    public static double[] lean(HullGrid g, Compartment c, double[] centre, double ux, double uy, double uz) {
+        double[] lean = new double[c.breaches().size()];
+        if (uy < 0.25) return lean;
+        double sx = -ux / uy, sz = -uz / uy;
+        for (int b = 0; b < lean.length; b++) {
+            int i = c.breaches().get(b).inside();
+            lean[b] = sx * (g.x(i) + 0.5 - centre[0]) + sz * (g.z(i) + 0.5 - centre[1]);
+        }
+        return lean;
     }
 }

@@ -150,4 +150,26 @@ class FloodingTest {
         assertEquals(0, Flooding.pump(5, 20, 0.5), 1e-9);
         assertEquals(100, Flooding.pump(100, 0, 0.5), 1e-9);
     }
+
+    @Test
+    void aHoleOnTheHighSideStillFloodsToTheSeaLevel() {
+        HullGrid g = new HullGrid(13, 9, 9);
+        HullAnalysisTest.box(g, 1, 1, 1, 11, 7, 7, true);
+        HullAnalysisTest.clear(g, 10, 1, 4); // a hole in the floor, towards +x
+        Compartment c = HullAnalysis.analyze(g, 2).compartments().get(0);
+        // Leaning so +x is the high side: the sea is lower in the ship's frame at the hole than at the middle.
+        double ux = Math.sin(Math.toRadians(10)), uy = Math.cos(Math.toRadians(10));
+        double[] centre = Flooding.centre(g, c);
+        double[] lean = Flooding.lean(g, c, centre, ux, uy, 0);
+        assertTrue(lean[0] < -0.5, "the water inside is lower at this hole than on average: " + lean[0]);
+        double sea = 4.0; // at the middle of the ship
+        double[] outside = {sea + lean[0]};
+        double v = 0, ignoringLean = 0;
+        for (int t = 0; t < 20 * 60 * 10; t++) {
+            v = Flooding.step(g, c, v, outside, lean, G, CD, TICK);
+            ignoringLean = Flooding.step(g, c, ignoringLean, outside, G, CD, TICK);
+        }
+        assertEquals(sea, c.surface(v), 0.05, "level with the sea, wherever the hole is");
+        assertTrue(c.surface(ignoringLean) < sea - 0.5, "comparing with the average would stop it early");
+    }
 }
