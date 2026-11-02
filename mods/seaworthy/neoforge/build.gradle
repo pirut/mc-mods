@@ -1,0 +1,19 @@
+plugins {
+    id 'mcmods.neoforge'
+}
+
+repositories {
+    maven {
+        url = 'https://maven.ryanhcode.dev/releases'
+        content { includeGroupAndSubgroups 'dev.ryanhcode' }
+    }
+}
+
+dependencies {
+    // Sable is a required mod at runtime, so it is only compiled against here. Its own dependencies (Veil,
+    // Create...) aren't needed to compile this mod.
+    compileOnly("dev.ryanhcode.sable:sable-neoforge-${minecraft_version}:${sable_version}") { transitive = false }
+    compileOnly("dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:${sable_companion_version}") { transitive = false }
+}
+
+// The hull package has no Minecraft classes, so its tests run on plain JUnit (set up by mcmods.neoforge).
