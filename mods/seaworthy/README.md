@@ -79,5 +79,6 @@ heights, and exits non-zero if anything is off. It takes about seven minutes, so
 - A part-filled top layer of water counts as dry for players until it's full: full layers are real water, and the
   part-filled one is like air.
 - Hiding the water is drawn by Sable, with its "sub-level water occlusion" client option (on by default). Sable only
-  does that with vanilla's terrain renderer, so Seaworthy adds it to Sodium's. Shader packs (Iris) and other
-  renderers, such as Embeddium, still show the sea inside hulls, though you can't swim in it.
+  does that with vanilla's terrain renderer, so Seaworthy adds it to Sodium's and to the terrain programs Iris builds
+  from a shader pack. Other renderers, such as Embeddium, still show the sea inside hulls, though you can't swim in it.
+  A shader pack's own effects that read the water elsewhere, such as reflections drawn later, may still show it.

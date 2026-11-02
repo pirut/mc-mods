@@ -10,6 +10,8 @@
     "defaultRequire": 1
   },
   "client": [
+    "iris.IrisSodiumShaderMixin",
+    "iris.IrisTransformPatcherMixin",
     "sodium.SodiumShaderInterfaceMixin",
     "sodium.SodiumShaderLoaderMixin",
     "sodium.SodiumWorldRendererMixin"

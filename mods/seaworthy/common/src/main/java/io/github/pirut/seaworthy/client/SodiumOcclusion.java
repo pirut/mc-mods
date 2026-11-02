@@ -9,26 +9,32 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.opengl.GL11C;
+import org.lwjgl.opengl.GL13C;
 import org.lwjgl.opengl.GL20C;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Sable's water occlusion with Sodium.
+ * Sable's water occlusion with Sodium, and with Iris shader packs on top of it.
  *
  * <p>Sable hides the sea inside a ship by discarding water fragments that lie between the near and far faces of the
  * ship's dry space. It does that in vanilla's translucent terrain shader, so with Sodium, which draws terrain with
  * its own shaders, the sea showed inside every hull (players still couldn't swim in it). This adds the same test to
- * Sodium's terrain shader and gives it Sable's two depth buffers while Sodium draws translucent terrain.
+ * Sodium's terrain shader and gives it Sable's two depth buffers while Sodium draws translucent terrain. With a
+ * shader pack, Iris swaps in programs built from the pack; the test goes into those too.
  */
 public final class SodiumOcclusion {
     static final String ENABLED = "seaworthy_Occlusion";
     static final String SCREEN = "seaworthy_ScreenSize";
     static final String CLOSE = "seaworthy_CloseDepth";
     static final String FAR = "seaworthy_FarDepth";
-    /** Texture units Sodium's terrain shader leaves free (it uses 0 and 1). */
-    private static final int CLOSE_UNIT = 6, FAR_UNIT = 7;
+    private static final Pattern MAIN = Pattern.compile("void\\s+main\\s*\\(\\s*(void)?\\s*\\)\\s*\\{");
 
     private static final String UNIFORMS = """
             uniform float %s;
@@ -48,27 +54,41 @@ public final class SodiumOcclusion {
     private static boolean broken;
     private static final Int2ObjectOpenHashMap<int[]> LOCATIONS = new Int2ObjectOpenHashMap<>();
     private static @Nullable Field closeField, farField;
+    /** The top two texture units, which neither Sodium nor a shader pack's samplers get to. */
+    private static int closeUnit = -1, farUnit;
+    private static @Nullable Method irisShadows;
+    private static boolean irisChecked;
 
     private SodiumOcclusion() {
     }
 
     /** Adds the occlusion test to Sodium's terrain fragment shader. */
     public static String patchShader(String source) {
-        LOCATIONS.clear(); // Sodium is making its programs again
-        int main = source.indexOf("void main()");
-        int body = main < 0 ? -1 : source.indexOf('{', main);
-        if (body < 0) {
-            Seaworthy.LOG.warn("Couldn't find main() in Sodium's terrain shader, so the sea may show inside ships");
+        LOCATIONS.clear(); // the programs are being made again
+        if (source.contains(ENABLED)) return source;
+        Matcher m = MAIN.matcher(source);
+        if (!m.find()) {
+            Seaworthy.LOG.warn("Couldn't find main() in a terrain shader, so the sea may show inside ships");
             return source;
         }
-        return source.substring(0, main) + UNIFORMS + "\n" + source.substring(main, body + 1) + "\n" + TEST
-                + source.substring(body + 1);
+        return source.substring(0, m.start()) + UNIFORMS + "\n" + source.substring(m.start(), m.end()) + "\n" + TEST
+                + source.substring(m.end());
+    }
+
+    /** Iris has turned a shader pack's terrain program into Sodium's: add the test to its fragment shader. */
+    public static <K> Map<K, String> patchIris(Map<K, String> sources) {
+        if (sources == null) return null;
+        Map<K, String> patched = new LinkedHashMap<>(sources);
+        for (Map.Entry<K, String> e : patched.entrySet()) {
+            if (e.getValue() != null && "FRAGMENT".equals(String.valueOf(e.getKey()))) e.setValue(patchShader(e.getValue()));
+        }
+        return patched;
     }
 
     /** Sodium is about to draw a terrain layer. */
     public static void beginLayer(boolean isTranslucent) {
-        translucent = isTranslucent;
-        if (!isTranslucent || broken) return;
+        translucent = isTranslucent && !irisShadowPass();
+        if (!translucent || broken) return;
         try {
             if (!WaterOcclusionRenderer.isEnabled()) return;
             // Sable only does this from vanilla's terrain renderer, which Sodium replaces.
@@ -109,14 +129,21 @@ public final class SodiumOcclusion {
         var target = Minecraft.getInstance().getMainRenderTarget();
         GL20C.glUniform1f(at[0], 1.0f);
         if (at[1] >= 0) GL20C.glUniform2f(at[1], target.width, target.height);
-        bind(CLOSE_UNIT, close, at[2]);
-        bind(FAR_UNIT, far, at[3]);
-        GlStateManager._activeTexture(GL20C.GL_TEXTURE0);
+        if (closeUnit < 0) {
+            int units = GL20C.glGetInteger(GL20C.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
+            closeUnit = units - 2;
+            farUnit = units - 1;
+        }
+        // Bound with plain GL: vanilla's texture tracking only knows the first 12 units, and leaves these alone.
+        int active = GlStateManager._getActiveTexture();
+        bind(closeUnit, close, at[2]);
+        bind(farUnit, far, at[3]);
+        GL13C.glActiveTexture(active);
     }
 
     private static void bind(int unit, int texture, int location) {
-        GlStateManager._activeTexture(GL20C.GL_TEXTURE0 + unit);
-        GlStateManager._bindTexture(texture);
+        GL13C.glActiveTexture(GL13C.GL_TEXTURE0 + unit);
+        GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, texture);
         if (location >= 0) GL20C.glUniform1i(location, unit);
     }
 
@@ -139,6 +166,25 @@ public final class SodiumOcclusion {
         } catch (ReflectiveOperationException | RuntimeException e) {
             fail(e);
             return 0;
+        }
+    }
+
+    /** True while Iris draws the shadow map, which goes through the same terrain renderer from the sun's view. */
+    private static boolean irisShadowPass() {
+        if (!irisChecked) {
+            irisChecked = true;
+            try {
+                irisShadows = Class.forName("net.irisshaders.iris.shadows.ShadowRenderingState")
+                        .getMethod("areShadowsCurrentlyBeingRendered");
+            } catch (ReflectiveOperationException | LinkageError e) {
+                irisShadows = null; // no Iris
+            }
+        }
+        if (irisShadows == null) return false;
+        try {
+            return (boolean) irisShadows.invoke(null);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return false;
         }
     }
 

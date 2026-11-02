@@ -4,7 +4,7 @@
 
 - The sea no longer shows inside hulls with Sodium installed. Sable hides it only in vanilla's terrain renderer,
   which Sodium replaces, so the water was drawn even though you couldn't swim in it. Seaworthy now adds the same
-  test to Sodium's terrain shader.
+  test to Sodium's terrain shader, and to the terrain programs Iris builds from a shader pack.
 
 ## 0.1.0-alpha.1
 
