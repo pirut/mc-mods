@@ -19,10 +19,12 @@ import java.util.Properties;
  * @param maxHullCells ships whose bounding box holds more blocks than this are left alone
  * @param maxLumps     how finely buoyancy is spread over a big hull (more is smoother, and costs more)
  * @param pumpRate     blocks of water a second a Create mechanical pump empties at 256 RPM; slower pumps do less
+ * @param drainShipWater water blocks a ship carries inside its hull when it's assembled (sea it was built in) are
+ *                     removed once, so a new ship starts dry
  */
 public record SeaworthyConfig(boolean flooding, double floodSpeed, double buoyancy, int maxHoleWidth, long maxHullCells,
-                              int maxLumps, double pumpRate) {
-    public static final SeaworthyConfig DEFAULT = new SeaworthyConfig(true, 1.0, 1.0, 2, 8_000_000L, 4096, 16.0);
+                              int maxLumps, double pumpRate, boolean drainShipWater) {
+    public static final SeaworthyConfig DEFAULT = new SeaworthyConfig(true, 1.0, 1.0, 2, 8_000_000L, 4096, 16.0, true);
 
     public static SeaworthyConfig load(Path file) {
         Properties p = new Properties();
@@ -41,7 +43,8 @@ public record SeaworthyConfig(boolean flooding, double floodSpeed, double buoyan
                 (int) clamp(num(p, "maxHoleWidth", d.maxHoleWidth), 0, 4),
                 (long) clamp(num(p, "maxHullCells", d.maxHullCells), 1000, 64_000_000),
                 (int) clamp(num(p, "maxLumps", d.maxLumps), 64, 65536),
-                clamp(num(p, "pumpRate", d.pumpRate), 0, 10_000));
+                clamp(num(p, "pumpRate", d.pumpRate), 0, 10_000),
+                bool(p, "drainShipWater", d.drainShipWater));
         if (!Files.exists(file)) c.save(file);
         return c;
     }
@@ -68,7 +71,11 @@ public record SeaworthyConfig(boolean flooding, double floodSpeed, double buoyan
                         maxLumps=%d
                         # Blocks of water a second a Create mechanical pump empties at 256 RPM. Slower pumps do less.
                         pumpRate=%s
-                        """.formatted(flooding, floodSpeed, buoyancy, maxHoleWidth, maxHullCells, maxLumps, pumpRate));
+                        # Water blocks a ship carries inside its hull when it's assembled, such as the sea it was built
+                        # in, are removed once so a new ship starts dry.
+                        drainShipWater=%s
+                        """.formatted(flooding, floodSpeed, buoyancy, maxHoleWidth, maxHullCells, maxLumps, pumpRate,
+                        drainShipWater));
             }
         } catch (IOException e) {
             Seaworthy.LOG.warn("Couldn't write {}: {}", file, e.toString());

@@ -63,6 +63,7 @@ waterline. Anyone can use it for ships within 128 blocks; operators see every sh
 | `maxHullCells` | `8000000` | Ships with more blocks than this in their bounding box are left alone. |
 | `maxLumps` | `4096` | How finely buoyancy is spread over a big hull. |
 | `pumpRate` | `16` | Blocks of water a second a Create mechanical pump empties at 256 RPM. Slower pumps do less. |
+| `drainShipWater` | `true` | Water blocks a ship carries inside its hull when it's assembled, such as the sea it was built in, are removed once so a new ship starts dry. |
 
 - When a ship is first put together on the water, the hole its blocks leave in the sea is told to fill back in, so the
   ship floats at its proper height right where it was built. This happens once per ship, not after every restart.

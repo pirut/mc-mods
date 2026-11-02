@@ -28,6 +28,8 @@ final class FloodStore extends SavedData {
     private final Map<UUID, Map<Long, Float>> ships = new HashMap<>();
     /** Every ship we've seen, so what happens once for a new ship doesn't happen again after a restart. */
     private final Set<UUID> seen = new HashSet<>();
+    /** Ships whose carried-in water has been removed. Separate from {@link #seen}, so ships from before it existed get it too. */
+    private final Set<UUID> drained = new HashSet<>();
 
     private FloodStore() {
     }
@@ -46,6 +48,7 @@ final class FloodStore extends SavedData {
             store.ships.put(UUID.fromString(id), volumes);
         }
         for (String id : tag.getCompound("seen").getAllKeys()) store.seen.add(UUID.fromString(id));
+        for (String id : tag.getCompound("drained").getAllKeys()) store.drained.add(UUID.fromString(id));
         return store;
     }
 
@@ -61,12 +64,22 @@ final class FloodStore extends SavedData {
         CompoundTag seen = new CompoundTag();
         this.seen.forEach(id -> seen.putBoolean(id.toString(), true));
         tag.put("seen", seen);
+        CompoundTag drained = new CompoundTag();
+        this.drained.forEach(id -> drained.putBoolean(id.toString(), true));
+        tag.put("drained", drained);
         return tag;
     }
 
     /** True the first time this is asked about a ship, ever. */
     boolean firstSight(UUID ship) {
         if (!seen.add(ship)) return false;
+        setDirty();
+        return true;
+    }
+
+    /** True the first time this is asked about a ship, ever: when to remove the water it was assembled with. */
+    boolean firstDrain(UUID ship) {
+        if (!drained.add(ship)) return false;
         setDirty();
         return true;
     }
@@ -86,6 +99,6 @@ final class FloodStore extends SavedData {
     }
 
     void forget(UUID ship) {
-        if (ships.remove(ship) != null | seen.remove(ship)) setDirty();
+        if (ships.remove(ship) != null | seen.remove(ship) | drained.remove(ship)) setDirty();
     }
 }

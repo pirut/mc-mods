@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.2
+
+- A hull built in the sea no longer keeps that sea inside it after it's assembled. The water blocks it carried in
+  were part of the ship, so they couldn't be hidden; they're now removed once, including on ships assembled before
+  this version. Turn it off with `drainShipWater=false`.
+
 ## 0.1.0-alpha.1
 
 - First version. Sealed hulls keep the sea out: no water, no swimming and no underwater fog inside, on any Sable
