@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-alpha.3
+
+- Fixed the sea still showing inside hulls with Sodium in alpha.2. The ship's dry space was drawn without the
+  camera's view, so it never lined up with the water. Seaworthy now uses the view Sodium draws terrain with, and
+  puts back the frame Sodium (or a shader pack) was drawing into afterwards.
+- The log now says "Hiding the sea inside ships in Sodium's terrain" once it's working, to make problems easier to
+  track down.
+
 ## 0.1.0-alpha.2
 
 - The sea no longer shows inside hulls with Sodium installed. Sable hides it only in vanilla's terrain renderer,
