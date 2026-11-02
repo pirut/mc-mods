@@ -23,12 +23,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.LiquidBlock;
-import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3d;
 
@@ -228,9 +223,7 @@ final class ShipHull {
     private void adopt(Scan next) {
         Scan old = scan;
         if (old == null && level instanceof ServerLevel server) {
-            FloodStore store = FloodStore.of(server);
-            if (store.firstSight(subLevel.getUniqueId())) wake = SeaWake.under(subLevel);
-            if (Seaworthy.config().drainShipWater() && store.firstDrain(subLevel.getUniqueId())) drainCarriedWater(server, next);
+            if (FloodStore.of(server).firstSight(subLevel.getUniqueId())) wake = SeaWake.under(subLevel);
             restoreWater(server, next);
         }
         if (old != null) {
@@ -252,29 +245,6 @@ final class ShipHull {
         scan = next;
         regionsStale = true;
         lumpsStale = true;
-    }
-
-    /**
-     * Removes the water blocks inside the hull that the ship was assembled with, such as the sea it was built in. They
-     * are part of the ship, so occlusion can't hide them, and they'd sit in the hull for good. Waterlogged blocks are
-     * left alone. The block changes make the hull be worked out again.
-     */
-    private void drainCarriedWater(ServerLevel server, Scan next) {
-        HullGrid g = next.grid();
-        BlockPos o = next.origin();
-        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        int removed = 0;
-        for (Compartment c : next.result().compartments()) {
-            for (int i : c.cells()) {
-                if ((g.flags(i) & HullGrid.FLUID) == 0) continue;
-                pos.set(o.getX() + g.x(i), o.getY() + g.y(i), o.getZ() + g.z(i));
-                BlockState state = server.getBlockState(pos);
-                if (!(state.getBlock() instanceof LiquidBlock) || !state.getFluidState().is(FluidTags.WATER)) continue;
-                server.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
-                removed++;
-            }
-        }
-        if (removed > 0) Seaworthy.LOG.info("Removed {} water blocks ship {} was assembled with", removed, subLevel.getUniqueId());
     }
 
     /** Each compartment's anchor cell, relative to the ship's bounds: what its saved water is filed under. */
