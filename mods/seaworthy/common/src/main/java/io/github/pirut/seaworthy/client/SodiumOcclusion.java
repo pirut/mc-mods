@@ -12,6 +12,9 @@ import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL13C;
 import org.lwjgl.opengl.GL20C;
+import org.lwjgl.opengl.GL30C;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -58,6 +61,8 @@ public final class SodiumOcclusion {
     private static int closeUnit = -1, farUnit;
     private static @Nullable Method irisShadows;
     private static boolean irisChecked;
+    private static @Nullable Method modelViewOf, projectionOf;
+    private static boolean patchedLogged, workingLogged;
 
     private SodiumOcclusion() {
     }
@@ -70,6 +75,10 @@ public final class SodiumOcclusion {
         if (!m.find()) {
             Seaworthy.LOG.warn("Couldn't find main() in a terrain shader, so the sea may show inside ships");
             return source;
+        }
+        if (!patchedLogged) {
+            patchedLogged = true;
+            Seaworthy.LOG.info("Added ship water hiding to Sodium's terrain shader");
         }
         return source.substring(0, m.start()) + UNIFORMS + "\n" + source.substring(m.start(), m.end()) + "\n" + TEST
                 + source.substring(m.end());
@@ -85,16 +94,49 @@ public final class SodiumOcclusion {
         return patched;
     }
 
-    /** Sodium is about to draw a terrain layer. */
-    public static void beginLayer(boolean isTranslucent) {
+    /** Sodium is about to draw a terrain layer with these {@code ChunkRenderMatrices}. */
+    public static void beginLayer(boolean isTranslucent, @Nullable Object matrices) {
         translucent = isTranslucent && !irisShadowPass();
         if (!translucent || broken) return;
         try {
             if (!WaterOcclusionRenderer.isEnabled()) return;
-            // Sable only does this from vanilla's terrain renderer, which Sodium replaces.
-            SableClient.WATER_OCCLUSION_RENDERER.preRenderTranslucent(RenderSystem.getModelViewMatrix(), RenderSystem.getProjectionMatrix());
+            // Sable only does this from vanilla's terrain renderer, which Sodium replaces. It needs the camera's view:
+            // by the time translucent terrain is drawn, RenderSystem's model view no longer holds it, so the ship's dry
+            // space was drawn facing the wrong way and nothing was hidden.
+            Matrix4f modelView = matrix(matrices, true);
+            Matrix4f projection = matrix(matrices, false);
+            if (modelView == null) modelView = new Matrix4f(RenderSystem.getModelViewMatrix());
+            if (projection == null) projection = new Matrix4f(RenderSystem.getProjectionMatrix());
+
+            // Draw into Sable's buffers without losing the frame Sodium (or a shader pack) is drawing into.
+            int draw = GL11C.glGetInteger(GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
+            int read = GL11C.glGetInteger(GL30C.GL_READ_FRAMEBUFFER_BINDING);
+            int[] viewport = new int[4];
+            GL11C.glGetIntegerv(GL11C.GL_VIEWPORT, viewport);
+            try {
+                SableClient.WATER_OCCLUSION_RENDERER.preRenderTranslucent(modelView, projection);
+            } finally {
+                GL30C.glBindFramebuffer(GL30C.GL_DRAW_FRAMEBUFFER, draw);
+                GL30C.glBindFramebuffer(GL30C.GL_READ_FRAMEBUFFER, read);
+                GL11C.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+            }
         } catch (RuntimeException | LinkageError e) {
             fail(e);
+        }
+    }
+
+    /** The model view or projection matrix out of Sodium's ChunkRenderMatrices, or null if it can't be read. */
+    private static @Nullable Matrix4f matrix(@Nullable Object matrices, boolean modelView) {
+        if (matrices == null) return null;
+        try {
+            if (modelViewOf == null) {
+                modelViewOf = matrices.getClass().getMethod("modelView");
+                projectionOf = matrices.getClass().getMethod("projection");
+            }
+            Object m = (modelView ? modelViewOf : projectionOf).invoke(matrices);
+            return m instanceof Matrix4fc c ? new Matrix4f(c) : null;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return null;
         }
     }
 
@@ -128,6 +170,10 @@ public final class SodiumOcclusion {
         }
         var target = Minecraft.getInstance().getMainRenderTarget();
         GL20C.glUniform1f(at[0], 1.0f);
+        if (!workingLogged) {
+            workingLogged = true;
+            Seaworthy.LOG.info("Hiding the sea inside ships in Sodium's terrain");
+        }
         if (at[1] >= 0) GL20C.glUniform2f(at[1], target.width, target.height);
         if (closeUnit < 0) {
             int units = GL20C.glGetInteger(GL20C.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
