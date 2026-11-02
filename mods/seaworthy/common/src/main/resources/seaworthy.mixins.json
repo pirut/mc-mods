@@ -8,5 +8,10 @@
   ],
   "injectors": {
     "defaultRequire": 1
-  }
+  },
+  "client": [
+    "sodium.SodiumShaderInterfaceMixin",
+    "sodium.SodiumShaderLoaderMixin",
+    "sodium.SodiumWorldRendererMixin"
+  ]
 }

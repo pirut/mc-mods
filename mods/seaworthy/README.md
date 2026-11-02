@@ -78,5 +78,6 @@ heights, and exits non-zero if anything is off. It takes about seven minutes, so
   is still there, but isn't drawn.
 - A part-filled top layer of water counts as dry for players until it's full: full layers are real water, and the
   part-filled one is like air.
-- Hiding the water is drawn by Sable, with its "sub-level water occlusion" client option (on by default). If water
-  still shows inside your hulls with a rendering mod installed, that is Sable's renderer.
+- Hiding the water is drawn by Sable, with its "sub-level water occlusion" client option (on by default). Sable only
+  does that with vanilla's terrain renderer, so Seaworthy adds it to Sodium's. Shader packs (Iris) and other
+  renderers, such as Embeddium, still show the sea inside hulls, though you can't swim in it.
