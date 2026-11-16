@@ -11,8 +11,6 @@ displayURL = "https://github.com/pirut/mc-mods/tree/main/mods/bloodfeud"
 authors = "${mod_authors}"
 description = '''${mod_description}'''
 
-[[mixins]]
-config = "bloodfeud.mixins.json"
 
 [[dependencies.${mod_id}]]
 modId = "neoforge"
@@ -26,4 +24,11 @@ modId = "minecraft"
 type = "required"
 versionRange = "${minecraft_version_range}"
 ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "pirutlib"
+type = "required"
+versionRange = "[0.1.0-alpha.1,)"
+ordering = "AFTER"
 side = "BOTH"

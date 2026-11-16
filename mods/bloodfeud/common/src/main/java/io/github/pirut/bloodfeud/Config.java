@@ -7,42 +7,51 @@ import java.util.Properties;
 
 /** config/bloodfeud.properties. Read once at start. */
 public final class Config {
-    /** Seconds between Captain encounters for one player, at least. */
-    public int encounterCooldownSeconds = 420;
-    /** Chance (percent) of a Captain showing up at each 10-second check once the cooldown is over. */
-    public int encounterChancePercent = 5;
-    /** No Captain shows up this close to the world spawn. */
-    public int spawnSafeRadius = 96;
-    /** Most Captain mobs in the world at once, all players together. */
-    public int maxActiveCaptains = 12;
-    /** Tell every player what the Warband did when power struggles resolve. */
-    public boolean announcePowerShifts = true;
+    /** Kills of its kind a mob has to see (and live through) to become a Brute. */
+    public int killsToRise = 3;
+    /** Seconds between one player's encounters with Brutes, at least. */
+    public int encounterCooldownSeconds = 150;
+    /** Chance (percent) a lone Brute nearby shows up at each 10-second check once the cooldown is over. */
+    public int encounterChancePercent = 25;
+    /** No Brute shows up this close to the world spawn. */
+    public int spawnSafeRadius = 48;
+    /** Most Brute mobs in the world at once, all players together. */
+    public int maxActiveBrutes = 12;
+    /** Most packs in a world. When there are more, the oldest far-away pack no one has met fades. */
+    public int maxPacks = 64;
+    /** Tell players what the packs near them did each night. */
+    public boolean announceNews = true;
 
     static Config load(Path file) {
         Config c = new Config();
         Properties p = PropertiesFile.read(file, (f, e) -> BloodFeud.LOG.warn("Couldn't read {}: {}", f, e.toString()));
+        c.killsToRise = Math.max(1, PropertiesFile.integer(p, "killsToRise", c.killsToRise));
         c.encounterCooldownSeconds = PropertiesFile.integer(p, "encounterCooldownSeconds", c.encounterCooldownSeconds);
         c.encounterChancePercent = PropertiesFile.integer(p, "encounterChancePercent", c.encounterChancePercent);
         c.spawnSafeRadius = PropertiesFile.integer(p, "spawnSafeRadius", c.spawnSafeRadius);
-        c.maxActiveCaptains = PropertiesFile.integer(p, "maxActiveCaptains", c.maxActiveCaptains);
-        c.announcePowerShifts = PropertiesFile.bool(p, "announcePowerShifts", c.announcePowerShifts);
+        c.maxActiveBrutes = PropertiesFile.integer(p, "maxActiveBrutes", c.maxActiveBrutes);
+        c.maxPacks = Math.max(1, PropertiesFile.integer(p, "maxPacks", c.maxPacks));
+        c.announceNews = PropertiesFile.bool(p, "announceNews", c.announceNews);
         String text = """
                 # Blood Feud settings. Delete a line to get its default back.
 
-                # Seconds between Captain encounters for one player, at least.
+                # Kills of its kind a mob has to see (and live through) to become a Brute.
+                killsToRise=%d
+                # Seconds between one player's encounters with Brutes, at least.
                 encounterCooldownSeconds=%d
-                # Chance (percent) of a Captain showing up at each 10-second check once the cooldown is over.
+                # Chance (percent) a lone Brute nearby shows up at each 10-second check once the cooldown is over.
                 encounterChancePercent=%d
-                # No Captain shows up this close (in blocks) to the world spawn.
+                # No Brute shows up this close (in blocks) to the world spawn.
                 spawnSafeRadius=%d
-                # Most Captain mobs in the world at once, all players together.
-                maxActiveCaptains=%d
-                # Tell every player what the Warband did when power struggles resolve.
-                announcePowerShifts=%b
-                """.formatted(c.encounterCooldownSeconds, c.encounterChancePercent, c.spawnSafeRadius,
-                c.maxActiveCaptains, c.announcePowerShifts);
+                # Most Brute mobs in the world at once, all players together.
+                maxActiveBrutes=%d
+                # Most packs in a world. When there are more, the oldest far-away pack no one has met fades.
+                maxPacks=%d
+                # Tell players what the packs near them did each night.
+                announceNews=%b
+                """.formatted(c.killsToRise, c.encounterCooldownSeconds, c.encounterChancePercent, c.spawnSafeRadius,
+                c.maxActiveBrutes, c.maxPacks, c.announceNews);
         PropertiesFile.writeText(file, text, (f, e) -> BloodFeud.LOG.warn("Couldn't write {}: {}", f, e.toString()));
         return c;
     }
-
 }

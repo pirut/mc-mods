@@ -15,10 +15,10 @@
   "entrypoints": {
     "main": ["io.github.pirut.bloodfeud.fabric.BloodFeudFabric"]
   },
-  "mixins": ["bloodfeud.mixins.json"],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",
+    "pirutlib": ">=0.1.0-alpha.1",
     "minecraft": "${minecraft_version}",
     "java": ">=21"
   }

@@ -2,16 +2,17 @@
 
 ## 0.1.0-alpha.1
 
-First alpha: the Warband.
+First alpha.
 
-- Every world gets a Warband: 5 Warlords, each with a territory and up to 2 Sworn Guards, and up to 20 Captains.
-- A mob that kills you rises to Captain, with a name, an epithet for how it killed you, a level, and strengths,
-  weaknesses, immunities and fears. A Captain that kills you levels up and becomes your Nemesis.
-- Captains find you in the world, announce themselves with a title card and a line, fight under a boss bar, and
-  withdraw (stronger) if you run.
-- Killed Captains can come back with scars, unless the kill was final (a critical hit with a sword or axe, or lava).
-- Power struggles (duels, feasts, hunts, recruitment, ambushes and challenges for a Warlord's place) play out over
-  in-game days. Dying or sleeping moves them along. Empty places are filled by promotions.
-- Warlords only show up once both of their Sworn Guards are dead and you are in their territory at night.
-- `/bloodfeud board` lists the Warband with what you know about each Captain. Ops get `inspect`, `summon`,
-  `promote`, `advance`, `reveal` and `reset`.
+- Mobs that see you kill three of their kind and live, or that kill you, rise as named Brutes with a level, an
+  epithet, traits you have to find out, and a memory of you.
+- Brutes band together into packs of their own family (Rotten, Bones, Illagers, Nether), with a home named after
+  where they formed, a color (dyed caps, and a banner on the Boss) and a Boss.
+- Packs grow every night, raise new Brutes, change Bosses through challenges, raid rival packs, and swallow packs of
+  their own kind to crown a King. Kill a King and its packs split.
+- Brutes meet you with a title card, a boss bar and a line that remembers what happened between you. Traits change
+  fights: immunities, instant-kill weaknesses, venom, theft, blinking, fears of fire, wolves, cats and bells.
+- Killed Brutes can come back scarred unless the kill was final (a critical hit with a sword or axe, or lava).
+- Far-away packs sleep and catch up later; grudges follow you across the world; at most 64 packs per world.
+- `/bloodfeud`, `/bloodfeud brute <name>` and `/bloodfeud nemesis`, plus operator commands. Server only: players
+  don't need the mod.
