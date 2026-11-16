@@ -1,11 +1,11 @@
-package io.github.pirut.bloodfeud.warband;
+package io.github.pirut.bloodfeud.feud;
 
 import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * What makes one Captain different from the next: what it can't be hurt by, what it is good at, what kills it fast,
- * and what it runs from. A Captain rolls a few of each when it rises, and can gain or lose them as it goes.
+ * What makes one Brute different from the next: what it can't be hurt by, what it is good at, what kills it fast,
+ * and what it runs from. A Brute rolls a few of each when it rises, and can gain or lose them as it goes.
  */
 public enum Trait {
     // Immunities

@@ -1,7 +1,7 @@
-package io.github.pirut.bloodfeud.warband;
+package io.github.pirut.bloodfeud.feud;
 
 /**
- * One thing that happened between a Captain and a player, kept so the Captain can bring it up later.
+ * One thing that happened between a Brute and a player, kept so the Brute can bring it up later.
  *
  * @param kind   what happened
  * @param time   game time it happened
@@ -19,8 +19,12 @@ public record Memory(Kind kind, long time, String detail) {
         IT_FLED,
         /** It took the player's item. */
         STOLE,
-        /** It rose to Captain by killing the player. */
-        ROSE;
+        /** It rose to Brute by killing the player. */
+        ROSE,
+        /** It saw the player kill its own kind and walked away. */
+        SAW_KILLS,
+        /** It came back from the dead. */
+        RETURNED;
 
         public String key() {
             return name().toLowerCase(java.util.Locale.ROOT);

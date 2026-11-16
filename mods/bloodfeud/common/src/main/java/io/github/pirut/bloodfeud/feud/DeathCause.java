@@ -1,6 +1,6 @@
-package io.github.pirut.bloodfeud.warband;
+package io.github.pirut.bloodfeud.feud;
 
-/** How someone died, reduced to what the Warband cares about (names, scars and memories). */
+/** How someone died, reduced to what Blood Feud cares about (names, scars and memories). */
 public enum DeathCause {
     MELEE, ARROW, FIRE, FALL, EXPLOSION, DROWNING, BEAST, OTHER;
 

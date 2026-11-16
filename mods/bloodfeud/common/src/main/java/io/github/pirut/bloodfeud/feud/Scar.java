@@ -1,6 +1,6 @@
-package io.github.pirut.bloodfeud.warband;
+package io.github.pirut.bloodfeud.feud;
 
-/** How a Captain nearly died, carried for the rest of its life when it comes back. */
+/** How a Brute nearly died, carried for the rest of its life when it comes back. */
 public enum Scar {
     BURNED("the Charred", Trait.FIREPROOF, Trait.FEARS_FIRE),
     BROKEN("Broke-Leg", Trait.UNSHAKABLE, null),
@@ -10,7 +10,7 @@ public enum Scar {
     CUT("Stitch-Face", Trait.WATCHFUL, null),
     MAULED("Wolf-Chewed", null, Trait.FEARS_WOLVES);
 
-    /** The epithet a Captain may take when it comes back with this scar. */
+    /** The epithet a Brute may take when it comes back with this scar. */
     public final String epithet;
     /** What it may learn from it (hardened), or null. */
     public final Trait hardened;

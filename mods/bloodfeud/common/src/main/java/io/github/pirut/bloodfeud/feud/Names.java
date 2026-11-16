@@ -1,11 +1,11 @@
-package io.github.pirut.bloodfeud.warband;
+package io.github.pirut.bloodfeud.feud;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
-/** Names and epithets for Captains. All of it written for this mod. */
+/** Names and epithets for Brutes. All of it written for this mod. */
 public final class Names {
     private Names() {
     }
