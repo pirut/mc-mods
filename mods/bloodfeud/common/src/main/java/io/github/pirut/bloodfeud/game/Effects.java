@@ -62,6 +62,9 @@ public final class Effects {
         Live live = Live.current();
         if (live == null || amount <= 0) return amount;
         Entity attacker = source.getEntity();
+        if (attacker instanceof LivingEntity holder && source.getDirectEntity() == attacker) {
+            Relics.onHit(holder.getMainHandItem(), target, holder);
+        }
         Brute hurt = live.bruteOf(target);
         if (hurt != null) {
             if (attacker instanceof Player p) live.fought(target, p);

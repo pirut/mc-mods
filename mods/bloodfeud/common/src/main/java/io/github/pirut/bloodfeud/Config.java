@@ -9,6 +9,8 @@ import java.util.Properties;
 public final class Config {
     /** Kills of its kind a mob has to see (and live through) to become a Brute. */
     public int killsToRise = 3;
+    /** Seconds after a mob rises because of a player before another can rise because of the same player. */
+    public int riseCooldownSeconds = 90;
     /** Seconds between one player's encounters with Brutes, at least. */
     public int encounterCooldownSeconds = 150;
     /** Chance (percent) a lone Brute nearby shows up at each 10-second check once the cooldown is over. */
@@ -26,6 +28,7 @@ public final class Config {
         Config c = new Config();
         Properties p = PropertiesFile.read(file, (f, e) -> BloodFeud.LOG.warn("Couldn't read {}: {}", f, e.toString()));
         c.killsToRise = Math.max(1, PropertiesFile.integer(p, "killsToRise", c.killsToRise));
+        c.riseCooldownSeconds = Math.max(0, PropertiesFile.integer(p, "riseCooldownSeconds", c.riseCooldownSeconds));
         c.encounterCooldownSeconds = PropertiesFile.integer(p, "encounterCooldownSeconds", c.encounterCooldownSeconds);
         c.encounterChancePercent = PropertiesFile.integer(p, "encounterChancePercent", c.encounterChancePercent);
         c.spawnSafeRadius = PropertiesFile.integer(p, "spawnSafeRadius", c.spawnSafeRadius);
@@ -37,6 +40,8 @@ public final class Config {
 
                 # Kills of its kind a mob has to see (and live through) to become a Brute.
                 killsToRise=%d
+                # Seconds after a mob rises because of you before another can (keeps busy nights from flooding the world).
+                riseCooldownSeconds=%d
                 # Seconds between one player's encounters with Brutes, at least.
                 encounterCooldownSeconds=%d
                 # Chance (percent) a lone Brute nearby shows up at each 10-second check once the cooldown is over.
@@ -49,7 +54,7 @@ public final class Config {
                 maxPacks=%d
                 # Tell players what the packs near them did each night.
                 announceNews=%b
-                """.formatted(c.killsToRise, c.encounterCooldownSeconds, c.encounterChancePercent, c.spawnSafeRadius,
+                """.formatted(c.killsToRise, c.riseCooldownSeconds, c.encounterCooldownSeconds, c.encounterChancePercent, c.spawnSafeRadius,
                 c.maxActiveBrutes, c.maxPacks, c.announceNews);
         PropertiesFile.writeText(file, text, (f, e) -> BloodFeud.LOG.warn("Couldn't write {}: {}", f, e.toString()));
         return c;

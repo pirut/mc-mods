@@ -195,4 +195,33 @@ class FeudTest {
         }
         assertTrue(raided);
     }
+
+    @Test
+    void aHundredNightsOfFeudingKeepsTheWorldSane() {
+        Feud f = new Feud(new Random(13));
+        Family[] fams = Family.values();
+        Random r = new Random(14);
+        for (int i = 0; i < 24; i++) {
+            Family fam = fams[i % fams.length];
+            f.rise(fam.defaultType, fam, OW, r.nextInt(3000) - 1500, r.nextInt(3000) - 1500, PLAYER,
+                    Memory.Kind.SAW_KILLS, null, null, 0);
+        }
+        boolean king = false;
+        for (int day = 1; day <= 100; day++) {
+            f.night(day * Feud.DAY, at(0, 0), PLACES);
+            f.drainNews();
+            for (Pack p : f.packs.values()) {
+                assertTrue(f.members(p).size() <= Feud.MAX_MEMBERS);
+                assertTrue(p.grunts >= 0 && p.grunts <= Feud.MAX_GRUNTS);
+                for (Brute m : f.members(p)) assertEquals(p.family, m.family);
+                Pack top = f.top(p);
+                assertTrue(top.liege == null, "chains end at a King");
+                if (p.liege != null) assertEquals(p.family, f.pack(p.liege).family);
+                Brute boss = f.brute(p.boss);
+                if (boss != null && boss.alive) king |= f.rank(boss) == Rank.KING;
+            }
+            assertTrue(f.packs.size() <= f.maxPacks && f.brutes.size() <= f.maxBrutes);
+        }
+        assertTrue(king, "some pack swallowed another in 100 nights");
+    }
 }

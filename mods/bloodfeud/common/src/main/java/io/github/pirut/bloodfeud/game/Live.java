@@ -122,6 +122,7 @@ public final class Live {
     private final Map<UUID, ResourceKey<net.minecraft.world.level.Level>> gruntLevel = new HashMap<>();
     private final Map<UUID, Mark> marked = new HashMap<>();
     private final Map<UUID, Long> nextEncounter = new HashMap<>();
+    private final Map<UUID, Long> lastRise = new HashMap<>();
     /** Brutes (and packs) that just left: they don't come straight back. */
     private final Map<UUID, Long> rested = new HashMap<>();
     /** Last time each player saw each Brute's title card. */
@@ -235,11 +236,18 @@ public final class Live {
             if (bruteOfEntity.containsKey(m.getUUID()) || Families.of(m.getType()) != family) continue;
             int saw = sawCount(m) + 1;
             setSawCount(m, saw);
-            if (saw >= BloodFeud.config().killsToRise && !marked.containsKey(m.getUUID())) {
+            if (saw >= BloodFeud.config().killsToRise && !marked.containsKey(m.getUUID()) && mayRise(killer)) {
                 marked.put(m.getUUID(), new Mark(m.level().dimension(), killer.getUUID(), gameTime(),
                         pack != null ? pack : grunts.get(m.getUUID())));
             }
         }
+    }
+
+    /** One mob rises per player at a time, and not again until the cooldown is over. */
+    private boolean mayRise(ServerPlayer killer) {
+        if (killer.level().getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL) return false;
+        for (Mark m : marked.values()) if (m.player().equals(killer.getUUID())) return false;
+        return lastRise.getOrDefault(killer.getUUID(), Long.MIN_VALUE / 2) + BloodFeud.config().riseCooldownSeconds * 20L <= gameTime();
     }
 
     private static int sawCount(Entity e) {
@@ -315,6 +323,8 @@ public final class Live {
         DeathCause cause = cause(source);
         Long crit = lastCrit.remove(mob.getUUID());
         boolean finalBlow = source.is(DamageTypes.LAVA) || (crit != null && gameTime() - crit <= 2);
+        Rank rankBefore = f.rank(b);
+        Pack packBefore = f.packOf(b);
         boolean forGood = f.killedByPlayer(b.id, killer == null ? null : killer.getUUID(), cause, finalBlow, now());
         b.x = mob.getBlockX();
         b.z = mob.getBlockZ();
@@ -322,6 +332,12 @@ public final class Live {
         ServerLevel level = (ServerLevel) mob.level();
         List<ItemStack> stolen = data.stolen.remove(b.id);
         if (stolen != null) for (ItemStack s : stolen) mob.spawnAtLocation(s);
+        if (killer != null && Relics.dropsRelic(rankBefore, b)) {
+            ItemStack relic = Relics.make(level, b, rankBefore, packBefore);
+            mob.spawnAtLocation(relic);
+            killer.sendSystemMessage(Component.literal(b.name + " dropped ").withStyle(ChatFormatting.GRAY)
+                    .append(relic.getHoverName()).append(Component.literal(".").withStyle(ChatFormatting.GRAY)));
+        }
         ExperienceOrb.award(level, mob.position(), 10 + 5 * b.level);
         if (killer != null) {
             Titles.show(killer, Component.literal(b.name + " falls").withStyle(ChatFormatting.DARK_RED),
@@ -441,6 +457,7 @@ public final class Live {
             Brute b = data.feud.rise(EntityType.getKey(mob.getType()).toString(), family, dim(level), mob.getBlockX(),
                     mob.getBlockZ(), m.player(), Memory.Kind.SAW_KILLS, null, pack != null ? pack : m.pack(), now());
             becomeBrute(mob, b);
+            lastRise.put(m.player(), gt);
             ServerPlayer player = server.getPlayerList().getPlayer(m.player());
             if (player != null && player.level() == level && player.distanceTo(mob) < 96) {
                 introduce(player, mob, b, false);
@@ -548,6 +565,7 @@ public final class Live {
         if (nextEncounter.getOrDefault(p.getUUID(), 0L) > gt) return;
         if (active.size() >= cfg.maxActiveBrutes) return;
         ServerLevel level = p.serverLevel();
+        if (level.getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL) return;
         BlockPos spawn = level.getSharedSpawnPos();
         if (level.dimension() == net.minecraft.world.level.Level.OVERWORLD
                 && Math.hypot(p.getX() - spawn.getX(), p.getZ() - spawn.getZ()) < cfg.spawnSafeRadius) return;
@@ -765,8 +783,9 @@ public final class Live {
             hand.set(DataComponents.CUSTOM_NAME, Component.literal(b.name + "'s " + hand.getHoverName().getString())
                     .withStyle(ChatFormatting.GOLD));
             mob.setItemSlot(EquipmentSlot.MAINHAND, hand);
-            mob.setDropChance(EquipmentSlot.MAINHAND, 1);
         }
+        // Those that drop a relic don't drop their everyday weapon too.
+        mob.setDropChance(EquipmentSlot.MAINHAND, Relics.dropsRelic(rank, b) ? 0 : 1);
         double boost = rank == Rank.KING ? 1.0 : rank == Rank.BOSS ? 0.5 : 0;
         modify(mob, Attributes.MAX_HEALTH, 0.25 * b.level + 0.5 + boost);
         modify(mob, Attributes.ATTACK_DAMAGE, 0.08 * b.level + boost * 0.3);
