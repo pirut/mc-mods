@@ -111,6 +111,8 @@ public final class Lines {
             case BONES -> "kin";
             case ILLAGERS -> "kinsmen";
             case NETHER -> "kin";
+            case SPIDERS -> "brood";
+            case WITCHES -> "sisters";
         });
         Feud f = live.data().feud;
         Pack pack = f.packOf(b);

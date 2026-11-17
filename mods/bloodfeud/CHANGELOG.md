@@ -14,5 +14,11 @@ First alpha.
   fights: immunities, instant-kill weaknesses, venom, theft, blinking, fears of fire, wolves, cats and bells.
 - Killed Brutes can come back scarred unless the kill was final (a critical hit with a sword or axe, or lava).
 - Far-away packs sleep and catch up later; grudges follow you across the world; at most 64 packs per world.
+- Six families: Rotten, Bones, Illagers, Nether, Spiders (Nests) and Witches (Covens).
+- Relics: Bosses, Kings and Brutes of level 10+ drop a named weapon stronger than any enchanting table makes,
+  shaped by its owner's traits (poison, slowness, Looting, Fire Aspect, speed, health).
+- Over 400 lines and 160 epithets that bring up your shared history (the place, the days, the stolen item, the
+  scar, the King), with no repeats until a Brute runs out, plus a word or two mid-fight. Names built from syllables.
+- A short cooldown between rises, and nothing rises on Peaceful.
 - `/bloodfeud`, `/bloodfeud brute <name>` and `/bloodfeud nemesis`, plus operator commands. Server only: players
   don't need the mod.

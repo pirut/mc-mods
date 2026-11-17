@@ -339,6 +339,26 @@ Ghasts cry for less than what I'll do to you.
 You walked through a portal for this? Bad trade.
 Everything here wants to kill you. I just want it most.
 
+[greet.spiders]
+Eight eyes, {player}. All of them on you.
+You walked through my web. I felt every step.
+Climb a wall. Go on. I'll wait at the top.
+The brood is hungry and I'm the oldest.
+Your bed is lovely. I've been living under it.
+Click, click. That's the sound of you getting caught.
+Day or night, I see you just fine.
+I spin while you sleep.
+
+[greet.witches]
+Drink this. It's good for you. It isn't.
+My cauldron has been bubbling for you all week.
+A little poison, a little slowness. A little you.
+The coven has read your fortune, {player}. It's short.
+Don't touch the potions. They're for you anyway.
+Hee hee. Oh, sorry. Hello.
+I've got a bottle for every one of your hearts.
+The moon told me you'd come.
+
 # ---------------------------------------------------------------- in a fight
 
 [killed_player]
@@ -710,3 +730,25 @@ Rot-Gut
 Green-Teeth
 the Moaner
 Slack-Jaw
+
+[epithets.minecraft:spider]
+Eight-Legs
+the Weaver
+Web-Spinner
+Wall-Crawler
+the Lurker
+
+[epithets.minecraft:cave_spider]
+the Tiny Terror
+Mine-Shaft
+Little Venom
+the Biter
+Cobweb-Queen
+
+[epithets.minecraft:witch]
+the Brewer
+Cauldron-Keeper
+Wart-Nose
+the Bottle-Thrower
+Hexmother
+the Sour Brew

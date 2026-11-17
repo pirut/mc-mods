@@ -5,7 +5,9 @@ public enum Family {
     ROTTEN("the Rotten", "minecraft:zombie"),
     BONES("the Bones", "minecraft:skeleton"),
     ILLAGERS("the Illagers", "minecraft:vindicator"),
-    NETHER("the Nether", "minecraft:wither_skeleton");
+    NETHER("the Nether", "minecraft:wither_skeleton"),
+    SPIDERS("the Spiders", "minecraft:spider"),
+    WITCHES("the Witches", "minecraft:witch");
 
     public final String title;
     /** What a new Brute of this family is when nothing says otherwise (a command, a pack's first Brute). */

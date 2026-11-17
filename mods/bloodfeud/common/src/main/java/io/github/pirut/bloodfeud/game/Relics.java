@@ -54,7 +54,9 @@ public final class Relics {
         boolean ranged = b.family == Family.BONES || b.entityType.equals("minecraft:pillager");
         boolean crossbow = b.entityType.equals("minecraft:pillager");
         boolean king = rank == Rank.KING;
-        Item item = ranged ? (crossbow ? Items.CROSSBOW : Items.BOW)
+        boolean fang = b.family == Family.SPIDERS, hex = b.family == Family.WITCHES;
+        Item item = fang || hex ? (king || b.level >= 14 ? Items.NETHERITE_SWORD : Items.DIAMOND_SWORD)
+                : ranged ? (crossbow ? Items.CROSSBOW : Items.BOW)
                 : king || b.level >= 14 ? (b.level % 2 == 0 ? Items.NETHERITE_AXE : Items.NETHERITE_SWORD)
                 : (b.level % 2 == 0 ? Items.DIAMOND_AXE : Items.DIAMOND_SWORD);
         ItemStack s = new ItemStack(item);
@@ -101,7 +103,7 @@ public final class Relics {
                             AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.MAINHAND);
             s.set(DataComponents.ATTRIBUTE_MODIFIERS, mods);
         }
-        String kind = ranged ? (crossbow ? "Crossbow" : "Bow") : item == Items.NETHERITE_AXE || item == Items.DIAMOND_AXE ? "Cleaver" : "Blade";
+        String kind = fang ? "Fang" : hex ? "Hexblade" : ranged ? (crossbow ? "Crossbow" : "Bow") : item == Items.NETHERITE_AXE || item == Items.DIAMOND_AXE ? "Cleaver" : "Blade";
         String title = b.name + "'s " + (king ? "Crown " : "") + kind;
         s.set(DataComponents.CUSTOM_NAME, Component.literal(title).withStyle(king ? ChatFormatting.LIGHT_PURPLE : ChatFormatting.GOLD));
         s.set(DataComponents.RARITY, Rarity.EPIC);
@@ -109,6 +111,8 @@ public final class Relics {
         lore.add(Component.literal("Taken from " + b.fullName() + ",").withStyle(ChatFormatting.GRAY));
         lore.add(Component.literal("level " + b.level + " " + rank.title + (pack != null ? " of " + pack.title() : "") + ".")
                 .withStyle(ChatFormatting.GRAY));
+        if (fang) lore.add(Component.literal("Its bite still poisons.").withStyle(ChatFormatting.DARK_GREEN));
+        if (hex) lore.add(Component.literal("Curses what it cuts: weakness and slowness.").withStyle(ChatFormatting.DARK_GREEN));
         for (Trait t : b.traits) {
             if (t.kind == Trait.Kind.STRENGTH || t.kind == Trait.Kind.IMMUNITY) {
                 lore.add(Component.literal("Remembers: " + t.title + (t == Trait.VENOM_BLADE ? " (poisons)" : t == Trait.BONEBREAKER ? " (slows)" : ""))
@@ -119,18 +123,27 @@ public final class Relics {
         CompoundTag tag = new CompoundTag();
         ListTag kept = new ListTag();
         for (Trait t : b.traits) if (t == Trait.VENOM_BLADE || t == Trait.BONEBREAKER) kept.add(StringTag.valueOf(t.key()));
+        // A spider's fang always poisons; a witch's blade always curses.
+        if (fang && !b.traits.contains(Trait.VENOM_BLADE)) kept.add(StringTag.valueOf(Trait.VENOM_BLADE.key()));
+        if (hex) kept.add(StringTag.valueOf(HEX));
         tag.put(TRAITS, kept);
         s.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
         return s;
     }
 
     private static final String TRAITS = "bloodfeud_relic_traits";
+    private static final String HEX = "hex";
 
     /** A relic that remembers Venom Blade poisons what it hits; one that remembers Bonebreaker slows it. */
     public static void onHit(ItemStack weapon, LivingEntity target, LivingEntity holder) {
         CustomData data = weapon.get(DataComponents.CUSTOM_DATA);
         if (data == null || !data.contains(TRAITS)) return;
         for (Tag t : data.copyTag().getList(TRAITS, Tag.TAG_STRING)) {
+            if (HEX.equals(t.getAsString())) {
+                target.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 100, 1), holder);
+                target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 60, 0), holder);
+                continue;
+            }
             Trait trait = Trait.byKey(t.getAsString());
             if (trait == Trait.VENOM_BLADE) target.addEffect(new MobEffectInstance(MobEffects.POISON, 100, 1), holder);
             if (trait == Trait.BONEBREAKER) target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 80, 1), holder);

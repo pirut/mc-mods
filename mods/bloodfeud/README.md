@@ -25,8 +25,10 @@ running into them.
 
 Mobs only band with their own family: the **Rotten** (zombies, husks, drowned, zombie villagers), the **Bones**
 (skeletons, strays, bogged), the **Illagers** (pillagers, vindicators) and the **Nether** (piglin brutes, wither
-skeletons). Add modded mobs to a family with the entity tags `bloodfeud:rotten`, `bloodfeud:bones`,
-`bloodfeud:illagers` and `bloodfeud:nether`.
+skeletons), the **Spiders** (spiders and cave spiders, who live in Nests) and the **Witches** (who gather in
+Covens). Add modded mobs to a family with the entity tags `bloodfeud:rotten`, `bloodfeud:bones`,
+`bloodfeud:illagers`, `bloodfeud:nether`, `bloodfeud:spiders` and `bloodfeud:witches`. Spiders and witches can't
+show gear, so they get a tougher hide instead of armor and caps.
 
 - At night a lone Brute pulls in plain mobs of its kind. When two Brutes of the same family meet, the stronger one
   becomes the **Boss** and the other its first Brute. That's a pack.
@@ -37,6 +39,22 @@ skeletons). Add modded mobs to a family with the entity tags `bloodfeud:rotten`,
 - Packs with homes within about 1,500 blocks are rivals and raid each other. A pack that beats a rival of its own
   family swallows it, and its Boss becomes a **King**. Kill a King and its packs split apart again.
 - Go near a pack's home and it comes out to meet you: the Boss, a couple of its Brutes and some grunts.
+
+## Relics
+
+Kill a Boss, a King or a Brute of level 10 or more and it drops its **relic**: a weapon named after it ("Vosk's
+Blade", "Grak's Crown Cleaver") that is stronger than anything an enchanting table makes. Sharpness up to VIII,
+Unbreaking V, Mending, extra damage and attack speed, and more for what the owner was: poison from a Venom Blade,
+slowness from a Bonebreaker, Looting from a Thief, Fire Aspect from a burned one, extra speed or health from others.
+Skeletons and pillagers drop bows and crossbows; spiders drop a poisoned Fang; witches drop a Hexblade that weakens
+what it cuts.
+
+## They talk
+
+Brutes talk about what happened between you: the time it killed you, the item it stole, how many days you've been
+running, the scar you gave it, the King it serves. Over 400 lines and 160 epithets, and a Brute never repeats itself
+until it has run through what it has to say. Names are built from syllables, so you'll meet tens of thousands of
+different ones. All of it lives in `bloodfeud/lines.txt` inside the jar.
 
 ## Dying, coming back, and scars
 

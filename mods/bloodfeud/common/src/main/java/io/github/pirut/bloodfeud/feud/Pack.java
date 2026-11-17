@@ -39,7 +39,11 @@ public final class Pack {
     }
 
     public String title() {
-        return "the " + place + " Pack";
+        return "the " + place + " " + switch (family) {
+            case SPIDERS -> "Nest";
+            case WITCHES -> "Coven";
+            default -> "Pack";
+        };
     }
 
     public double distanceTo(String dim, double x, double z) {

@@ -77,6 +77,7 @@ public final class Live {
     private static final String TAG_ID = "bloodfeud.id:";
     private static final String TAG_SAW = "bloodfeud.saw:";
     private static final ResourceLocation LEVEL_MOD = BloodFeud.id("level");
+    private static final ResourceLocation HIDE_MOD = BloodFeud.id("hide");
     private static final int WITNESS_RADIUS = 16;
     private static final int RISE_DELAY = 200;
     private static final int BAR_RANGE = 48;
@@ -719,7 +720,7 @@ public final class Live {
         mob.addTag(TAG_GRUNT);
         mob.setPersistenceRequired();
         if (mob instanceof AbstractPiglin piglin) piglin.setImmuneToZombification(true);
-        if (pack != null) {
+        if (pack != null && wearsGear(mob)) {
             mob.setItemSlot(EquipmentSlot.HEAD, cap(pack.color));
             mob.setDropChance(EquipmentSlot.HEAD, 0);
         }
@@ -780,6 +781,17 @@ public final class Live {
         Rank rank = data.feud.rank(b);
         mob.setCustomName(Component.literal(b.fullName()).withStyle(rankColor(rank)));
         mob.setCustomNameVisible(true);
+        if (!wearsGear(mob)) {
+            // Spiders and witches can't show gear (a witch needs its hands for potions): a tougher hide instead.
+            AttributeInstance armor = mob.getAttribute(Attributes.ARMOR);
+            if (armor != null) {
+                armor.removeModifier(HIDE_MOD);
+                armor.addPermanentModifier(new AttributeModifier(HIDE_MOD, Math.min(16, 2 + b.level * 0.6)
+                        + (rank == Rank.KING ? 4 : rank == Rank.BOSS ? 2 : 0), AttributeModifier.Operation.ADD_VALUE));
+            }
+            stats(mob, b, rank, fresh);
+            return;
+        }
         ItemStack head;
         if (pack != null && rank != Rank.BRUTE) head = new ItemStack(BannerBlock.byColor(DyeColor.byId(pack.color)));
         else if (pack != null) head = cap(pack.color);
@@ -802,6 +814,16 @@ public final class Live {
             mob.setItemSlot(EquipmentSlot.MAINHAND, hand);
         }
         mob.setDropChance(EquipmentSlot.MAINHAND, 0); // dressed gear is not loot; strong ones drop a relic instead
+        stats(mob, b, rank, fresh);
+    }
+
+    /** Mobs that show what they wear and hold: zombies, skeletons, illagers, piglins. */
+    static boolean wearsGear(Mob mob) {
+        return mob instanceof net.minecraft.world.entity.monster.Zombie || mob instanceof net.minecraft.world.entity.monster.AbstractSkeleton
+                || mob instanceof net.minecraft.world.entity.monster.AbstractIllager || mob instanceof AbstractPiglin;
+    }
+
+    private void stats(Mob mob, Brute b, Rank rank, boolean fresh) {
         double boost = rank == Rank.KING ? 1.0 : rank == Rank.BOSS ? 0.5 : 0;
         modify(mob, Attributes.MAX_HEALTH, 0.25 * b.level + 0.5 + boost);
         modify(mob, Attributes.ATTACK_DAMAGE, 0.08 * b.level + boost * 0.3);

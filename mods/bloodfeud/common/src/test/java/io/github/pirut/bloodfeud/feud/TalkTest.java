@@ -31,7 +31,7 @@ class TalkTest {
                 "flee", "drive_off", "stole", "epithets.general")) {
             assertTrue(t.pool(s).size() >= 3, s + " has " + t.pool(s).size());
         }
-        for (Family f : Family.values()) assertFalse(t.pool("greet." + f.name().toLowerCase()).isEmpty());
+        for (Family f : Family.values()) assertTrue(t.pool("greet." + f.name().toLowerCase()).size() >= 6, f.name());
         for (DeathCause c : DeathCause.values()) {
             if (c != DeathCause.OTHER) assertFalse(t.pool("epithets." + c.key()).isEmpty(), c.key());
         }
