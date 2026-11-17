@@ -29,3 +29,17 @@ if (usesCommonLib) {
         additionalRuntimeClasspath project(':common-lib')
     }
 }
+
+// Pirut Lib (mods/pirutlib), when the mod asks for it with uses_pirut_lib=true: compiled against, nested in the
+// jar, and loaded as a mod in dev runs.
+if (findProperty('uses_pirut_lib')?.toString() == 'true' && project.path != ':pirutlib:neoforge') {
+    evaluationDependsOn(':pirutlib:neoforge')
+    def lib = project(':pirutlib:neoforge')
+    dependencies {
+        implementation lib
+        jarJar(lib)
+    }
+    neoForge.mods {
+        pirutlib { sourceSet lib.sourceSets.main }
+    }
+}
