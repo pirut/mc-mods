@@ -219,7 +219,7 @@ public final class Effects {
         a.fleeUntil = gt + 80;
         if (level.getNearestPlayer(mob, 24) instanceof ServerPlayer p) {
             live.discover(p, b, why);
-            if (live.random.nextInt(3) == 0) live.say(p, b, Lines.flee(live.random));
+            if (live.random.nextInt(3) == 0) live.say(p, b, Lines.flee(live, p, b));
         }
     }
 

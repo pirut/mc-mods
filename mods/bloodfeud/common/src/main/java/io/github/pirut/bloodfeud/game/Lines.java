@@ -2,108 +2,169 @@ package io.github.pirut.bloodfeud.game;
 
 import io.github.pirut.bloodfeud.feud.Brute;
 import io.github.pirut.bloodfeud.feud.DeathCause;
+import io.github.pirut.bloodfeud.feud.Feud;
 import io.github.pirut.bloodfeud.feud.Memory;
+import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.Rank;
 import io.github.pirut.bloodfeud.feud.Relation;
+import io.github.pirut.bloodfeud.feud.Scar;
+import io.github.pirut.bloodfeud.feud.Talk;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 
-import java.util.Random;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
-/** What Brutes say. All of it written for this mod. */
+/**
+ * What Brutes say: lines from {@code lines.txt}, picked by what the Brute remembers about this player and filled in
+ * with the details (the place, the item, the days, the scar), never the same line twice in a row of 48.
+ */
 public final class Lines {
     private Lines() {
     }
 
     /** The first thing it says when it finds a player. */
-    public static String greet(Random r, Brute b, Relation rel, Rank rank, boolean hunted) {
+    public static String greet(Live live, ServerPlayer p, Brute b, Relation rel, Rank rank, boolean hunted) {
         Memory last = rel == null ? null : rel.last();
+        List<String> sections = new ArrayList<>();
         if (hunted && rel != null && rel.nemesis) {
-            return pick(r, "You thought you could walk far enough? I walk too.",
-                    "Every step you took, I took two.", "You left. I followed. That's how this works now.");
-        }
-        if (last != null) {
+            sections.add("greet.hunted");
+        } else if (last != null) {
             switch (last.kind()) {
                 case RETURNED, WAS_KILLED -> {
-                    return returned(r, DeathCause.byKey(lastCause(rel)));
+                    sections.add("returned." + DeathCause.byKey(lastCause(rel)).key());
+                    sections.add("returned.any");
                 }
-                case KILLED_PLAYER, ROSE -> {
-                    if (rel.killedPlayer >= 3) return pick(r, "That's " + rel.killedPlayer + " times now. I keep count.",
-                            "Again? You never learn, and I never get tired of it.");
-                    return pick(r, "Back for another beating?", "Remember me? I'm the one who put you in the dirt.",
-                            "Your bed's a long way off. That's how I like it.");
-                }
-                case PLAYER_FLED -> {
-                    return pick(r, "Ran off last time. Your legs tired yet?", "No running today. I brought friends.");
-                }
-                case STOLE -> {
-                    return pick(r, "Still got your " + last.detail() + ". Want it back? Come and take it.",
-                            "Nice " + last.detail() + ". Mine now.");
-                }
-                case SAW_KILLS -> {
-                    return pick(r, "You cut down my kin like wheat. I counted every one.",
-                            "I watched you. I learned. Now it's my turn.", "You killed my brothers. I'm still here.");
-                }
-                default -> {
+                case KILLED_PLAYER, ROSE -> sections.add(rel.killedPlayer >= 3 ? "greet.killed_you_often" : "greet.killed_you");
+                case PLAYER_FLED -> sections.add("greet.fled");
+                case IT_FLED -> sections.add("greet.it_fled");
+                case STOLE -> sections.add("greet.stole");
+                case SAW_KILLS -> sections.add("greet.saw_kills");
+            }
+        }
+        if (sections.isEmpty()) {
+            sections.add("greet." + rank.name().toLowerCase(Locale.ROOT));
+            sections.add("greet." + b.family.name().toLowerCase(Locale.ROOT));
+        } else if (live.random.nextInt(4) == 0) {
+            // Now and then it talks like what it is instead of about what happened.
+            sections.add(live.random.nextBoolean() ? "greet." + b.family.name().toLowerCase(Locale.ROOT)
+                    : "greet." + rank.name().toLowerCase(Locale.ROOT));
+        }
+        return say(live, p, b, sections.toArray(String[]::new));
+    }
+
+    public static String killedPlayer(Live live, ServerPlayer p, Brute b, int times) {
+        return times >= 3 && live.random.nextInt(3) > 0 ? say(live, p, b, "killed_player.often")
+                : say(live, p, b, "killed_player");
+    }
+
+    public static String falling(Live live, ServerPlayer p, Brute b, boolean forGood) {
+        return say(live, p, b, forGood ? "falling.final" : "falling");
+    }
+
+    public static String rose(Live live, ServerPlayer p, Brute b, boolean killedYou) {
+        return say(live, p, b, killedYou ? "rose.killed_you" : "rose.saw");
+    }
+
+    public static String flee(Live live, ServerPlayer p, Brute b) {
+        return say(live, p, b, "flee");
+    }
+
+    public static String driveOff(Live live, ServerPlayer p, Brute b) {
+        return say(live, p, b, "drive_off");
+    }
+
+    public static String stole(Live live, ServerPlayer p, Brute b, String item) {
+        Map<String, String> w = words(live, p, b);
+        w.put("item", item);
+        return or(Talk.book().line(live.random, b.id, w, "stole"), "Mine now.");
+    }
+
+    /** When it gets badly hurt. */
+    public static String hurt(Live live, ServerPlayer p, Brute b) {
+        return say(live, p, b, "hurt");
+    }
+
+    /** When the player it's fighting is nearly dead. */
+    public static String winning(Live live, ServerPlayer p, Brute b) {
+        return say(live, p, b, "winning");
+    }
+
+    private static String say(Live live, ServerPlayer p, Brute b, String... sections) {
+        return or(Talk.book().line(live.random, b.id, words(live, p, b), sections), "...");
+    }
+
+    private static String or(String line, String fallback) {
+        return line == null ? fallback : line;
+    }
+
+    /** Everything a line might bring up, for this Brute and this player. Blanks with nothing to say are left out. */
+    static Map<String, String> words(Live live, ServerPlayer p, Brute b) {
+        Map<String, String> w = new HashMap<>();
+        w.put("name", b.name);
+        w.put("kin", switch (b.family) {
+            case ROTTEN -> "brothers";
+            case BONES -> "kin";
+            case ILLAGERS -> "kinsmen";
+            case NETHER -> "kin";
+        });
+        Feud f = live.data().feud;
+        Pack pack = f.packOf(b);
+        if (pack != null) {
+            w.put("pack", pack.title());
+            w.put("home", pack.place);
+            Pack top = f.top(pack);
+            Brute king = top == pack ? null : f.brute(top.boss);
+            if (king != null && king.alive) w.put("king", king.name);
+        }
+        if (!b.scars.isEmpty()) w.put("scar", scar(b.scars.get(b.scars.size() - 1)));
+        if (p == null) return w;
+        w.put("player", p.getName().getString());
+        ItemStack held = p.getMainHandItem();
+        if (!held.isEmpty()) {
+            String name = held.getHoverName().getString();
+            w.put("weapon", held.has(net.minecraft.core.component.DataComponents.CUSTOM_NAME) ? name : name.toLowerCase(Locale.ROOT));
+        }
+        Relation rel = b.relations.get(p.getUUID());
+        if (rel != null) {
+            if (rel.killedPlayer > 0) w.put("times", Talk.count(rel.killedPlayer));
+            Memory last = rel.last();
+            if (last != null) {
+                String days = Talk.days((live.now() - last.time()) / Feud.DAY);
+                if (days != null) w.put("days", days);
+            }
+            for (Iterator<Memory> it = rel.memories.descendingIterator(); it.hasNext(); ) {
+                Memory m = it.next();
+                if (m.kind() == Memory.Kind.STOLE && !m.detail().isEmpty()) {
+                    w.put("item", m.detail());
+                    break;
                 }
             }
         }
-        if (rank == Rank.KING) return pick(r, "Every pack here kneels to me. You'll kneel too.",
-                "Kings don't run. Kings don't die. Ask the last one who tried.");
-        if (rank == Rank.BOSS) return pick(r, "This is our place. You're not leaving it.",
-                "You're on our ground. Get them!", "The pack is hungry tonight.");
-        return pick(r, "Fresh meat!", "Oh, I've heard about you.", "Let's see what you've got.");
+        return w;
+    }
+
+    private static String scar(Scar s) {
+        return switch (s) {
+            case BURNED -> "burned";
+            case BROKEN -> "with a broken leg";
+            case BLASTED -> "half blown apart";
+            case PIERCED -> "full of holes";
+            case DROWNED -> "waterlogged";
+            case CUT -> "with a face full of stitches";
+            case MAULED -> "chewed up";
+        };
     }
 
     private static String lastCause(Relation rel) {
-        for (java.util.Iterator<Memory> it = rel.memories.descendingIterator(); it.hasNext(); ) {
+        for (Iterator<Memory> it = rel.memories.descendingIterator(); it.hasNext(); ) {
             Memory m = it.next();
             if (m.kind() == Memory.Kind.WAS_KILLED) return m.detail();
         }
         return "";
-    }
-
-    private static String returned(Random r, DeathCause cause) {
-        return switch (cause) {
-            case FIRE -> pick(r, "You burned me. Look at me now. Look!", "I still smell the smoke. Do you?");
-            case ARROW -> pick(r, "I've still got your arrow in me. Came to give it back.", "One arrow? That's all you had?");
-            case FALL -> pick(r, "You knocked me off a cliff. I climbed back up.", "I've learned to land. Have you?");
-            case DROWNING -> pick(r, "You left me at the bottom of the water. I walked out.", "The water didn't want me either.");
-            case EXPLOSION -> pick(r, "You blew me to bits. Most of them came back.", "I'm missing a few pieces. You'll pay for each one.");
-            case BEAST -> pick(r, "Your dog chewed me up. Where is it now?", "Bring your animals. I'm ready for them this time.");
-            default -> pick(r, "You cut me down. It didn't take.", "Remember me? You killed me. Bad job.",
-                    "Dead? Me? Not even close.");
-        };
-    }
-
-    public static String killedPlayer(Random r, int times) {
-        if (times >= 3) return pick(r, "That's " + times + ". Keep coming.", "Again. Always again.");
-        return pick(r, "Stay down.", "Tell your bed I said hello.", "That's how it goes.", "Next!");
-    }
-
-    public static String falling(Random r, boolean forGood) {
-        if (forGood) return pick(r, "No... not like this...", "Tell the pack... I...", "Huh. So that's what it's like.");
-        return pick(r, "This isn't over...", "I'll be back. You'll see.", "You'll wish you'd finished it.",
-                "Remember my name...");
-    }
-
-    public static String rose(Random r, boolean killedYou) {
-        if (killedYou) return pick(r, "Look at that. I'm somebody now.", "I'll remember you. Every time.");
-        return pick(r, "You killed my kin. I won't forget it.", "I saw what you did. I'll find you.",
-                "Run along. I'll come to you.");
-    }
-
-    public static String flee(Random r) {
-        return pick(r, "Get it away from me!", "No, no, no!", "Not that! Anything but that!");
-    }
-
-    public static String driveOff(Random r) {
-        return pick(r, "Run, then! Run and keep running!", "That's right. Go.", "Coward! I'll find you again.");
-    }
-
-    public static String stole(Random r, String item) {
-        return pick(r, "Ooh, a " + item + ". Mine now.", "Thanks for the " + item + "!", "Finders keepers.");
-    }
-
-    private static String pick(Random r, String... options) {
-        return options[r.nextInt(options.length)];
     }
 }

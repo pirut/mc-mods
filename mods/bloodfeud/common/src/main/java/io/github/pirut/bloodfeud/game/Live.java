@@ -103,6 +103,8 @@ public final class Live {
         final Map<UUID, Long> fought = new HashMap<>();
         long fleeUntil;
         boolean stalking;
+        /** Whether it already said something about being hurt, or about the player being nearly dead. */
+        boolean barkedHurt, barkedWinning;
 
         Active(UUID brute, UUID entity, ResourceKey<net.minecraft.world.level.Level> dimension, ServerBossEvent bar) {
             this.brute = brute;
@@ -280,7 +282,7 @@ public final class Live {
         if (b != null) {
             f.killedPlayer(b.id, player.getUUID(), cause, now());
             Relation r = b.relation(player.getUUID());
-            say(player, b, Lines.killedPlayer(random, r.killedPlayer));
+            say(player, b, Lines.killedPlayer(this, player, b, r.killedPlayer));
             dress(mob, b, f.packOf(b), false);
             Active a = active.get(b.id);
             if (a != null) a.fought.remove(player.getUUID());
@@ -296,7 +298,7 @@ public final class Live {
             b = f.rise(EntityType.getKey(mob.getType()).toString(), family, dim(mob.level()), mob.getBlockX(),
                     mob.getBlockZ(), player.getUUID(), Memory.Kind.ROSE, cause, pack, now());
             becomeBrute(mob, b);
-            say(player, b, Lines.rose(random, true));
+            say(player, b, Lines.rose(this, player, b, true));
             for (ServerPlayer other : server.getPlayerList().getPlayers()) {
                 if (other != player && other.level() == player.level() && other.distanceTo(player) < 256) {
                     other.sendSystemMessage(Component.literal(b.fullName() + " rose by killing " + player.getName().getString() + ".")
@@ -343,7 +345,8 @@ public final class Live {
             Titles.show(killer, Component.literal(b.name + " falls").withStyle(ChatFormatting.DARK_RED),
                     Component.literal(forGood ? (finalBlow ? "A clean kill. It won't be back." : "It won't be back this time.")
                             : "But is it over?").withStyle(ChatFormatting.GRAY), 5, 50, 15);
-            say(killer, b, Lines.falling(random, forGood));
+            say(killer, b, Lines.falling(this, killer, b, forGood));
+            if (forGood) io.github.pirut.bloodfeud.feud.Talk.book().forget(b.id);
         }
         announce(f.drainNews());
         data.changed();
@@ -492,6 +495,7 @@ public final class Live {
             else if (!show && a.bar.getPlayers().contains(p)) a.bar.removePlayer(p);
         }
         a.bar.setProgress(Math.max(0, Math.min(1, mob.getHealth() / mob.getMaxHealth())));
+        bark(a, b, mob, level);
         if (b.pack == null || !b.id.equals(data.feud.pack(b.pack) == null ? null : data.feud.pack(b.pack).boss)) {
             b.x = mob.getBlockX();
             b.z = mob.getBlockZ();
@@ -508,6 +512,19 @@ public final class Live {
         Effects.tick(this, a, b, mob, level);
     }
 
+    /** A word in the middle of a fight: once when it gets badly hurt, once when its player is nearly dead. */
+    private void bark(Active a, Brute b, Mob mob, ServerLevel level) {
+        if (!a.barkedHurt && mob.getHealth() < mob.getMaxHealth() * 0.35f
+                && level.getNearestPlayer(mob, 24) instanceof ServerPlayer p && !p.isSpectator()) {
+            a.barkedHurt = true;
+            say(p, b, Lines.hurt(this, p, b));
+        }
+        if (!a.barkedWinning && mob.getTarget() instanceof ServerPlayer p && p.getHealth() <= 6 && p.distanceTo(mob) < 16) {
+            a.barkedWinning = true;
+            say(p, b, Lines.winning(this, p, b));
+        }
+    }
+
     /** Every player went away: the Brute goes back to being a record. Anyone who ran from it is remembered. */
     private void withdraw(Active a, Brute b, Mob mob, long gt) {
         for (Map.Entry<UUID, Long> f : a.fought.entrySet()) {
@@ -515,7 +532,7 @@ public final class Live {
             ServerPlayer p = server.getPlayerList().getPlayer(f.getKey());
             if (p == null || !p.isAlive()) continue;
             data.feud.playerFled(b.id, p.getUUID(), now());
-            say(p, b, Lines.driveOff(random));
+            say(p, b, Lines.driveOff(this, p, b));
         }
         removeActive(a.brute, true);
         rested.put(b.id, gt + 1200);
@@ -784,8 +801,7 @@ public final class Live {
                     .withStyle(ChatFormatting.GOLD));
             mob.setItemSlot(EquipmentSlot.MAINHAND, hand);
         }
-        // Those that drop a relic don't drop their everyday weapon too.
-        mob.setDropChance(EquipmentSlot.MAINHAND, Relics.dropsRelic(rank, b) ? 0 : 1);
+        mob.setDropChance(EquipmentSlot.MAINHAND, 0); // dressed gear is not loot; strong ones drop a relic instead
         double boost = rank == Rank.KING ? 1.0 : rank == Rank.BOSS ? 0.5 : 0;
         modify(mob, Attributes.MAX_HEALTH, 0.25 * b.level + 0.5 + boost);
         modify(mob, Attributes.ATTACK_DAMAGE, 0.08 * b.level + boost * 0.3);
@@ -831,7 +847,7 @@ public final class Live {
         long gt = gameTime();
         Relation rel = b.relation(p.getUUID());
         Rank rank = data.feud.rank(b);
-        String line = Lines.greet(random, b, rel.memories.isEmpty() ? null : rel, rank, hunted);
+        String line = Lines.greet(this, p, b, rel.memories.isEmpty() ? null : rel, rank, hunted);
         rel.met = true;
         Pack pack = data.feud.packOf(b);
         if (pack != null) pack.met.add(p.getUUID());
@@ -890,7 +906,7 @@ public final class Live {
         data.stolen.computeIfAbsent(b.id, k -> new ArrayList<>()).add(item);
         String name = item.getHoverName().getString().toLowerCase(Locale.ROOT);
         data.feud.stole(b.id, p.getUUID(), name, now());
-        say(p, b, Lines.stole(random, name));
+        say(p, b, Lines.stole(this, p, b, name));
         data.changed();
     }
 
