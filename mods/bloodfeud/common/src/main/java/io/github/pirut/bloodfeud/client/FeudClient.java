@@ -19,6 +19,7 @@ public final class FeudClient {
 
     public static void init() {
         ClientHooks.key(LEDGER, () -> ask("ledger", ""));
+        ClientHooks.livingLayer(ScarLayer::forRenderer);
     }
 
     /** Asks the server for a fresh snapshot, which opens (or refreshes) the screens. */

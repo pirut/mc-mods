@@ -20,7 +20,7 @@
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",
-    "pirutlib": ">=0.1.0-alpha.2",
+    "pirutlib": ">=0.1.0-alpha.3",
     "minecraft": "${minecraft_version}",
     "java": ">=21"
   }
