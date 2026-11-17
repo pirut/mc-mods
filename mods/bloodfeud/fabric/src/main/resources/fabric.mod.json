@@ -10,6 +10,7 @@
     "sources": "https://github.com/pirut/mc-mods",
     "issues": "https://github.com/pirut/mc-mods/issues"
   },
+  "icon": "assets/bloodfeud/icon.png",
   "license": "${mod_license}",
   "environment": "*",
   "entrypoints": {

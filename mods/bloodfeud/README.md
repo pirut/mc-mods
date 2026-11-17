@@ -1,3 +1,5 @@
+![Blood Feud](brand/bloodfeud-banner-1920x480.png)
+
 # Blood Feud
 
 Mobs that remember you. Kill a few zombies while their friends watch and one of them walks away with a name, a

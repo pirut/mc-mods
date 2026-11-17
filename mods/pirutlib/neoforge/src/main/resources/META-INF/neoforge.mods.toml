@@ -9,6 +9,7 @@ version = "${mod_version}"
 displayName = "${mod_name}"
 displayURL = "https://github.com/pirut/mc-mods/tree/main/mods/pirutlib"
 authors = "${mod_authors}"
+logoFile = "assets/pirutlib/icon.png"
 description = '''${mod_description}'''
 
 [[mixins]]

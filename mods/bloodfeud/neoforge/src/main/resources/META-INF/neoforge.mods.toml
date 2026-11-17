@@ -9,6 +9,7 @@ version = "${mod_version}"
 displayName = "${mod_name}"
 displayURL = "https://github.com/pirut/mc-mods/tree/main/mods/bloodfeud"
 authors = "${mod_authors}"
+logoFile = "assets/bloodfeud/icon.png"
 description = '''${mod_description}'''
 
 
