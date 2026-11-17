@@ -12,6 +12,7 @@ import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.PlaceNames;
 import io.github.pirut.bloodfeud.feud.Rank;
 import io.github.pirut.bloodfeud.feud.Relation;
+import io.github.pirut.bloodfeud.feud.Scar;
 import io.github.pirut.bloodfeud.feud.Trait;
 import io.github.pirut.lib.Spots;
 import io.github.pirut.lib.Titles;
@@ -78,6 +79,8 @@ public final class Live {
     private static final String TAG_SAW = "bloodfeud.saw:";
     private static final ResourceLocation LEVEL_MOD = BloodFeud.id("level");
     private static final ResourceLocation HIDE_MOD = BloodFeud.id("hide");
+    private static final ResourceLocation SIZE_MOD = BloodFeud.id("size");
+    private static final ResourceLocation SCAR_MOD = BloodFeud.id("scar");
     private static final int WITNESS_RADIUS = 16;
     private static final int RISE_DELAY = 200;
     private static final int BAR_RANGE = 48;
@@ -284,6 +287,7 @@ public final class Live {
             f.killedPlayer(b.id, player.getUUID(), cause, now());
             Relation r = b.relation(player.getUUID());
             say(player, b, Lines.killedPlayer(this, player, b, r.killedPlayer));
+            takeGear(mob, b, player);
             dress(mob, b, f.packOf(b), false);
             Active a = active.get(b.id);
             if (a != null) a.fought.remove(player.getUUID());
@@ -298,6 +302,7 @@ public final class Live {
             mob.removeTag(TAG_GRUNT);
             b = f.rise(EntityType.getKey(mob.getType()).toString(), family, dim(mob.level()), mob.getBlockX(),
                     mob.getBlockZ(), player.getUUID(), Memory.Kind.ROSE, cause, pack, now());
+            takeGear(mob, b, player);
             becomeBrute(mob, b);
             say(player, b, Lines.rose(this, player, b, true));
             for (ServerPlayer other : server.getPlayerList().getPlayers()) {
@@ -388,6 +393,15 @@ public final class Live {
         if (gt % 200 == 7) {
             for (ServerPlayer p : server.getPlayerList().getPlayers()) encounters(p, gt);
         }
+        if (gt % 5 == 2) {
+            for (Active a : active.values()) {
+                Brute b = data.feud.brute(a.brute);
+                ServerLevel level = server.getLevel(a.dimension);
+                if (b != null && !b.scars.isEmpty() && level != null && level.getEntity(a.entity) instanceof Mob mob) {
+                    Effects.scars(b, mob, level);
+                }
+            }
+        }
     }
 
     public void runNight() {
@@ -399,6 +413,7 @@ public final class Live {
             if (!p.isSpectator()) spots.add(new Feud.PlayerSpot(p.getUUID(), dim(p.level()), p.getBlockX(), p.getBlockZ()));
         }
         f.night(now, spots, this::placeName);
+        passOnLoot();
         for (Active a : new ArrayList<>(active.values())) {
             Brute b = f.brute(a.brute);
             if (b == null || !b.alive) removeActive(a.brute, true);
@@ -406,6 +421,28 @@ public final class Live {
         }
         announce(f.drainNews());
         data.changed();
+    }
+
+    /**
+     * What a Brute took from players isn't lost when it dies for good away from them (in a raid, say): its pack's Boss
+     * takes it, or the strongest Brute left, so there is still someone to fight for it.
+     */
+    private void passOnLoot() {
+        Feud f = data.feud;
+        for (UUID id : new ArrayList<>(data.stolen.keySet())) {
+            Brute b = f.brute(id);
+            if (b != null && (b.alive || !b.finalDeath)) continue;
+            List<ItemStack> items = data.stolen.remove(id);
+            Pack pack = b == null ? null : f.pack(b.pack);
+            Brute heir = pack == null ? null : f.brute(pack.boss);
+            if (heir == null || !heir.alive || heir == b) {
+                heir = null;
+                if (pack != null) {
+                    for (Brute m : f.members(pack)) if (m.alive && m != b && (heir == null || m.level > heir.level)) heir = m;
+                }
+            }
+            if (heir != null && items != null) data.stolen.computeIfAbsent(heir.id, k -> new ArrayList<>()).addAll(items);
+        }
     }
 
     private String placeName(Random r, String dimension, int x, int z) {
@@ -755,6 +792,14 @@ public final class Live {
         bruteOfEntity.put(mob.getUUID(), b.id);
     }
 
+    /** Ops only: a scar, as if the Brute had come back from that death. */
+    void scar(Brute b, Scar scar) {
+        if (!b.scars.contains(scar)) b.scars.add(scar);
+        Active a = active.get(b.id);
+        if (a != null) refresh(a, b);
+        data.changed();
+    }
+
     private void refresh(Active a, Brute b) {
         Rank rank = data.feud.rank(b);
         a.bar.setName(barName(b, rank));
@@ -786,7 +831,7 @@ public final class Live {
             AttributeInstance armor = mob.getAttribute(Attributes.ARMOR);
             if (armor != null) {
                 armor.removeModifier(HIDE_MOD);
-                armor.addPermanentModifier(new AttributeModifier(HIDE_MOD, Math.min(16, 2 + b.level * 0.6)
+                armor.addPermanentModifier(new AttributeModifier(HIDE_MOD, Math.min(12, 2 + b.level * 0.5)
                         + (rank == Rank.KING ? 4 : rank == Rank.BOSS ? 2 : 0), AttributeModifier.Operation.ADD_VALUE));
             }
             stats(mob, b, rank, fresh);
@@ -799,9 +844,14 @@ public final class Live {
         mob.setItemSlot(EquipmentSlot.HEAD, head);
         mob.setDropChance(EquipmentSlot.HEAD, 0);
         if (b.level >= 6) mob.setItemSlot(EquipmentSlot.CHEST, new ItemStack(b.level >= 16 ? Items.DIAMOND_CHESTPLATE : Items.IRON_CHESTPLATE));
+        else if (b.level >= 3 && pack != null) mob.setItemSlot(EquipmentSlot.CHEST, dyed(Items.LEATHER_CHESTPLATE, pack.color));
         if (b.level >= 12) {
             mob.setItemSlot(EquipmentSlot.LEGS, new ItemStack(Items.IRON_LEGGINGS));
             mob.setItemSlot(EquipmentSlot.FEET, new ItemStack(Items.IRON_BOOTS));
+        }
+        // Its own trim on its own armor: the pattern is the Brute's, the material is its pack's color.
+        for (EquipmentSlot s : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            trim(mob, mob.getItemBySlot(s), b, pack);
         }
         for (EquipmentSlot s : new EquipmentSlot[]{EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) mob.setDropChance(s, 0);
         if (fresh || mob.getMainHandItem().isEmpty()) {
@@ -814,6 +864,7 @@ public final class Live {
             mob.setItemSlot(EquipmentSlot.MAINHAND, hand);
         }
         mob.setDropChance(EquipmentSlot.MAINHAND, 0); // dressed gear is not loot; strong ones drop a relic instead
+        wearTaken(mob, b);
         stats(mob, b, rank, fresh);
     }
 
@@ -825,8 +876,8 @@ public final class Live {
 
     private void stats(Mob mob, Brute b, Rank rank, boolean fresh) {
         double boost = rank == Rank.KING ? 1.0 : rank == Rank.BOSS ? 0.5 : 0;
-        modify(mob, Attributes.MAX_HEALTH, 0.25 * b.level + 0.5 + boost);
-        modify(mob, Attributes.ATTACK_DAMAGE, 0.08 * b.level + boost * 0.3);
+        modify(mob, Attributes.MAX_HEALTH, 0.22 * b.level + 0.5 + boost);
+        modify(mob, Attributes.ATTACK_DAMAGE, 0.06 * b.level + boost * 0.3);
         modify(mob, Attributes.MOVEMENT_SPEED, Math.min(0.25, 0.012 * b.level));
         modify(mob, Attributes.FOLLOW_RANGE, 0.5);
         modify(mob, Attributes.KNOCKBACK_RESISTANCE, 0);
@@ -838,7 +889,69 @@ public final class Live {
         }
         if (b.traits.contains(Trait.REGENERATING)) mob.addEffect(new MobEffectInstance(MobEffects.REGENERATION, MobEffectInstance.INFINITE_DURATION, 0, false, false));
         if (b.traits.contains(Trait.FIREPROOF)) mob.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, MobEffectInstance.INFINITE_DURATION, 0, false, false));
+        // No two the same size: its own build, bigger as it climbs the ranks.
+        double size = Math.min(1.35, b.size * (rank == Rank.KING ? 1.18 : rank == Rank.BOSS ? 1.08 : 1.0));
+        setModifier(mob, Attributes.SCALE, SIZE_MOD, size - 1, AttributeModifier.Operation.ADD_MULTIPLIED_BASE);
+        // What its scars did to it.
+        boolean broken = b.scars.contains(Scar.BROKEN);
+        setModifier(mob, Attributes.MOVEMENT_SPEED, SCAR_MOD, broken ? -0.12 : 0, AttributeModifier.Operation.ADD_MULTIPLIED_BASE);
+        setModifier(mob, Attributes.KNOCKBACK_RESISTANCE, SCAR_MOD, broken || b.scars.contains(Scar.BLASTED) ? 0.3 : 0,
+                AttributeModifier.Operation.ADD_VALUE);
+        if (b.scars.contains(Scar.DROWNED)) mob.addEffect(new MobEffectInstance(MobEffects.WATER_BREATHING, MobEffectInstance.INFINITE_DURATION, 0, false, false));
         if (fresh) mob.setHealth(mob.getMaxHealth());
+    }
+
+    private static void setModifier(Mob mob, Holder<net.minecraft.world.entity.ai.attributes.Attribute> attribute, ResourceLocation id,
+                                    double amount, AttributeModifier.Operation op) {
+        AttributeInstance inst = mob.getAttribute(attribute);
+        if (inst == null) return;
+        inst.removeModifier(id);
+        if (amount != 0) inst.addPermanentModifier(new AttributeModifier(id, amount, op));
+    }
+
+    private static ItemStack dyed(Item item, int color) {
+        ItemStack s = new ItemStack(item);
+        s.set(DataComponents.DYED_COLOR, new DyedItemColor(DyeColor.byId(color).getTextureDiffuseColor() & 0xFFFFFF, false));
+        return s;
+    }
+
+    /** Puts the Brute's own trim on a piece of its armor (never on gear it took from a player). */
+    private static void trim(Mob mob, ItemStack armor, Brute b, Pack pack) {
+        if (!(armor.getItem() instanceof net.minecraft.world.item.ArmorItem)) return;
+        var reg = mob.level().registryAccess();
+        var patterns = reg.registryOrThrow(Registries.TRIM_PATTERN);
+        List<net.minecraft.resources.ResourceKey<net.minecraft.world.item.armortrim.TrimPattern>> keys = new ArrayList<>(patterns.registryKeySet());
+        if (keys.isEmpty()) return;
+        keys.sort(java.util.Comparator.comparing(k -> k.location().toString()));
+        var pattern = patterns.getHolder(keys.get(Math.floorMod(b.look, keys.size()))).orElse(null);
+        // Leather is already dyed the pack's color, so its trim stands out against it instead.
+        var materialKey = armor.is(net.minecraft.tags.ItemTags.DYEABLE) && pack != null ? contrast(pack.color) : trimMaterial(pack == null ? -1 : pack.color);
+        var material = reg.registryOrThrow(Registries.TRIM_MATERIAL).getHolder(materialKey).orElse(null);
+        if (pattern == null || material == null) return;
+        armor.set(DataComponents.TRIM, new net.minecraft.world.item.armortrim.ArmorTrim(material, pattern, false));
+    }
+
+    private static net.minecraft.resources.ResourceKey<net.minecraft.world.item.armortrim.TrimMaterial> contrast(int color) {
+        return switch (DyeColor.byId(color)) {
+            case WHITE, YELLOW, LIME, LIGHT_BLUE, PINK, LIGHT_GRAY, ORANGE, CYAN, MAGENTA -> net.minecraft.world.item.armortrim.TrimMaterials.NETHERITE;
+            default -> net.minecraft.world.item.armortrim.TrimMaterials.GOLD;
+        };
+    }
+
+    private static net.minecraft.resources.ResourceKey<net.minecraft.world.item.armortrim.TrimMaterial> trimMaterial(int color) {
+        if (color < 0) return net.minecraft.world.item.armortrim.TrimMaterials.IRON;
+        return switch (DyeColor.byId(color)) {
+            case RED -> net.minecraft.world.item.armortrim.TrimMaterials.REDSTONE;
+            case ORANGE -> net.minecraft.world.item.armortrim.TrimMaterials.COPPER;
+            case YELLOW -> net.minecraft.world.item.armortrim.TrimMaterials.GOLD;
+            case LIME, GREEN -> net.minecraft.world.item.armortrim.TrimMaterials.EMERALD;
+            case CYAN, LIGHT_BLUE -> net.minecraft.world.item.armortrim.TrimMaterials.DIAMOND;
+            case BLUE -> net.minecraft.world.item.armortrim.TrimMaterials.LAPIS;
+            case PURPLE, MAGENTA, PINK -> net.minecraft.world.item.armortrim.TrimMaterials.AMETHYST;
+            case WHITE -> net.minecraft.world.item.armortrim.TrimMaterials.QUARTZ;
+            case BLACK, BROWN -> net.minecraft.world.item.armortrim.TrimMaterials.NETHERITE;
+            default -> net.minecraft.world.item.armortrim.TrimMaterials.IRON;
+        };
     }
 
     private static void modify(Mob mob, Holder<net.minecraft.world.entity.ai.attributes.Attribute> attribute, double amount) {
@@ -878,6 +991,7 @@ public final class Live {
             return;
         }
         introduced.put(key, gt);
+        Ledger.firstMeeting(this, p);
         MutableComponent sub = Component.literal("Level " + b.level + " " + rank.title).withStyle(ChatFormatting.GRAY);
         if (rel.nemesis) sub = Component.literal("Your Nemesis • ").withStyle(ChatFormatting.DARK_RED).append(sub);
         Titles.show(p, Component.literal(b.fullName()).withStyle(rankColor(rank), ChatFormatting.BOLD), sub);
@@ -922,6 +1036,123 @@ public final class Live {
         p.sendSystemMessage(Component.literal("You learned something about " + b.name + ": " + t.title + ". " + t.description)
                 .withStyle(ChatFormatting.GRAY));
         data.changed();
+    }
+
+    /**
+     * The Brute that killed a player takes their best weapon and the armor they wore (not the helmet: its cap is its
+     * colors), so the player has to fight it to get them back. Mobs that can't show gear take only the weapon.
+     */
+    private void takeGear(Mob mob, Brute b, ServerPlayer p) {
+        if (!BloodFeud.config().takeGear || p.isCreative() || p.isSpectator()) return;
+        if (p.serverLevel().getGameRules().getBoolean(net.minecraft.world.level.GameRules.RULE_KEEPINVENTORY)) return;
+        // Where the player's things are now: still in the inventory (NeoForge runs this before the drops), or
+        // already on the ground around them (Fabric runs it after).
+        record Slot(ItemStack stack, Runnable take) {
+        }
+        List<Slot> loose = new ArrayList<>();
+        List<Slot> worn = new ArrayList<>();
+        net.minecraft.world.entity.player.Inventory inv = p.getInventory();
+        for (int i = 0; i < inv.items.size(); i++) {
+            int k = i;
+            if (!inv.items.get(i).isEmpty()) loose.add(new Slot(inv.items.get(i), () -> inv.items.set(k, ItemStack.EMPTY)));
+        }
+        for (int i = 0; i < 3; i++) { // feet, legs, chest; the head stays with the player: a Brute's cap is its colors
+            int k = i;
+            if (!inv.armor.get(i).isEmpty()) worn.add(new Slot(inv.armor.get(i), () -> inv.armor.set(k, ItemStack.EMPTY)));
+        }
+        if (loose.isEmpty() && worn.isEmpty()) {
+            for (net.minecraft.world.entity.item.ItemEntity e : p.level().getEntitiesOfClass(
+                    net.minecraft.world.entity.item.ItemEntity.class, p.getBoundingBox().inflate(4), ItemEntity -> true)) {
+                if (e.tickCount > 2) continue;
+                ItemStack st = e.getItem();
+                Slot slot = new Slot(st, e::discard);
+                if (st.getItem() instanceof net.minecraft.world.item.ArmorItem armor && armor.getEquipmentSlot() != EquipmentSlot.HEAD) worn.add(slot);
+                else loose.add(slot);
+            }
+        }
+        List<ItemStack> taken = new ArrayList<>();
+        boolean archer = mob instanceof net.minecraft.world.entity.monster.AbstractSkeleton;
+        Slot best = null;
+        double bestScore = 0;
+        for (Slot sl : loose) {
+            double score = weaponScore(sl.stack(), archer);
+            if (score > bestScore) {
+                bestScore = score;
+                best = sl;
+            }
+        }
+        if (best != null) {
+            taken.add(best.stack().copy());
+            best.take().run();
+        }
+        if (wearsGear(mob)) {
+            java.util.Set<EquipmentSlot> filled = new java.util.HashSet<>();
+            for (Slot sl : worn) {
+                if (!(sl.stack().getItem() instanceof net.minecraft.world.item.ArmorItem armor) || !filled.add(armor.getEquipmentSlot())) continue;
+                taken.add(sl.stack().copy());
+                sl.take().run();
+            }
+        }
+        if (taken.isEmpty()) return;
+        List<String> names = new ArrayList<>();
+        for (ItemStack it : taken) {
+            data.stolen.computeIfAbsent(b.id, k -> new ArrayList<>()).add(it);
+            String name = it.getHoverName().getString();
+            names.add(name);
+            data.feud.stole(b.id, p.getUUID(), name.toLowerCase(Locale.ROOT), now());
+        }
+        p.sendSystemMessage(Component.literal(b.name + " took your " + String.join(", ", names)
+                + ". Kill it to get them back.").withStyle(ChatFormatting.RED));
+        data.changed();
+    }
+
+    /** How good an item is as a weapon for this mob; 0 if it isn't one. */
+    private static double weaponScore(ItemStack s, boolean archer) {
+        if (s.isEmpty()) return 0;
+        Item it = s.getItem();
+        if (it instanceof net.minecraft.world.item.BowItem || it instanceof net.minecraft.world.item.CrossbowItem) {
+            return archer ? 100 + s.getEnchantments().size() : 0;
+        }
+        // Real weapons only: a pickaxe or a shovel stays on the ground for the player.
+        if (!s.is(net.minecraft.tags.ItemTags.SWORDS) && !s.is(net.minecraft.tags.ItemTags.AXES)
+                && !s.is(Items.TRIDENT) && !s.is(Items.MACE)) return 0;
+        double dmg = 0;
+        net.minecraft.world.item.component.ItemAttributeModifiers mods = s.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS,
+                net.minecraft.world.item.component.ItemAttributeModifiers.EMPTY);
+        for (net.minecraft.world.item.component.ItemAttributeModifiers.Entry e : mods.modifiers()) {
+            if (e.attribute().is(Attributes.ATTACK_DAMAGE) && e.modifier().operation() == AttributeModifier.Operation.ADD_VALUE) {
+                dmg += e.modifier().amount();
+            }
+        }
+        if (dmg <= 0) return 0;
+        return dmg + s.getEnchantments().size() * 0.5;
+    }
+
+    /** Puts on what a Brute took from players: armor in its slots, the best weapon in hand. Dropped when it dies. */
+    private void wearTaken(Mob mob, Brute b) {
+        List<ItemStack> items = data.stolen.get(b.id);
+        if (items == null || items.isEmpty()) return;
+        boolean archer = mob instanceof net.minecraft.world.entity.monster.AbstractSkeleton;
+        ItemStack weapon = null;
+        double best = 0;
+        for (ItemStack it : items) {
+            if (it.getItem() instanceof net.minecraft.world.item.ArmorItem armor) {
+                EquipmentSlot slot = armor.getEquipmentSlot();
+                if (slot == EquipmentSlot.HEAD) continue;
+                mob.setItemSlot(slot, it.copy());
+                mob.setDropChance(slot, 0); // it drops from the stolen list instead, once
+            } else {
+                double score = weaponScore(it, archer);
+                if (score > best) {
+                    best = score;
+                    weapon = it;
+                }
+            }
+        }
+        if (weapon != null) {
+            mob.setItemSlot(EquipmentSlot.MAINHAND, weapon.copy());
+            mob.setDropChance(EquipmentSlot.MAINHAND, 0);
+        }
     }
 
     void stolen(Brute b, ServerPlayer p, ItemStack item) {

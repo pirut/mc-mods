@@ -65,6 +65,28 @@ cut or mauled), sometimes with a new trait or fear from it and a new epithet, an
 **final** if the killing blow was a critical hit with a sword or axe, or it died in lava. A Brute that has come back
 three times stays dead.
 
+Scars show and change fights: Burned Brutes smoke and can set you alight, Blasted ones shed ash and shrug off
+explosions, Drowned ones drip and can't drown, Cut and Mauled ones bleed (Cut ones hit harder, Mauled ones fear
+wolves less), Pierced ones take less from arrows, and Broken ones limp but are hard to knock back.
+
+## They take your gear
+
+The Brute that kills you takes your best weapon and the armor you wore (not your helmet), puts it on, and fights you
+with it. Kill it to get it all back. If it dies somewhere else, its pack's Boss takes the loot. Turn this off with
+`takeGear=false`.
+
+## No two alike
+
+Every Brute has its own epithet (no two living Brutes share one), its own size (Bosses and Kings are bigger), and its
+own armor trim pattern in its pack's color.
+
+## The Ledger and the Map
+
+With Blood Feud installed on your client, press **J** to open the Feud Ledger: an overview of who's after you, a page
+for every pack and Brute you've met (with a 3D portrait, traits, scars, what it carries and what it remembers), and a
+map of the land around you with every pack home you know. Players without the mod get the same information as a
+written book and a map item.
+
 Sleeping and dying move the feud along: each night, packs grow, fight and change hands.
 
 ## Big worlds
@@ -80,12 +102,19 @@ far-away pack no one has met fades away.
 - `/bloodfeud` (or `/bloodfeud packs`): the packs you've met around you, who leads them, and which way their home is.
 - `/bloodfeud brute <name>`: a Brute's page: rank, level, what you know about it, scars, and your history together.
 - `/bloodfeud nemesis`: who's after you.
-- Operators: `/bloodfeud rise <family>`, `/bloodfeud night`, `/bloodfeud all`, `/bloodfeud forget everything`.
+- `/bloodfeud ledger` and `/bloodfeud map` (or **J**): open the Ledger screens, or give the book and map if your
+  client doesn't have the mod.
+- `/bloodfeud book`: the Feud Ledger as a written book. You get one free the first time a Brute finds you, and it
+  rewrites itself each time you open it.
+- `/bloodfeud mapitem`: a Map of the Feuds item, with each pack home you know marked by a banner in its color and a
+  red X on each Brute hunting you.
+- Operators: `/bloodfeud rise <family>`, `/bloodfeud scar <scar> <name>`, `/bloodfeud night`, `/bloodfeud all`,
+  `/bloodfeud forget everything`.
 
-## Server only
+## Server only (screens optional)
 
-Blood Feud runs on the server. Players don't need it installed: names, title cards, boss bars and lines all use
-vanilla. Settings are in `config/bloodfeud.properties`.
+Blood Feud runs on the server. Players don't need it installed: names, title cards, boss bars, lines, the book and
+the map all use vanilla. Players who install it too get the Ledger and Map screens. Settings are in `config/bloodfeud.properties`.
 
 NeoForge and Fabric, Minecraft 1.21.1. Blood Feud is inspired by the nemesis-style rivals of other games; its names,
 lines and rules are its own.

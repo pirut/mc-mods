@@ -752,3 +752,123 @@ Wart-Nose
 the Bottle-Thrower
 Hexmother
 the Sour Brew
+
+# Epithets a Brute may take when it comes back from the dead, by the scar it came back with.
+[epithets.scar.burned]
+the Charred
+Ash-Skin
+the Smoking
+Cinder-Face
+the Twice-Burned
+Soot-Hand
+the Scorched
+Black-Crust
+
+[epithets.scar.broken]
+Broke-Leg
+the Limper
+Crooked-Step
+the Dragger
+Splint-Shin
+the Hobbler
+Bent-Knee
+Three-Legs
+
+[epithets.scar.blasted]
+Half-Blown
+the Ringing
+Shrapnel-Gut
+the Patched
+Blast-Deaf
+One-Ear
+the Rattled
+Crater-Face
+
+[epithets.scar.pierced]
+Pin-Cushion
+the Quilled
+Arrow-Back
+the Feathered
+Hedgehog
+Shaft-Bearer
+the Bristled
+Splinter-Hide
+
+[epithets.scar.drowned]
+the Twice-Drowned
+Sodden
+the Dripping
+Silt-Lung
+the Bloated
+Brine-Breath
+the Soaked
+Puddle-Born
+
+[epithets.scar.cut]
+Stitch-Face
+the Sewn
+Seam-Jaw
+Scar-Cheek
+the Gashed
+Thread-Lip
+the Notched
+Split-Brow
+
+[epithets.scar.mauled]
+Wolf-Chewed
+the Gnawed
+Bite-Marks
+the Torn
+Kennel-Bait
+Fang-Bitten
+the Ragged
+Dog-Eared
+
+# Halves of made-up epithets ("Gravel-Tooth"), used once the written ones are taken.
+[epithets.first]
+Gravel
+Mud
+Bone
+Rust
+Moss
+Ash
+Grave
+Root
+Cobble
+Flint
+Soot
+Bog
+Marrow
+Grub
+Ditch
+Thorn
+Crow
+Slag
+Lichen
+Tallow
+Cinder
+Gristle
+Brine
+Wick
+
+[epithets.second]
+Tooth
+Hand
+Eye
+Belly
+Jaw
+Gut
+Knuckle
+Back
+Skull
+Foot
+Heart
+Nose
+Grin
+Brow
+Spine
+Claw
+Tongue
+Hide
+Elbow
+Fist

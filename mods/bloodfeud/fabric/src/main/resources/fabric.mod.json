@@ -14,12 +14,13 @@
   "license": "${mod_license}",
   "environment": "*",
   "entrypoints": {
-    "main": ["io.github.pirut.bloodfeud.fabric.BloodFeudFabric"]
+    "main": ["io.github.pirut.bloodfeud.fabric.BloodFeudFabric"],
+    "client": ["io.github.pirut.bloodfeud.fabric.BloodFeudFabricClient"]
   },
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",
-    "pirutlib": ">=0.1.0-alpha.1",
+    "pirutlib": ">=0.1.0-alpha.2",
     "minecraft": "${minecraft_version}",
     "java": ">=21"
   }

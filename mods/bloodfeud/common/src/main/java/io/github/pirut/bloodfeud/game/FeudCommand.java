@@ -43,6 +43,30 @@ public final class FeudCommand {
                 .executes(c -> packs(c.getSource()))
                 .then(Commands.literal("packs").executes(c -> packs(c.getSource())))
                 .then(Commands.literal("nemesis").executes(c -> nemesis(c.getSource())))
+                .then(Commands.literal("ledger").executes(c -> {
+                    ServerPlayer p = c.getSource().getPlayerOrException();
+                    if (Screens.open(Live.get(c.getSource().getServer()), p, "ledger", "")) return 1;
+                    boolean fresh = Ledger.give(Live.get(c.getSource().getServer()), p);
+                    c.getSource().sendSuccess(() -> Component.literal(fresh ? "Here is your Feud Ledger."
+                            : "Your Feud Ledger is up to date.").withStyle(ChatFormatting.GRAY), false);
+                    return 1;
+                }))
+                .then(Commands.literal("book").executes(c -> {
+                    ServerPlayer p = c.getSource().getPlayerOrException();
+                    Ledger.give(Live.get(c.getSource().getServer()), p);
+                    return 1;
+                }))
+                .then(Commands.literal("mapitem").executes(c -> {
+                    FeudMap.give(Live.get(c.getSource().getServer()), c.getSource().getPlayerOrException());
+                    return 1;
+                }))
+                .then(Commands.literal("map").executes(c -> {
+                    ServerPlayer p = c.getSource().getPlayerOrException();
+                    if (Screens.open(Live.get(c.getSource().getServer()), p, "map", "")) return 1;
+                    FeudMap.give(Live.get(c.getSource().getServer()), p);
+                    c.getSource().sendSuccess(() -> Component.literal("You sketch a Map of the Feuds.").withStyle(ChatFormatting.GRAY), false);
+                    return 1;
+                }))
                 .then(Commands.literal("brute").then(Commands.argument("name", StringArgumentType.greedyString())
                         .suggests((c, b) -> SharedSuggestionProvider.suggest(knownNames(c), b))
                         .executes(c -> page(c.getSource(), StringArgumentType.getString(c, "name")))))
@@ -51,6 +75,13 @@ public final class FeudCommand {
                                 .suggests((c, b) -> SharedSuggestionProvider.suggest(
                                         java.util.Arrays.stream(Family.values()).map(Family::key), b))
                                 .executes(FeudCommand::rise)))
+                .then(Commands.literal("scar").requires(s -> s.hasPermission(2))
+                        .then(Commands.argument("scar", StringArgumentType.word())
+                                .suggests((c, b) -> SharedSuggestionProvider.suggest(
+                                        java.util.Arrays.stream(io.github.pirut.bloodfeud.feud.Scar.values()).map(io.github.pirut.bloodfeud.feud.Scar::key), b))
+                                .then(Commands.argument("name", StringArgumentType.greedyString())
+                                        .suggests((c, b) -> SharedSuggestionProvider.suggest(knownNames(c), b))
+                                        .executes(FeudCommand::scar))))
                 .then(Commands.literal("night").requires(s -> s.hasPermission(2)).executes(c -> {
                     Live.get(c.getSource().getServer()).runNight();
                     c.getSource().sendSuccess(() -> Component.literal("A night has played out."), true);
@@ -186,7 +217,7 @@ public final class FeudCommand {
         return r;
     }
 
-    private static String memory(Memory m) {
+    static String memory(Memory m) {
         String d = m.detail();
         return switch (m.kind()) {
             case KILLED_PLAYER -> "It killed you" + (d.isEmpty() ? "." : " (" + d + ").");
@@ -204,11 +235,27 @@ public final class FeudCommand {
         ServerPlayer p = c.getSource().getPlayerOrException();
         Family family = Family.byKey(StringArgumentType.getString(c, "family"));
         if (family == null) {
-            c.getSource().sendFailure(Component.literal("Families: rotten, bones, illagers, nether."));
+            c.getSource().sendFailure(Component.literal("Families: " + String.join(", ", java.util.Arrays.stream(Family.values()).map(Family::key).toList()) + "."));
             return 0;
         }
         Brute b = Live.get(c.getSource().getServer()).makeBrute(p, family);
         c.getSource().sendSuccess(() -> Component.literal(b.fullName() + " has risen."), true);
+        return 1;
+    }
+
+    /** Ops only: gives a Brute a scar, as if it had come back from that death. */
+    private static int scar(CommandContext<CommandSourceStack> c) {
+        io.github.pirut.bloodfeud.feud.Scar scar = io.github.pirut.bloodfeud.feud.Scar.byKey(StringArgumentType.getString(c, "scar"));
+        Live live = Live.get(c.getSource().getServer());
+        Brute b = live.feud().byName(StringArgumentType.getString(c, "name"));
+        if (scar == null || b == null) {
+            c.getSource().sendFailure(Component.literal(scar == null ? "Scars: " + String.join(", ",
+                    java.util.Arrays.stream(io.github.pirut.bloodfeud.feud.Scar.values()).map(io.github.pirut.bloodfeud.feud.Scar::key).toList()) + "."
+                    : "No Brute by that name."));
+            return 0;
+        }
+        live.scar(b, scar);
+        c.getSource().sendSuccess(() -> Component.literal(b.fullName() + " now bears the " + scar.key() + " scar."), true);
         return 1;
     }
 

@@ -48,13 +48,52 @@ public final class Names {
 
     /** An epithet, preferring one about how it won (if it killed someone) or what it is. */
     public static String epithet(Random random, String entityType, DeathCause cause) {
+        return epithet(random, entityType, cause, java.util.Set.of());
+    }
+
+    /** The same, never one in {@code taken} (the epithets living Brutes already wear) while any other is left. */
+    public static String epithet(Random random, String entityType, DeathCause cause, java.util.Set<String> taken) {
         Talk t = Talk.book();
-        List<String> byCause = cause == null ? List.of() : t.pool("epithets." + cause.key());
+        List<String> byCause = free(cause == null ? List.of() : t.pool("epithets." + cause.key()), taken);
         if (!byCause.isEmpty() && random.nextInt(3) < 2) return pick(random, byCause);
-        List<String> typed = t.pool("epithets." + entityType);
+        List<String> typed = free(t.pool("epithets." + entityType), taken);
         if (!typed.isEmpty() && random.nextInt(3) == 0) return pick(random, typed);
-        List<String> general = t.pool("epithets.general");
-        return general.isEmpty() ? "the Nameless" : pick(random, general);
+        List<String> general = free(t.pool("epithets.general"), taken);
+        if (!general.isEmpty() && random.nextInt(4) > 0) return pick(random, general);
+        String made = made(random, taken);
+        if (made != null) return made;
+        if (!general.isEmpty()) return pick(random, general);
+        for (String pool : List.of("epithets." + entityType, cause == null ? "" : "epithets." + cause.key())) {
+            List<String> rest = free(t.pool(pool), taken);
+            if (!rest.isEmpty()) return pick(random, rest);
+        }
+        List<String> all = t.pool("epithets.general");
+        return all.isEmpty() ? "the Nameless" : pick(random, all);
+    }
+
+    /** An epithet for the scar it came back with, or null if every one of them is taken. */
+    public static String scarEpithet(Random random, Scar scar, java.util.Set<String> taken) {
+        List<String> pool = free(Talk.book().pool("epithets.scar." + scar.key()), taken);
+        if (pool.isEmpty()) return taken.contains(scar.epithet) ? null : scar.epithet;
+        return pick(random, pool);
+    }
+
+    /** "Gravel-Tooth": a made-up epithet from two halves, for when the written ones run out. */
+    private static String made(Random random, java.util.Set<String> taken) {
+        List<String> first = Talk.book().pool("epithets.first"), second = Talk.book().pool("epithets.second");
+        if (first.isEmpty() || second.isEmpty()) return null;
+        for (int i = 0; i < 40; i++) {
+            String e = pick(random, first) + "-" + pick(random, second);
+            if (!taken.contains(e)) return e;
+        }
+        return null;
+    }
+
+    private static List<String> free(List<String> pool, java.util.Set<String> taken) {
+        if (taken.isEmpty()) return pool;
+        List<String> out = new java.util.ArrayList<>(pool.size());
+        for (String e : pool) if (!taken.contains(e)) out.add(e);
+        return out;
     }
 
     private static String pick(Random random, List<String> from) {

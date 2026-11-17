@@ -38,6 +38,8 @@ public final class Feud {
 
     public final Map<UUID, Brute> brutes = new LinkedHashMap<>();
     public final Map<UUID, Pack> packs = new LinkedHashMap<>();
+    /** The time of the call being played out, for pack chronicles. */
+    private long clock;
     public long lastNight;
     public int maxPacks = 64;
     public int maxBrutes = 256;
@@ -126,6 +128,13 @@ public final class Feud {
         return out;
     }
 
+    /** The epithets living Brutes wear, so no two share one. */
+    public Set<String> takenEpithets() {
+        Set<String> out = new java.util.HashSet<>();
+        for (Brute b : brutes.values()) if (b.alive && b.epithet != null) out.add(b.epithet);
+        return out;
+    }
+
     public Set<String> takenNames() {
         Set<String> out = new HashSet<>();
         for (Brute b : brutes.values()) if (b.alive) out.add(b.name);
@@ -169,9 +178,13 @@ public final class Feud {
 
     private Brute rise(String entityType, Family family, String dimension, int x, int z, UUID player, Memory.Kind why,
                        DeathCause cause, UUID packHint, long now, boolean announce) {
+        clock = now;
         Brute b = new Brute(new UUID(random.nextLong(), random.nextLong()), entityType, family, dimension,
                 Names.given(random, takenNames()), now);
-        b.epithet = Names.epithet(random, entityType, why == Memory.Kind.ROSE ? cause : null);
+        b.epithet = Names.epithet(random, entityType, why == Memory.Kind.ROSE ? cause : null, takenEpithets());
+        Random looks = new Random(b.id.getMostSignificantBits() ^ b.name.hashCode()); // kept apart from the feud's dice
+        b.size = 0.86f + looks.nextFloat() * 0.3f;
+        b.look = looks.nextInt(1 << 16);
         b.level = why == Memory.Kind.ROSE ? 2 + random.nextInt(2) : 1 + random.nextInt(2);
         rollTraits(b);
         b.x = x;
@@ -202,6 +215,7 @@ public final class Feud {
 
     /** A Brute killed a player. It levels up and the player is now its Nemesis. */
     public void killedPlayer(UUID bruteId, UUID player, DeathCause cause, long now) {
+        clock = now;
         Brute b = brute(bruteId);
         if (b == null) return;
         b.levelUp(1);
@@ -225,6 +239,7 @@ public final class Feud {
      * @return whether it is dead for good
      */
     public boolean killedByPlayer(UUID bruteId, UUID player, DeathCause cause, boolean finalBlow, long now) {
+        clock = now;
         Brute b = brute(bruteId);
         if (b == null || !b.alive) return true;
         if (player != null) {
@@ -240,6 +255,7 @@ public final class Feud {
 
     /** The player ran from a fight with this Brute. It gets a little stronger for driving them off. */
     public void playerFled(UUID bruteId, UUID player, long now) {
+        clock = now;
         Brute b = brute(bruteId);
         if (b == null) return;
         b.levelUp(1);
@@ -249,6 +265,7 @@ public final class Feud {
     }
 
     public void stole(UUID bruteId, UUID player, String item, long now) {
+        clock = now;
         Brute b = brute(bruteId);
         if (b == null) return;
         b.relation(player).remember(new Memory(Memory.Kind.STOLE, now, item));
@@ -262,6 +279,7 @@ public final class Feud {
      * near a player happens; the rest sleeps and catches up when someone comes back.
      */
     public void night(long now, List<PlayerSpot> players, Places places) {
+        clock = now;
         lastNight = now;
         returns(now, players);
         travel(now, players);
@@ -303,13 +321,17 @@ public final class Feud {
 
     /** A dead Brute comes back, scarred by how it died, angrier, and looking for whoever did it. */
     public void comeBack(Brute b, long now) {
+        clock = now;
         b.alive = true;
         b.timesReturned++;
         Scar scar = (b.lastCause == null ? DeathCause.MELEE : b.lastCause).scar();
         if (!b.scars.contains(scar)) b.scars.add(scar);
         if (scar.hardened != null && random.nextBoolean()) b.addTrait(scar.hardened);
         else if (scar.haunted != null && random.nextBoolean()) b.addTrait(scar.haunted);
-        if (random.nextInt(3) < 2) b.epithet = scar.epithet;
+        if (random.nextInt(3) < 2) {
+            String e = Names.scarEpithet(random, scar, takenEpithets());
+            if (e != null) b.epithet = e;
+        }
         b.levelUp(1 + random.nextInt(2));
         if (b.killedBy != null) {
             Relation r = b.relation(b.killedBy);
@@ -398,6 +420,7 @@ public final class Feud {
 
     /** Starts a pack around a Brute, at the place it stands. */
     public Pack form(Brute boss, Places places, long now, int grunts) {
+        clock = now;
         Set<Integer> usedColors = new HashSet<>();
         for (Pack p : packs.values()) if (p.distanceTo(boss.dimension, boss.x, boss.z) <= RIVAL_RANGE) usedColors.add(p.color);
         int color = random.nextInt(16);
@@ -471,6 +494,7 @@ public final class Feud {
 
     /** One pack raids another. The loser bleeds, and if they are the same family the winner may swallow it. */
     public void raid(Pack attacker, Pack defender, long now) {
+        clock = now;
         double sa = strength(attacker) * (0.75 + random.nextDouble() * 0.5);
         double sd = strength(defender) * (0.75 + random.nextDouble() * 0.5) * 1.1; // fighting at home
         Pack winner = sa >= sd ? attacker : defender;
@@ -491,6 +515,7 @@ public final class Feud {
         if (wb != null) wb.levelUp(1);
         boolean decisive = margin > 1.3 || loser.grunts == 0;
         if (decisive && winner.family == loser.family && winner.distanceTo(loser) <= KING_RANGE) {
+            loser.remember(clock, text.toString());
             tell(News.Kind.RAID, text.toString(), wb);
             swallow(winner, loser);
             return;
@@ -502,6 +527,7 @@ public final class Feud {
                 text.append(" Its Boss ").append(lb.fullName()).append(" was slain.");
             }
         }
+        loser.remember(clock, text.toString());
         tell(News.Kind.RAID, text.toString(), wb);
     }
 
@@ -620,16 +646,20 @@ public final class Feud {
     private void tell(News.Kind kind, String text, Brute... about) {
         Brute first = null;
         List<UUID> ids = new ArrayList<>();
+        java.util.Set<Pack> chronicled = new java.util.HashSet<>();
         for (Brute b : about) {
             if (b == null) continue;
             if (first == null) first = b;
             ids.add(b.id);
+            Pack p = packOf(b);
+            if (p != null && chronicled.add(p)) p.remember(clock, text);
         }
         news.add(new News(kind, text, first == null ? "" : first.dimension, first == null ? 0 : first.x,
                 first == null ? 0 : first.z, ids));
     }
 
     private void tellAt(Pack p, News.Kind kind, String text) {
+        p.remember(clock, text);
         news.add(new News(kind, text, p.dimension, p.homeX, p.homeZ, List.of()));
     }
 

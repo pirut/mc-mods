@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.0-alpha.2
+
+- **Ledger and Map screens.** With Blood Feud on your client, press J (or use the ledger) to open a full Ledger:
+  Overview, Packs, Brutes and a Map tab. Pack pages show the banner, Boss and Brutes, grunts, rivals, your grudge
+  and the pack's story so far. Brute pages show a 3D portrait wearing what it wears, traits you've found out (hover
+  to read them), scars, what it carries and what it remembers about you. The map draws the land around you with
+  every pack home you know, lines from Kings to their vassals, and a red X on each Brute hunting you; drag to pan,
+  scroll to zoom, click to open a page. Players without the mod still get the book and the map item.
+- **The Feud Ledger book**, given the first time a Brute finds you (or with `/bloodfeud book`), rewrites itself every
+  time you open it. **Map of the Feuds** item (`/bloodfeud mapitem`) marks each pack home with a banner in its color.
+- **They take your gear.** The Brute that kills you takes your best weapon and the armor you wore (never your
+  helmet), wears it, and fights you with it. Kill it to get everything back. If it dies away from you, its pack's Boss
+  takes the loot. Mobs that can't show gear (spiders, witches) take only the weapon. Only real weapons are taken
+  (swords, axes, tridents, maces, and bows for skeletons). `takeGear` setting to turn it off.
+- **Scars do something now**, and you can see them: Burned Brutes smoke and can set you on fire; Blasted ones shed
+  ash, take half damage from explosions and hold their ground; Drowned ones drip water and can't drown; Cut ones
+  bleed and hit 10% harder; Mauled ones bleed and shrug off wolves; Pierced ones take 25% less from arrows; Broken
+  ones walk slower but are hard to knock back.
+- **No two Brutes alike.** No two living Brutes share an epithet (new scar epithets, and made-up ones when the list
+  runs dry). Each has its own size, and Bosses and Kings are bigger. Each wears its own armor trim pattern, in a
+  material that matches its pack's color.
+- Balance: a little less health and damage per level (a level 20 King has about 6.5 times a normal mob's health,
+  was 7.5), spider and witch hides capped lower.
+- Packs keep a short history (formed, risen, raided, challenged, crowned), saved with the world.
+- `/bloodfeud scar <scar> <name>` for operators. `giveLedger` setting to turn the free ledger off.
+- Needs Pirut Lib 0.1.0-alpha.2.
+
 ## 0.1.0-alpha.1
 
 First alpha.
