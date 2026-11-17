@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-alpha.3
+
+- `ClientHooks.livingLayer`: add a render layer to every mob renderer (players excluded), on both loaders.
+
 ## 0.1.0-alpha.2
 
 - `ServerEvents.onUseItem`: runs on the server when a player right-clicks with an item, before the item's own use,

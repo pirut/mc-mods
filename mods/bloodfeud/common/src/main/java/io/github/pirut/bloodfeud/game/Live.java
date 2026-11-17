@@ -393,6 +393,7 @@ public final class Live {
         if (gt % 200 == 7) {
             for (ServerPlayer p : server.getPlayerList().getPlayers()) encounters(p, gt);
         }
+        if (gt % 40 == 11) sendScars();
         if (gt % 5 == 2) {
             for (Active a : active.values()) {
                 Brute b = data.feud.brute(a.brute);
@@ -790,6 +791,33 @@ public final class Live {
         Active a = new Active(b.id, mob.getUUID(), mob.level().dimension(), bar);
         active.put(b.id, a);
         bruteOfEntity.put(mob.getUUID(), b.id);
+    }
+
+    /** Tells each player with the mod which scarred Brutes are near them, so their client can paint the scars. */
+    private void sendScars() {
+        List<ServerPlayer> players = new ArrayList<>();
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+            if (io.github.pirut.lib.Net.canSend(p, Screens.SCARS)) players.add(p);
+        }
+        if (players.isEmpty()) return;
+        for (ServerPlayer p : players) {
+            net.minecraft.nbt.ListTag list = new net.minecraft.nbt.ListTag();
+            for (Active a : active.values()) {
+                Brute b = data.feud.brute(a.brute);
+                if (b == null || b.scars.isEmpty() || a.dimension != p.level().dimension()) continue;
+                if (!(p.serverLevel().getEntity(a.entity) instanceof Mob mob) || mob.distanceToSqr(p) > 96 * 96) continue;
+                net.minecraft.nbt.CompoundTag t = new net.minecraft.nbt.CompoundTag();
+                t.putInt("id", mob.getId());
+                net.minecraft.nbt.ListTag keys = new net.minecraft.nbt.ListTag();
+                for (Scar s : b.scars) keys.add(net.minecraft.nbt.StringTag.valueOf(s.key()));
+                t.put("scars", keys);
+                t.putBoolean("flip", (b.look & 1) == 1);
+                list.add(t);
+            }
+            net.minecraft.nbt.CompoundTag msg = new net.minecraft.nbt.CompoundTag();
+            msg.put("brutes", list);
+            io.github.pirut.lib.Net.send(p, Screens.SCARS, msg);
+        }
     }
 
     /** Ops only: a scar, as if the Brute had come back from that death. */

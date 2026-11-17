@@ -30,6 +30,6 @@ side = "BOTH"
 [[dependencies.${mod_id}]]
 modId = "pirutlib"
 type = "required"
-versionRange = "[0.1.0-alpha.2,)"
+versionRange = "[0.1.0-alpha.3,)"
 ordering = "AFTER"
 side = "BOTH"

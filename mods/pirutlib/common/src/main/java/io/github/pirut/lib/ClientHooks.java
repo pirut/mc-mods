@@ -1,6 +1,8 @@
 package io.github.pirut.lib;
 
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.renderer.entity.LivingEntityRenderer;
+import net.minecraft.client.renderer.entity.layers.RenderLayer;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -16,6 +18,25 @@ public final class ClientHooks {
     /** What the loader glue provides. */
     public interface Bridge {
         void register(Key key);
+    }
+
+    /** Makes an extra layer for a mob's renderer, or returns null to leave that renderer alone. */
+    public interface LayerFactory {
+        RenderLayer<?, ?> create(LivingEntityRenderer<?, ?> renderer);
+    }
+
+    private static final List<LayerFactory> LAYERS = new CopyOnWriteArrayList<>();
+
+    /**
+     * An extra render layer for every mob renderer (players excluded), drawn after the mob's own layers. Call it
+     * during client setup, before the game builds its renderers.
+     */
+    public static void livingLayer(LayerFactory factory) {
+        LAYERS.add(factory);
+    }
+
+    public static List<LayerFactory> layers() {
+        return LAYERS;
     }
 
     private static final List<Key> KEYS = new CopyOnWriteArrayList<>();

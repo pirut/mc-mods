@@ -40,6 +40,7 @@ public final class BloodFeud {
         // Players with the mod on their client get real screens; the client half lives in the client package and
         // is only touched inside these lambdas, which a dedicated server never runs.
         Net.toClient(Screens.SHOW, tag -> io.github.pirut.bloodfeud.client.FeudClient.show(tag));
+        Net.toClient(Screens.SCARS, tag -> io.github.pirut.bloodfeud.client.ScarLayer.receive(tag));
         Net.toServer(Screens.ASK, (player, tag) -> Screens.open(Live.get(player.server), player,
                 tag.getString("open"), tag.getString("focus")));
         ServerEvents.onRegisterCommands((dispatcher, context, selection) -> FeudCommand.register(dispatcher));

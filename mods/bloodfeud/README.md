@@ -67,7 +67,9 @@ three times stays dead.
 
 Scars show and change fights: Burned Brutes smoke and can set you alight, Blasted ones shed ash and shrug off
 explosions, Drowned ones drip and can't drown, Cut and Mauled ones bleed (Cut ones hit harder, Mauled ones fear
-wolves less), Pierced ones take less from arrows, and Broken ones limp but are hard to knock back.
+wolves less), Pierced ones take less from arrows, and Broken ones limp but are hard to knock back. With the mod on your client, the
+scars are painted on their bodies too: charred faces, stitched gashes, arrow holes, claw marks, soot, algae and
+bandages.
 
 ## They take your gear
 

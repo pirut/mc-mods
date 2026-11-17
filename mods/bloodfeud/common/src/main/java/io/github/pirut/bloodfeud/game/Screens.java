@@ -36,6 +36,8 @@ public final class Screens {
     public static final ResourceLocation SHOW = BloodFeud.id("show");
     /** Client to server: please send a snapshot (the Ledger key). */
     public static final ResourceLocation ASK = BloodFeud.id("ask");
+    /** Server to client: which Brutes near the player bear which scars, so a client with the mod can paint them. */
+    public static final ResourceLocation SCARS = BloodFeud.id("scars");
 
     /** Map terrain: cells per side, and the kinds of ground each cell can be. */
     static final int GRID = 128;

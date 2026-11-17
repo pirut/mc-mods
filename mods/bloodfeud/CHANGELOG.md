@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0-alpha.3
+
+- **Scars you can see on the body.** With Blood Feud on your client, a Brute that came back from death wears its
+  scars: a charred face and chest (burned), a stitched gash (cut), arrow holes (pierced), claw marks (mauled), soot
+  (blasted), algae (drowned) and bandages (broken). Painted for zombies, husks, drowned, skeletons, strays, wither
+  skeletons, piglins, illagers, witches and spiders, mirrored on some Brutes so the same scar doesn't look the same
+  on everyone. Players without the mod still see the particles.
+- Needs Pirut Lib 0.1.0-alpha.3.
+
 ## 0.1.0-alpha.2
 
 - **Ledger and Map screens.** With Blood Feud on your client, press J (or use the ledger) to open a full Ledger:
