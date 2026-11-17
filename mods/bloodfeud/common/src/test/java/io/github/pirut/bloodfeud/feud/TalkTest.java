@@ -35,6 +35,7 @@ class TalkTest {
         for (DeathCause c : DeathCause.values()) {
             if (c != DeathCause.OTHER) assertFalse(t.pool("epithets." + c.key()).isEmpty(), c.key());
         }
+        for (Scar sc : Scar.values()) assertTrue(t.pool("epithets.scar." + sc.key()).size() >= 6, sc.key());
         assertTrue(t.size() > 400, "lines: " + t.size());
     }
 

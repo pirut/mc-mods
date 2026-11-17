@@ -19,6 +19,10 @@ public final class Brute {
     public final String name;
     public String epithet;
     public int level = 1;
+    /** How big it is next to others of its kind (0.86 to 1.16); rank makes it bigger still. */
+    public float size = 1f;
+    /** Seed for the rest of its look: the trim on its armor and how it wears its colors. */
+    public int look;
     public final Set<Trait> traits = EnumSet.noneOf(Trait.class);
     public final List<Scar> scars = new ArrayList<>();
     /** The pack it belongs to, or null if it is on its own. */

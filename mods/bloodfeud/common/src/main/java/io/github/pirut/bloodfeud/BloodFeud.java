@@ -2,8 +2,11 @@ package io.github.pirut.bloodfeud;
 
 import io.github.pirut.bloodfeud.game.Effects;
 import io.github.pirut.bloodfeud.game.FeudCommand;
+import io.github.pirut.bloodfeud.game.Ledger;
+import io.github.pirut.bloodfeud.game.Screens;
 import io.github.pirut.bloodfeud.game.Live;
 import io.github.pirut.lib.Loader;
+import io.github.pirut.lib.Net;
 import io.github.pirut.lib.ServerEvents;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
@@ -27,6 +30,18 @@ public final class BloodFeud {
         });
         ServerEvents.onIgnoreDamage((target, source, amount) -> Effects.immune(target, source));
         ServerEvents.onDamage(Effects::damage);
+        ServerEvents.onUseItem((player, hand, stack) -> {
+            if (!Ledger.is(stack)) return false;
+            Live live = Live.get(player.server);
+            if (Screens.open(live, player, "ledger", "")) return true; // their client draws it
+            Ledger.refresh(live, player, stack);
+            return false;
+        });
+        // Players with the mod on their client get real screens; the client half lives in the client package and
+        // is only touched inside these lambdas, which a dedicated server never runs.
+        Net.toClient(Screens.SHOW, tag -> io.github.pirut.bloodfeud.client.FeudClient.show(tag));
+        Net.toServer(Screens.ASK, (player, tag) -> Screens.open(Live.get(player.server), player,
+                tag.getString("open"), tag.getString("focus")));
         ServerEvents.onRegisterCommands((dispatcher, context, selection) -> FeudCommand.register(dispatcher));
         LOG.info("{} loaded on {}", MOD_ID, loader.name());
     }

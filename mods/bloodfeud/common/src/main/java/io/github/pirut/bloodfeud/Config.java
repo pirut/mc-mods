@@ -23,6 +23,10 @@ public final class Config {
     public int maxPacks = 64;
     /** Tell players what the packs near them did each night. */
     public boolean announceNews = true;
+    /** Hand each player a Feud Ledger the first time a Brute finds them. */
+    public boolean giveLedger = true;
+    /** A Brute that kills you takes your weapon and armor, fights with them, and drops them when it dies. */
+    public boolean takeGear = true;
 
     static Config load(Path file) {
         Config c = new Config();
@@ -35,6 +39,8 @@ public final class Config {
         c.maxActiveBrutes = PropertiesFile.integer(p, "maxActiveBrutes", c.maxActiveBrutes);
         c.maxPacks = Math.max(1, PropertiesFile.integer(p, "maxPacks", c.maxPacks));
         c.announceNews = PropertiesFile.bool(p, "announceNews", c.announceNews);
+        c.giveLedger = PropertiesFile.bool(p, "giveLedger", c.giveLedger);
+        c.takeGear = PropertiesFile.bool(p, "takeGear", c.takeGear);
         String text = """
                 # Blood Feud settings. Delete a line to get its default back.
 
@@ -54,8 +60,13 @@ public final class Config {
                 maxPacks=%d
                 # Tell players what the packs near them did each night.
                 announceNews=%b
+                # Hand each player a Feud Ledger (a book about the packs they know) the first time a Brute finds them.
+                giveLedger=%b
+                # A Brute that kills you takes your best weapon and your armor, fights with them, and drops them when you kill it.
+                # (Not with the keepInventory game rule.)
+                takeGear=%b
                 """.formatted(c.killsToRise, c.riseCooldownSeconds, c.encounterCooldownSeconds, c.encounterChancePercent, c.spawnSafeRadius,
-                c.maxActiveBrutes, c.maxPacks, c.announceNews);
+                c.maxActiveBrutes, c.maxPacks, c.announceNews, c.giveLedger, c.takeGear);
         PropertiesFile.writeText(file, text, (f, e) -> BloodFeud.LOG.warn("Couldn't write {}: {}", f, e.toString()));
         return c;
     }

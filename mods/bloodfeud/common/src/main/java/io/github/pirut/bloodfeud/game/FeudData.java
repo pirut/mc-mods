@@ -35,6 +35,8 @@ public final class FeudData extends SavedData {
     public final Feud feud = new Feud(new Random());
     /** Items Brutes have taken from players, dropped when the Brute dies. */
     public final Map<UUID, List<ItemStack>> stolen = new HashMap<>();
+    /** Players who have been handed a Feud Ledger, so they get one only once. */
+    public final java.util.Set<UUID> ledgerGiven = new java.util.HashSet<>();
 
     public static FeudData get(MinecraftServer server) {
         FeudData d = Stores.get(server, NAME, FeudData::new, FeudData::load);
@@ -56,6 +58,9 @@ public final class FeudData extends SavedData {
         ListTag packs = new ListTag();
         for (Pack p : feud.packs.values()) packs.add(savePack(p));
         tag.put("packs", packs);
+        ListTag given = new ListTag();
+        for (UUID u : ledgerGiven) given.add(StringTag.valueOf(u.toString()));
+        tag.put("ledgerGiven", given);
         return tag;
     }
 
@@ -68,6 +73,8 @@ public final class FeudData extends SavedData {
         t.putString("name", b.name);
         t.putString("epithet", b.epithet == null ? "" : b.epithet);
         t.putInt("level", b.level);
+        t.putFloat("size", b.size);
+        t.putInt("look", b.look);
         t.put("traits", strings(b.traits.stream().map(Trait::key).toList()));
         t.put("scars", strings(b.scars.stream().map(Scar::key).toList()));
         if (b.pack != null) t.putUUID("pack", b.pack);
@@ -130,6 +137,14 @@ public final class FeudData extends SavedData {
         ListTag met = new ListTag();
         for (UUID u : p.met) met.add(StringTag.valueOf(u.toString()));
         t.put("met", met);
+        ListTag chronicle = new ListTag();
+        for (Pack.Event e : p.chronicle) {
+            CompoundTag c = new CompoundTag();
+            c.putLong("t", e.time());
+            c.putString("s", e.text());
+            chronicle.add(c);
+        }
+        t.put("chronicle", chronicle);
         return t;
     }
 
@@ -137,6 +152,7 @@ public final class FeudData extends SavedData {
         FeudData d = new FeudData();
         Feud f = d.feud;
         f.lastNight = tag.getLong("lastNight");
+        for (Tag u : tag.getList("ledgerGiven", Tag.TAG_STRING)) d.ledgerGiven.add(UUID.fromString(u.getAsString()));
         for (Tag raw : tag.getList("brutes", Tag.TAG_COMPOUND)) {
             try {
                 CompoundTag t = (CompoundTag) raw;
@@ -146,6 +162,8 @@ public final class FeudData extends SavedData {
                         t.getString("name"), t.getLong("risenAt"));
                 b.epithet = t.getString("epithet");
                 b.level = t.getInt("level");
+                b.size = t.contains("size") ? t.getFloat("size") : 0.86f + (b.id.hashCode() & 0xFF) / 255f * 0.3f;
+                b.look = t.contains("look") ? t.getInt("look") : b.id.hashCode() & 0xFFFF;
                 for (Tag s : t.getList("traits", Tag.TAG_STRING)) {
                     Trait tr = Trait.byKey(s.getAsString());
                     if (tr != null) b.traits.add(tr);
@@ -207,6 +225,9 @@ public final class FeudData extends SavedData {
                 p.lastAwake = t.getLong("lastAwake");
                 p.playerKills = t.getInt("playerKills");
                 for (Tag s : t.getList("met", Tag.TAG_STRING)) p.met.add(UUID.fromString(s.getAsString()));
+                for (Tag c : t.getList("chronicle", Tag.TAG_COMPOUND)) {
+                    p.remember(((CompoundTag) c).getLong("t"), ((CompoundTag) c).getString("s"));
+                }
                 f.packs.put(p.id, p);
             } catch (RuntimeException e) {
                 BloodFeud.LOG.warn("Skipped a pack that couldn't be read: {}", e.toString());

@@ -53,6 +53,15 @@ public final class ServerEvents {
         float damage(LivingEntity target, DamageSource source, float amount);
     }
 
+    /**
+     * A player is about to use (right-click) the item in a hand, on the server, before the item's own use runs.
+     * Return true to say the use was handled, and the item's own use is skipped.
+     */
+    public interface UseItem {
+        boolean use(net.minecraft.server.level.ServerPlayer player, net.minecraft.world.InteractionHand hand,
+                 net.minecraft.world.item.ItemStack stack);
+    }
+
     public interface Register {
         void register(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext context, Commands.CommandSelection selection);
     }
@@ -64,6 +73,7 @@ public final class ServerEvents {
     private static final List<Death> DEATH = new CopyOnWriteArrayList<>();
     private static final List<Ignore> IGNORE = new CopyOnWriteArrayList<>();
     private static final List<Damage> DAMAGE = new CopyOnWriteArrayList<>();
+    private static final List<UseItem> USE_ITEM = new CopyOnWriteArrayList<>();
     private static final List<Register> COMMANDS = new CopyOnWriteArrayList<>();
 
     /** After every server tick. */
@@ -95,6 +105,11 @@ public final class ServerEvents {
     /** Called at the start of every hit on a living entity, on the server, before armor. */
     public static void onDamage(Damage l) {
         DAMAGE.add(l);
+    }
+
+    /** Before an item's own use runs when a player right-clicks with it. Change the stack here to change what it does. */
+    public static void onUseItem(UseItem l) {
+        USE_ITEM.add(l);
     }
 
     public static void onRegisterCommands(Register l) {
@@ -143,6 +158,19 @@ public final class ServerEvents {
             float out = amount;
             for (Damage l : DAMAGE) out = l.damage(target, source, out);
             return out;
+        }
+
+        /** True if a listener handled the use, so the item's own use should not run. */
+        public static boolean useItem(net.minecraft.server.level.ServerPlayer player, net.minecraft.world.InteractionHand hand,
+                                      net.minecraft.world.item.ItemStack stack) {
+            for (UseItem l : USE_ITEM) {
+                try {
+                    if (l.use(player, hand, stack)) return true;
+                } catch (RuntimeException e) {
+                    PirutLib.LOG.error("An item use listener failed", e);
+                }
+            }
+            return false;
         }
 
         public static void commands(CommandDispatcher<CommandSourceStack> d, CommandBuildContext c, Commands.CommandSelection s) {

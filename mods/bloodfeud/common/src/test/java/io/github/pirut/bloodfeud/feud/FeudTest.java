@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -116,6 +117,35 @@ class FeudTest {
         assertTrue(f.drainNews().stream().anyMatch(n -> n.kind() == News.Kind.CROWNED));
         f.killedByPlayer(big.id, PLAYER, DeathCause.MELEE, true, 20);
         assertNull(weak.liege, "the King's packs split apart when it dies");
+    }
+
+    @Test
+    void noTwoLivingBrutesShareAnEpithet() {
+        Feud f = new Feud(new Random(13));
+        Set<String> seen = new java.util.HashSet<>();
+        for (int i = 0; i < 40; i++) {
+            Brute b = zombie(f, i * 50, 0);
+            assertTrue(seen.add(b.epithet), "repeated: " + b.epithet);
+            assertTrue(b.size >= 0.86f && b.size <= 1.16f);
+        }
+    }
+
+    @Test
+    void packsKeepAShortStoryOfWhatHappened() {
+        Feud f = new Feud(new Random(12));
+        Brute big = zombie(f, 0, 0);
+        big.level = 15;
+        Pack strong = f.form(big, PLACES, 0, 16);
+        Brute small = zombie(f, 800, 0);
+        small.level = 1;
+        Pack weak = f.form(small, PLACES, 3, 1);
+        f.raid(strong, weak, 10);
+        assertFalse(strong.chronicle.isEmpty());
+        assertFalse(weak.chronicle.isEmpty(), "the loser remembers the raid too");
+        assertEquals(10, weak.chronicle.peekLast().time());
+        for (int i = 0; i < 40; i++) strong.remember(i, "event " + i);
+        assertEquals(Pack.CHRONICLE, strong.chronicle.size());
+        assertEquals("event 39", strong.chronicle.peekLast().text());
     }
 
     @Test

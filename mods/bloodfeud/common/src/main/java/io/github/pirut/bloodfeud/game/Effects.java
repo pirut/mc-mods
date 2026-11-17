@@ -1,9 +1,13 @@
 package io.github.pirut.bloodfeud.game;
 
 import io.github.pirut.bloodfeud.feud.Brute;
+import io.github.pirut.bloodfeud.feud.Scar;
 import io.github.pirut.bloodfeud.feud.Trait;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.particles.DustParticleOptions;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -124,6 +128,11 @@ public final class Effects {
                 }
             }
         }
+        // What its scars taught its body.
+        if (b.scars.contains(Scar.PIERCED) && source.is(DamageTypeTags.IS_PROJECTILE)) out *= 0.75f;
+        if (b.scars.contains(Scar.BLASTED) && source.is(DamageTypeTags.IS_EXPLOSION)) out *= 0.5f;
+        if (b.scars.contains(Scar.MAULED) && attacker instanceof Wolf) out *= 0.7f;
+        if (b.scars.contains(Scar.DROWNED) && source.is(net.minecraft.world.damagesource.DamageTypes.DROWN)) out = 0;
         return out;
     }
 
@@ -134,7 +143,9 @@ public final class Effects {
             live.discover(player, b, Trait.BERSERKER);
             out *= 1.5f;
         }
+        if (b.scars.contains(Scar.CUT)) out *= 1.1f; // it fights dirtier since someone opened its face
         if (!melee) return out;
+        if (b.scars.contains(Scar.BURNED) && live.random.nextInt(3) == 0) player.igniteForSeconds(2); // it still smolders
         if (b.traits.contains(Trait.VENOM_BLADE)) {
             player.addEffect(new MobEffectInstance(MobEffects.POISON, 100, 0), brute);
             live.discover(player, b, Trait.VENOM_BLADE);
@@ -220,6 +231,32 @@ public final class Effects {
         if (level.getNearestPlayer(mob, 24) instanceof ServerPlayer p) {
             live.discover(p, b, why);
             if (live.random.nextInt(3) == 0) live.say(p, b, Lines.flee(live, p, b));
+        }
+    }
+
+    private static final DustParticleOptions BLOOD = new DustParticleOptions(new org.joml.Vector3f(0.45f, 0.02f, 0.02f), 0.9f);
+
+    /** Scars you can see: it smokes, it drips, it bleeds. */
+    static void scars(Brute b, Mob mob, ServerLevel level) {
+        if (b.scars.isEmpty() || mob.isInvisible() || level.getNearestPlayer(mob, 32) == null) return;
+        double h = mob.getBbHeight(), w = mob.getBbWidth() * 0.4;
+        for (Scar s : b.scars) {
+            ParticleOptions particle;
+            int count;
+            double y;
+            switch (s) {
+                case BURNED -> {
+                    level.sendParticles(ParticleTypes.LARGE_SMOKE, mob.getX(), mob.getY() + h * 0.7, mob.getZ(), 1, w, h * 0.15, w, 0.01);
+                    particle = ParticleTypes.SMOKE; count = 4; y = 0.6;
+                }
+                case BLASTED -> { particle = ParticleTypes.ASH; count = 12; y = 0.5; }
+                case DROWNED -> { particle = ParticleTypes.FALLING_WATER; count = 3; y = 0.8; }
+                case CUT -> { particle = BLOOD; count = 2; y = 0.85; }
+                case MAULED -> { particle = BLOOD; count = 3; y = 0.45; }
+                case PIERCED -> { particle = ParticleTypes.CRIT; count = 1; y = 0.6; }
+                default -> { continue; } // a broken leg shows in how slowly it walks
+            }
+            level.sendParticles(particle, mob.getX(), mob.getY() + h * y, mob.getZ(), count, w, h * 0.2, w, 0.0);
         }
     }
 

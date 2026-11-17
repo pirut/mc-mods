@@ -26,6 +26,18 @@ public final class Pack {
     /** Players who have seen it. */
     public final Set<UUID> met = new HashSet<>();
 
+    /** What happened to the pack, oldest first, for the Feud Ledger. */
+    public final java.util.Deque<Event> chronicle = new java.util.ArrayDeque<>();
+    public static final int CHRONICLE = 16;
+
+    public record Event(long time, String text) {
+    }
+
+    public void remember(long time, String text) {
+        chronicle.addLast(new Event(time, text));
+        while (chronicle.size() > CHRONICLE) chronicle.removeFirst();
+    }
+
     public Pack(UUID id, Family family, String dimension, String place, int color, int homeX, int homeZ, long formedAt) {
         this.id = id;
         this.family = family;

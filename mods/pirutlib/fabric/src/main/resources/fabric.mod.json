@@ -14,7 +14,8 @@
   "license": "${mod_license}",
   "environment": "*",
   "entrypoints": {
-    "main": ["io.github.pirut.lib.fabric.PirutLibFabric"]
+    "main": ["io.github.pirut.lib.fabric.PirutLibFabric"],
+    "client": ["io.github.pirut.lib.fabric.PirutLibFabricClient"]
   },
   "mixins": ["pirutlib.mixins.json"],
   "depends": {

@@ -36,5 +36,13 @@ public final class PirutLibFabric implements ModInitializer {
             if (!ServerEvents.Fire.entityLoad(entity, level)) REFUSED.add(entity);
         });
         ServerLivingEntityEvents.AFTER_DEATH.register(ServerEvents.Fire::death);
+        io.github.pirut.lib.Net.bridge(new FabricNet());
+        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, level, hand) -> {
+            net.minecraft.world.item.ItemStack stack = player.getItemInHand(hand);
+            if (player instanceof net.minecraft.server.level.ServerPlayer p && ServerEvents.Fire.useItem(p, hand, stack)) {
+                return net.minecraft.world.InteractionResultHolder.success(stack);
+            }
+            return net.minecraft.world.InteractionResultHolder.pass(stack);
+        });
     }
 }
