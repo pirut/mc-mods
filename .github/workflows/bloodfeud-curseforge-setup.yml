@@ -1,0 +1,32 @@
+name: Blood Feud CurseForge first upload (one-off, removed after it runs)
+
+# Uploads the 0.1.0-alpha.3 jars from the GitHub release to CurseForge project 1813667. Runs once from this branch.
+
+on:
+  push:
+    branches: [claude/project-thread-h43lcs]
+    paths: [.github/workflows/bloodfeud-curseforge-setup.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+      CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+      CURSEFORGE_UPLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload 0.1.0-alpha.3 from the GitHub release
+        run: |
+          set -euo pipefail
+          [ -n "$CURSEFORGE_TOKEN" ] || { echo "::error::No CURSEFORGE_TOKEN secret"; exit 1; }
+          for l in neoforge fabric; do
+            mkdir -p mods/bloodfeud/$l/build/libs
+            gh release download bloodfeud-v0.1.0-alpha.3 -R "$GITHUB_REPOSITORY" \
+              -p "bloodfeud-$l-*.jar" -D mods/bloodfeud/$l/build/libs
+          done
+          .github/scripts/release-mod.sh bloodfeud
