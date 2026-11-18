@@ -51,13 +51,16 @@ jobs:
         run: |
           if [ "$INPUT_MOD" = inventory ]; then
             python3 .github/scripts/store-inventory.py
-          elif [ "$INPUT_MOD" = chunks3 ]; then
-            dir="$RUNNER_TEMP/current"
-            gh release download chunks3-v0.1.0-alpha.1 -D "$dir"
-            (cd "$dir" && sha256sum -c SHA256SUMS.txt)
-            for loader in neoforge fabric; do
-              mkdir -p "mods/chunks3/$loader/build/libs"
-              cp "$dir"/chunks3-"$loader"-*.jar "mods/chunks3/$loader/build/libs/"
+          elif [ "$INPUT_MOD" = new-project-files ]; then
+            for mod in pirutlib bug-courier seaworthy cc-agent; do
+              version=$(sed -n 's/^mod_version=//p' "mods/$mod/gradle.properties")
+              dir="$RUNNER_TEMP/current-$mod"
+              gh release download "$mod-v$version" -D "$dir"
+              (cd "$dir" && sha256sum -c SHA256SUMS.txt)
+              for loader in neoforge fabric; do
+                mkdir -p "mods/$mod/$loader/build/libs"
+                cp "$dir"/*-"$loader"-*.jar "mods/$mod/$loader/build/libs/"
+              done
+              CURSEFORGE_UPLOAD=1 bash .github/scripts/release-mod.sh "$mod"
             done
-            CURSEFORGE_UPLOAD=1 bash .github/scripts/release-mod.sh chunks3
           fi

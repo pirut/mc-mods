@@ -60,7 +60,7 @@ notes="$RUNNER_TEMP/release-notes-$mod.md"
 } > "$notes"
 
 test "$fresh" = 0
-changelog="Standalone Chunks3 library for Minecraft 1.21.1. Earth Platform build 73 uses its own cubic engine."
+changelog="Release notes: https://github.com/pirut/mc-mods/releases/tag/$tag"
 type=beta
 agent="${GITHUB_REPOSITORY:-pirut/mc-mods} release workflow"
 failed=0
@@ -135,6 +135,12 @@ mcv=$(id_of "$mc" "^minecraft-") ; neo=$(id_of NeoForge '^modloader$'); fab=$(id
 [ -n "$mcv" ] && [ -n "$neo" ] && [ -n "$fab" ] || { echo "::error::CurseForge is missing the $mc, NeoForge or Fabric tag."; return 1; }
 # Java and side tags only help players filter; left off if CurseForge renames them.
 extras=$(for t in "Java 21:^java$" "Client:^environment$" "Server:^environment$"; do id_of "${t%%:*}" "${t#*:}"; done | jq -sc '.')
+if [ "$mod" = bug-courier ]; then extras=$(jq -nc --argjson j "$(id_of 'Java 21' '^java$')" --argjson c "$(id_of Client '^environment$')" '[$j,$c]'); fi
+relations='[]'
+case "$mod" in
+  cc-agent) relations='[{"slug":"cc-tweaked","type":"requiredDependency"}]' ;;
+  seaworthy) relations='[{"slug":"sable","type":"requiredDependency"}]' ;;
+esac
 cf_upload() { # display-name jar game-version-ids-json relations-json
   jq -n --arg name "$1" --arg changelog "$changelog" --arg type "$type" \
     --argjson versions "$3" --argjson extras "$extras" --argjson relations "$4" \
@@ -154,10 +160,10 @@ cf_upload() { # display-name jar game-version-ids-json relations-json
 for loader in "${jars[@]}"; do
   jar="$id-$loader-$mc-$version.jar"
   if [ "$loader" = neoforge ]; then
-    cf_upload "$name $version (NeoForge)" "$jar" "[$mcv, $neo]" '[]' || return 1
+    cf_upload "$name $version (NeoForge)" "$jar" "[$mcv, $neo]" "$relations" || return 1
   else
-    cf_upload "$name $version (Fabric)" "$jar" "$(jq -nc --argjson q "${quilt:-null}" "[$mcv, $fab, \$q] | map(select(. != null))")" \
-      '[{"slug": "fabric-api", "type": "requiredDependency"}]' || return 1
+    dependencies=$(jq -c '. + [{"slug":"fabric-api","type":"requiredDependency"}]' <<<"$relations")
+    cf_upload "$name $version (Fabric)" "$jar" "[$mcv, $fab]" "$dependencies" || return 1
   fi
 done
 }
