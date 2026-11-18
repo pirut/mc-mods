@@ -54,6 +54,13 @@ F = {
 'W':["10001","10001","10001","10101","10101","11011","10001"],
 'G':["01111","10000","10000","10011","10001","10001","01111"],
 '.':["00000","00000","00000","00000","00000","00000","00100"],
+'V':["10001","10001","10001","10001","01010","01010","00100"],
+'J':["00111","00010","00010","00010","00010","10010","01100"],
+'X':["10001","10001","01010","00100","01010","10001","10001"],
+'Z':["11111","00001","00010","00100","01000","10000","11111"],
+'Q':["01110","10001","10001","10001","10101","10010","01101"],
+',':["000","000","000","000","000","010","100"],
+'&':["01100","10010","10100","01000","10101","10010","01101"],
 ' ':["00000"]*7,
 }
 def text_w(s, px): return sum((len(F[c][0])+1)*px for c in s) - px
@@ -215,15 +222,41 @@ def pl(size):
     return img
 pl(512).save('out/pirutlib-icon-512.png'); pl(128).save('out/pirutlib-icon.png')
 
-# Store page buttons (Modrinth/CurseForge description): pixel label on Ink with a Blood frame
-def button(label, W=480, H=96, px=5):
-    img = Image.new('RGB', (W, H), C['ink']); d = ImageDraw.Draw(img)
-    d.rectangle([0, 0, W-1, H-1], fill=C['blood'])
-    d.rectangle([px, px, W-1-px, H-1-px], fill=C['ink'])
+# Store page art (Modrinth/CurseForge description), in the style of Earth Platform's store page:
+# small pixel buttons that sit in one centered row, and ribbon headers for the sections. Transparent backgrounds.
+def outlined_text(img, s, x, y, px, fill, outline):
+    for dx in (-px, 0, px):
+        for dy in (-px, 0, px, 2*px):
+            if dx or dy: text(img, s, x+dx, y+dy, px, outline)
+    text(img, s, x, y, px, fill)
+
+def button(label, px=2):
+    tw = text_w(label, px); W, H = tw + 16*px, 7*px + 10*px
+    img = Image.new('RGBA', (W, H), (0, 0, 0, 0)); d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, W-1, H-1], fill=C['black'])
+    d.rectangle([px, px, W-1-px, H-1-px], fill=C['blood'])
+    d.rectangle([px, px, W-1-px, 2*px-1], fill=C['ember'])
     d.rectangle([px, H-1-2*px, W-1-px, H-1-px], fill=C['deep'])
-    tw = text_w(label, px)
-    text(img, label, (W-tw)//2, (H-7*px)//2 - px//2, px, C['bone'], shadow=C['deep'])
+    outlined_text(img, label, (W-tw)//2, (H-7*px)//2, px, C['bone'], C['black'])
     return img
+
+def header(label, W=1200, H=102, px=4):
+    img = Image.new('RGBA', (W, H), (0, 0, 0, 0)); d = ImageDraw.Draw(img)
+    tw = text_w(label, px); bw = max(tw + 48*px, 560); x0 = (W-bw)//2; y0, y1 = 14, H-14
+    for sgn in (-1, 1):  # swallowtail ends behind the ribbon
+        ex = x0 if sgn < 0 else x0+bw
+        tail = [(ex, y0+8), (ex+sgn*16*px//2*2, y0+8), (ex+sgn*12*px//2*2 - sgn*6*px, (y0+y1)//2+4), (ex+sgn*16*px//2*2, y1+8), (ex, y1+8)]
+        d.polygon(tail, fill=C['deep'], outline=C['black'])
+    d.rectangle([x0, y0, x0+bw, y1], fill=C['black'])
+    d.rectangle([x0+px, y0+px, x0+bw-px, y1-px], fill=C['blood'])
+    d.rectangle([x0+px, y0+px, x0+bw-px, y0+2*px], fill=C['ember'])
+    d.rectangle([x0+px, y1-2*px, x0+bw-px, y1-px], fill=C['deep'])
+    outlined_text(img, label, (W-tw)//2, (y0+y1)//2 - 7*px//2 - px, px, C['bone'], C['black'])
+    return img
+
 os.makedirs('out/store', exist_ok=True)
-for slug, label in [('how-it-works', 'HOW IT WORKS'), ('commands', 'COMMANDS'), ('report-a-bug', 'REPORT A BUG'), ('source', 'SOURCE')]:
+for slug, label in [('how-it-works', 'HOW IT WORKS'), ('commands', 'COMMANDS'), ('report-a-bug', 'REPORT A BUG'), ('source', 'SOURCE CODE')]:
     button(label).save('out/store/button-%s.png' % slug)
+for slug, label in [('rivals', 'A RIVAL FOR EVERY FIGHT'), ('packs', 'PACKS, BOSSES & KINGS'), ('ledger', 'THE FEUD LEDGER'),
+                    ('relics', 'RELICS'), ('big-worlds', 'BIG WORLDS, SMALL COST'), ('details', 'DETAILS')]:
+    header(label).save('out/store/header-%s.png' % slug)
