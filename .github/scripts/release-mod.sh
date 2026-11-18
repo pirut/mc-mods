@@ -59,16 +59,9 @@ notes="$RUNNER_TEMP/release-notes-$mod.md"
   echo '```'; cat "$dist/SHA256SUMS.txt"; echo '```'
 } > "$notes"
 
-if [ "$fresh" = 1 ]; then
-  pre=()
-  case "$version" in *-alpha*|*-beta*|*-rc*) pre=(--prerelease) ;; esac
-  gh release create "$tag" "$dist"/* --title "$name $version" --notes-file "$notes" \
-    --target "${GITHUB_SHA:-HEAD}" --latest=false "${pre[@]}"
-  echo "Released $tag"
-fi
-
-changelog=$(cat "$RUNNER_TEMP/notes-$mod.md")
-case "$version" in *-beta*) type=beta ;; *-alpha*) type=alpha ;; *) type=release ;; esac
+test "$fresh" = 0
+changelog="Standalone Chunks3 library for Minecraft 1.21.1. Earth Platform build 73 uses its own cubic engine."
+type=beta
 agent="${GITHUB_REPOSITORY:-pirut/mc-mods} release workflow"
 failed=0
 

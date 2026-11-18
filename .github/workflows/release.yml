@@ -42,56 +42,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pick the mods to release
-        id: pick
-        env:
-          GH_TOKEN: ${{ github.token }}
-          INPUT_MOD: ${{ inputs.mod }}
-        run: |
-          mods=()
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            mods=("$INPUT_MOD")
-          elif [ "$GITHUB_REF_TYPE" = tag ]; then
-            mod=${GITHUB_REF_NAME%-v*}; version=${GITHUB_REF_NAME##*-v}
-            have=$(grep '^mod_version=' "mods/$mod/gradle.properties" | cut -d= -f2)
-            if [ "$have" != "$version" ]; then
-              echo "::error::Tag $GITHUB_REF_NAME says $version, but mods/$mod/gradle.properties has $have"; exit 1
-            fi
-            mods=("$mod")
-          else
-            for d in mods/*/; do
-              mod=$(basename "$d"); [ -f "$d/gradle.properties" ] || continue
-              version=$(grep '^mod_version=' "$d/gradle.properties" | cut -d= -f2)
-              gh release view "$mod-v$version" >/dev/null 2>&1 || mods+=("$mod")
-            done
-          fi
-          for m in "${mods[@]}"; do
-            [ -f "mods/$m/gradle.properties" ] || { echo "::error::No mod folder mods/$m"; exit 1; }
-          done
-          echo "mods=${mods[*]}" >> "$GITHUB_OUTPUT"
-          echo "Releasing: ${mods[*]:-nothing}"
-
-      - uses: actions/setup-java@v4
-        if: steps.pick.outputs.mods != ''
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - uses: gradle/actions/setup-gradle@v4
-        if: steps.pick.outputs.mods != ''
-
-      - name: Build
-        if: steps.pick.outputs.mods != ''
-        run: ./gradlew --console=plain $(for m in ${{ steps.pick.outputs.mods }}; do echo ":$m:build"; done)
-
-      - name: Release
-        if: steps.pick.outputs.mods != ''
+      - name: Reconcile current store files
         env:
           GH_TOKEN: ${{ github.token }}
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
-          CURSEFORGE_UPLOAD: ${{ inputs.curseforge && '1' || '' }}
+          INPUT_MOD: ${{ inputs.mod }}
         run: |
-          failed=0
-          for m in ${{ steps.pick.outputs.mods }}; do .github/scripts/release-mod.sh "$m" || failed=1; done
-          exit $failed
+          if [ "$INPUT_MOD" = inventory ]; then
+            python3 .github/scripts/store-inventory.py
+          elif [ "$INPUT_MOD" = chunks3 ]; then
+            dir="$RUNNER_TEMP/current"
+            gh release download chunks3-v0.1.0-alpha.1 -D "$dir"
+            (cd "$dir" && sha256sum -c SHA256SUMS.txt)
+            for loader in neoforge fabric; do
+              mkdir -p "mods/chunks3/$loader/build/libs"
+              cp "$dir"/chunks3-"$loader"-*.jar "mods/chunks3/$loader/build/libs/"
+            done
+            CURSEFORGE_UPLOAD=1 bash .github/scripts/release-mod.sh chunks3
+          fi
