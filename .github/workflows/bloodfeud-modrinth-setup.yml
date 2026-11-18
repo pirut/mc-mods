@@ -1,0 +1,65 @@
+name: Blood Feud Modrinth setup (one-off, removed after it runs)
+
+# Creates the Blood Feud project on Modrinth as a draft (not submitted for review) and uploads the
+# 0.1.0-alpha.3 jars from the GitHub release to it. Runs once from this branch; the file is deleted after.
+
+on:
+  push:
+    branches: [claude/project-thread-h43lcs]
+    paths: [.github/workflows/bloodfeud-modrinth-setup.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+      AGENT: pirut/mc-mods release workflow
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create the Modrinth project
+        id: project
+        run: |
+          set -euo pipefail
+          [ -n "$MODRINTH_TOKEN" ] || { echo "::error::No MODRINTH_TOKEN secret"; exit 1; }
+          api=https://api.modrinth.com/v2
+          status=$(curl -sS -o found.json -w '%{http_code}' -A "$AGENT" -H "Authorization: $MODRINTH_TOKEN" "$api/project/blood-feud")
+          if [ "$status" = 200 ]; then
+            echo "blood-feud already exists"; id=$(jq -r .id found.json)
+          else
+            body=$(tail -n +3 mods/bloodfeud/brand/STORE.md)
+            jq -n --arg body "$body" '{
+              slug: "blood-feud", title: "Blood Feud", project_type: "mod",
+              description: "Mobs that remember you: named rivals, packs, Kings, scars, stolen gear and relic weapons.",
+              body: $body, categories: ["mobs", "adventure", "game-mechanics"], additional_categories: [],
+              client_side: "optional", server_side: "required", license_id: "LGPL-3.0-only",
+              source_url: "https://github.com/pirut/mc-mods/tree/main/mods/bloodfeud",
+              issues_url: "https://github.com/pirut/mc-mods/issues",
+              initial_versions: [], is_draft: true, gallery_items: [], donation_urls: []}' > project.json
+            curl -sS --fail-with-body -A "$AGENT" -H "Authorization: $MODRINTH_TOKEN" \
+              -F "data=<project.json;type=application/json" \
+              -F "icon=@mods/bloodfeud/brand/bloodfeud-icon-512.png;type=image/png" \
+              "$api/project" > created.json || { cat created.json; echo; echo "::error::Modrinth refused the project"; exit 1; }
+            id=$(jq -r .id created.json)
+          fi
+          echo "Modrinth project id: $id"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Upload 0.1.0-alpha.3 from the GitHub release
+        env:
+          PROJECT: ${{ steps.project.outputs.id }}
+        run: |
+          set -euo pipefail
+          sed -i "s/^modrinth_project_id=.*/modrinth_project_id=$PROJECT/" mods/bloodfeud/gradle.properties
+          for l in neoforge fabric; do
+            mkdir -p mods/bloodfeud/$l/build/libs
+            gh release download bloodfeud-v0.1.0-alpha.3 -R "$GITHUB_REPOSITORY" \
+              -p "bloodfeud-$l-*.jar" -D mods/bloodfeud/$l/build/libs
+          done
+          ls -l mods/bloodfeud/*/build/libs
+          .github/scripts/release-mod.sh bloodfeud
+          echo "Modrinth project id: $PROJECT"
