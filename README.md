@@ -70,6 +70,12 @@ Every release goes to GitHub with the jars and their SHA-256 sums. A mod with a 
 `<version>+fabric`). That needs the `MODRINTH_TOKEN` repository secret: a Modrinth personal access token with
 the "Create versions" scope. `modrinth_required` lists extra Modrinth project ids the mod needs.
 
+A mod with a `curseforge_project_id` is also uploaded to CurseForge (one file per loader; the Fabric one needs
+Fabric API). That needs the `CURSEFORGE_TOKEN` repository secret: an API token from CurseForge's account
+settings. CurseForge can't say whether it already has a version, so a release is uploaded there once, when it is
+first made; to upload a version that is already on GitHub (a first upload, or after a failure), run the Release
+workflow by hand with "Upload to CurseForge too" ticked.
+
 ## License
 
 LGPL-3.0-only unless a mod says otherwise: see [`COPYING`](COPYING) and [`COPYING.LESSER`](COPYING.LESSER). A
