@@ -12,7 +12,7 @@
 
 Every world ends up with its own cast of villains, and every one of them got there because of something you did. It runs on **NeoForge and Fabric** for Minecraft 1.21.1, in singleplayer and on servers.
 
-![A pack comes out to meet you: named Brutes with levels, and a Boss wearing the pack's banner](https://raw.githubusercontent.com/pirut/mc-mods/main/mods/bloodfeud/brand/store/pack-comes.jpg)
+![A pack comes out to meet you: named Brutes with levels, and a Boss wearing the pack's banner](https://raw.githubusercontent.com/pirut/mc-mods/main/mods/bloodfeud/brand/store/pack-comes-clean.jpg)
 
 <p align="center"><img src="https://raw.githubusercontent.com/pirut/mc-mods/main/mods/bloodfeud/brand/store/header-rivals.png" alt="A rival for every fight" style="image-rendering:pixelated"></p>
 
