@@ -1,5 +1,6 @@
 name: Blood Feud Modrinth page (one-off, removed after it runs)
 
+# Run 2: query string built by hand (curl -G sent the image as the query).
 # Puts the store page text (brand/STORE.md) and the screenshots in brand/store/ on the Modrinth project.
 
 on:
@@ -33,10 +34,10 @@ jobs:
           n=0
           while IFS='|' read -r file featured title desc; do
             n=$((n+1))
-            curl -sS --fail-with-body -G -A "$AGENT" -H "Authorization: $MODRINTH_TOKEN" -H 'Content-Type: image/jpeg' \
-              --data-urlencode "ext=jpg" --data-urlencode "featured=$featured" --data-urlencode "title=$title" \
-              --data-urlencode "description=$desc" --data-urlencode "ordering=$n" \
-              --data-binary "@$b/store/$file" -X POST "$api/project/$PROJECT/gallery" || { echo "::error::Gallery upload of $file failed"; exit 1; }
+            q=$(jq -rn --arg f "$featured" --arg t "$title" --arg d "$desc" --arg o "$n" \
+              '"ext=jpg&featured=\($f)&title=\($t|@uri)&description=\($d|@uri)&ordering=\($o)"')
+            curl -sS --fail-with-body -A "$AGENT" -H "Authorization: $MODRINTH_TOKEN" -H 'Content-Type: image/jpeg' \
+              --data-binary "@$b/store/$file" -X POST "$api/project/$PROJECT/gallery?$q" || { echo; echo "::error::Gallery upload of $file failed"; exit 1; }
             echo "Gallery $n: $file"
           done <<'LIST'
           pack-comes.jpg|true|A pack comes to meet you|Every Brute has a name, a level and a boss bar. Bosses wear the pack's banner and stand taller.
