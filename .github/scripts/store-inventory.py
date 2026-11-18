@@ -50,6 +50,10 @@ def work(mod,title,slug,cat):
             if mod in ('cc-agent','seaworthy'): deps.append(call('GET','/project/'+('cc-tweaked' if mod=='cc-agent' else 'sable'))['id'])
             data=dict(project_id=pid,name=f'{title} {version} ({"Fabric" if fabric else "NeoForge"})',version_number=number,version_type='beta',game_versions=['1.21.1'],loaders=['fabric' if fabric else 'neoforge'],featured=False,dependencies=[dict(project_id=d,dependency_type='required') for d in deps],file_parts=['jar'],primary_file='jar',changelog=f'Current Minecraft 1.21.1 build. [Release notes](https://github.com/{repo}/releases/tag/{tag}).')
             v=call('POST','/version',files={'data':(None,json.dumps(data),'application/json'),'jar':(jar.name,jar.read_bytes(),'application/java-archive')})
+        if p['status']=='draft':
+            env={'seaworthy':'server_only_client_optional','bug-courier':'client_only','pirutlib':'client_or_server'}.get(mod,'client_and_server')
+            r=api.patch('https://api.modrinth.com/v3/version/'+v['id'],json={'environment':env})
+            r.raise_for_status()
         read=call('GET','/version/'+v['id'])
         assert read['version_type']=='beta' and any(f['hashes']['sha512']==filehash(jar) for f in read['files'])
         print('VERIFIED',slug,jar.name,v['id'],flush=True)
