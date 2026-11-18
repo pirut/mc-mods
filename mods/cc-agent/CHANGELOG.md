@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3-beta.1
+
+- Both loader JARs omit the pty4j Windows native bundle. For Windows full-screen terminals,
+  [install the official helpers](https://github.com/pirut/mc-mods/blob/cc-agent-v0.5.3-beta.1/mods/cc-agent/docs/terminal.md#windows-terminal-setup).
+  Chat, MCP and Unix terminal setup are unchanged.
+
 ## 0.5.2
 
 - **Security fix for multiplayer on Windows.** The model, effort and session the chat passes to Claude Code

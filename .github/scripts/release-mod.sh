@@ -48,6 +48,10 @@ for loader in neoforge fabric; do
   if [ -f "$jar" ]; then cp "$jar" "$dist/" && jars+=("$loader"); fi
 done
 [ ${#jars[@]} -gt 0 ] || { echo "::error::No jars for $mod $version; build it first"; exit 1; }
+if [ "$mod" = cc-agent ]; then
+  [ "${#jars[@]}" -eq 2 ] || { echo "Both CC: Agent loaders are required"; exit 1; }
+  python3 .github/scripts/check-store-archive.py "$dist"/*.jar
+fi
 ( cd "$dist" && sha256sum *.jar > SHA256SUMS.txt )
 
 notes="$RUNNER_TEMP/release-notes-$mod.md"
@@ -158,13 +162,15 @@ cf_upload() { # display-name jar game-version-ids-json relations-json
     || { cat "$RUNNER_TEMP/curseforge-response.json"; echo; echo "::error::CurseForge upload of $2 failed."; return 1; }
   echo "Uploaded $2 to CurseForge as file $(jq -r .id "$RUNNER_TEMP/curseforge-response.json"); it goes live after CurseForge's review."
 }
+local relations='[]'
+if [ "$mod" = cc-agent ]; then relations='[{"slug":"cc-tweaked","type":"requiredDependency"}]'; fi
 for loader in "${jars[@]}"; do
   jar="$id-$loader-$mc-$version.jar"
   if [ "$loader" = neoforge ]; then
-    cf_upload "$name $version (NeoForge)" "$jar" "[$mcv, $neo]" '[]' || return 1
+    cf_upload "$name $version (NeoForge)" "$jar" "[$mcv, $neo]" "$relations" || return 1
   else
     cf_upload "$name $version (Fabric)" "$jar" "$(jq -nc --argjson q "${quilt:-null}" "[$mcv, $fab, \$q] | map(select(. != null))")" \
-      '[{"slug": "fabric-api", "type": "requiredDependency"}]' || return 1
+       "$(jq -c '. + [{"slug":"fabric-api","type":"requiredDependency"}]' <<<"$relations")" || return 1
   fi
 done
 }

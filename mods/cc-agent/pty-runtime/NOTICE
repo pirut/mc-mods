@@ -1,0 +1,4 @@
+This library contains pty4j 0.13.13 from JetBrains, distributed under the
+Eclipse Public License 1.0. CC: Agent omits the Windows native resources.
+Upstream project: https://github.com/JetBrains/pty4j
+Corresponding sources: https://repo.maven.apache.org/maven2/org/jetbrains/pty4j/pty4j/0.13.13/pty4j-0.13.13-sources.jar

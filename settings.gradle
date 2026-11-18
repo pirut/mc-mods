@@ -41,3 +41,7 @@ file('mods').listFiles().findAll { it.isDirectory() && new File(it, 'gradle.prop
 
 // The template is built too, so it never goes stale. It is never released.
 addMod(file('template'))
+
+// CC: Agent packages its terminal runtime as a loader-managed nested library.
+include ':cc-agent:pty-runtime'
+project(':cc-agent:pty-runtime').projectDir = file('mods/cc-agent/pty-runtime')
