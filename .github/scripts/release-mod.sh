@@ -146,7 +146,8 @@ cf_upload() { # display-name jar game-version-ids-json relations-json
   jq -n --arg name "$1" --arg changelog "$changelog" --arg type "$type" \
     --argjson versions "$3" --argjson extras "$extras" --argjson relations "$4" \
     '{displayName: $name, changelog: $changelog, changelogType: "markdown", releaseType: $type,
-      gameVersions: ($versions + $extras), relations: {projects: $relations}}' > "$RUNNER_TEMP/curseforge.json"
+      gameVersions: ($versions + $extras)}
+      + (if ($relations | length) > 0 then {relations: {projects: $relations}} else {} end)' > "$RUNNER_TEMP/curseforge.json"
   if [ "${CURSEFORGE_DRY_RUN:-}" = 1 ]; then
     echo "Dry run, not uploaded: $2 with $(jq -c 'del(.changelog)' "$RUNNER_TEMP/curseforge.json")"; return 0
   fi
