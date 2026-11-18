@@ -66,3 +66,24 @@ def work(mod,title,slug,cat):
 for row in [('bloodfeud','Blood Feud','blood-feud','mobs'),('earth','Earth Platform','earth-platform','worldgen'),('pirutlib','Pirut Lib','pirut-lib','library'),('chunks3','Chunks3','chunks3','library'),('cc-agent','CC: Agent','cc-agent','technology'),('seaworthy','Create: Seaworthy','create-seaworthy','technology'),('bug-courier','Bug Courier','bug-courier','utility')]:
     try: work(*row)
     except Exception as e: print('BLOCKED',row[0],str(e),flush=True)
+# Use the same artwork across new listings and point players to the canonical docs.
+details={
+    'bug-courier':('2219/499/639306203332588579','Bug Courier adds a Report a mod bug button to the pause menu. Choose a mod, review the prefilled report, and open its issue tracker to submit it. Install this mod on the client.'),
+    'chunks3':('2219/261/639306141645325399','Chunks3 is a cubic terrain library. A consuming mod registers a dimension and generator. The library alone adds no playable dimension. Earth Platform build 73 uses its own engine and does not require this library.'),
+    'create-seaworthy':('2219/500/639306203380246689','Adds hull sealing, displacement buoyancy and compartment flooding for Sable ships. Requires Sable 1.0.4 or newer. Install on the server and add it on clients for the interior water rendering.'),
+    'pirut-lib':(None,'Shared loader hooks and game helpers for Pirut’s mods. Use the library version required by the consuming mod. Blood Feud 0.1.0-alpha.3 bundles its copy.'),
+    'cc-agent':(None,'Use Claude Code or Codex with CC: Tweaked computers and turtles. Requires CC: Tweaked 1.120.0 or newer and a local signed-in coding agent. Install the mod on the server and clients.'),
+}
+for p in call('GET','/user/'+user['id']+'/projects'):
+    if p['slug'] not in details: continue
+    image,lead=details[p['slug']]
+    if image and not p.get('icon_url'):
+        img=requests.get('https://media.forgecdn.net/avatars/'+image+'.png')
+        img.raise_for_status()
+        r=api.patch(base+'/project/'+p['id']+'/icon?ext=png',data=img.content,headers={'Content-Type':'image/png'})
+        r.raise_for_status()
+    body=lead+'\n\nFor Minecraft Java Edition 1.21.1. Choose the JAR for your loader. Fabric installations require Fabric API.\n\n[Source and documentation]('+p['source_url']+')'
+    call('PATCH','/project/'+p['id'],json={'body':body})
+    result=call('GET','/project/'+p['id'])
+    assert result['icon_url'] and result['body']==body
+    print('LISTING',p['slug'],result['status'],result['source_url'])
