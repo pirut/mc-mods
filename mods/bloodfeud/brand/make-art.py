@@ -214,3 +214,16 @@ def pl(size):
                 d.rectangle([ox+x*2*px, oy+(y+1)*2*px-px//2, ox+(x+1)*2*px-1, oy+(y+1)*2*px-1], fill=(150,108,36))
     return img
 pl(512).save('out/pirutlib-icon-512.png'); pl(128).save('out/pirutlib-icon.png')
+
+# Store page buttons (Modrinth/CurseForge description): pixel label on Ink with a Blood frame
+def button(label, W=480, H=96, px=5):
+    img = Image.new('RGB', (W, H), C['ink']); d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, W-1, H-1], fill=C['blood'])
+    d.rectangle([px, px, W-1-px, H-1-px], fill=C['ink'])
+    d.rectangle([px, H-1-2*px, W-1-px, H-1-px], fill=C['deep'])
+    tw = text_w(label, px)
+    text(img, label, (W-tw)//2, (H-7*px)//2 - px//2, px, C['bone'], shadow=C['deep'])
+    return img
+os.makedirs('out/store', exist_ok=True)
+for slug, label in [('how-it-works', 'HOW IT WORKS'), ('commands', 'COMMANDS'), ('report-a-bug', 'REPORT A BUG'), ('source', 'SOURCE')]:
+    button(label).save('out/store/button-%s.png' % slug)

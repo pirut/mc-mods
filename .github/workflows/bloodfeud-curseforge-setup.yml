@@ -30,3 +30,4 @@ jobs:
               -p "bloodfeud-$l-*.jar" -D mods/bloodfeud/$l/build/libs
           done
           .github/scripts/release-mod.sh bloodfeud
+# Run 2: after the empty-relations fix.
