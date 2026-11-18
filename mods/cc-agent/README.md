@@ -178,3 +178,5 @@ terminal behind `--tui`.
 
 CC: Tweaked is by SquidDev and contributors. Claude and Claude Code are by Anthropic; Codex and ChatGPT are by
 OpenAI. This mod is not affiliated with any of them.
+
+Windows full-screen terminal users must [install the official pty4j native helpers](docs/terminal.md#windows-terminal-setup).

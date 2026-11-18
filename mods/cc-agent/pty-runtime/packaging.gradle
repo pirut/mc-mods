@@ -1,0 +1,17 @@
+configurations { terminalLibrary }
+configurations.compileOnly.extendsFrom(configurations.terminalLibrary)
+dependencies {
+    terminalLibrary("org.jetbrains.pty4j:pty4j:${pty4j_version}") { transitive = false }
+}
+
+// Keep upstream Java classes and Unix native resources together so pty4j can
+// resolve them normally. Windows terminals use pty4j.preferred.native.folder.
+tasks.named('processResources', ProcessResources) {
+    from({ zipTree(configurations.terminalLibrary.singleFile) }) {
+        exclude 'META-INF/MANIFEST.MF', 'resources/com/pty4j/native/win/**'
+    }
+    from('../pty-runtime') {
+        include 'NOTICE', 'LICENSE', 'UPSTREAM-NOTICE'
+        into 'META-INF/pty4j'
+    }
+}

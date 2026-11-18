@@ -1,5 +1,17 @@
 # Your own terminal
 
+## Windows terminal setup
+
+On the Windows computer that runs the agent CLI, download the
+[official JetBrains pty4j 0.13.13 JAR](https://repo.maven.apache.org/maven2/org/jetbrains/pty4j/pty4j/0.13.13/pty4j-0.13.13.jar).
+Open it as a ZIP and copy the entire `resources/com/pty4j/native/win` directory to
+`C:/ccagent-pty/win`, keeping its architecture subdirectories. Add
+`-Dpty4j.preferred.native.folder=C:/ccagent-pty` to the Minecraft launcher or
+server JVM arguments and restart it. Use the matching pty4j version when upgrading.
+Only full-screen agent terminal sessions on Windows need this step. Chat and MCP
+work independently. Supported Unix platforms keep their bundled terminal libraries.
+
+
 Besides the in-game chat, you can connect the Claude Code or Codex you run in a normal terminal to the game.
 Then you work from your desk and the agent works in the world. You do this once per PC: the address and
 token stay the same across worlds and restarts.
