@@ -24,14 +24,14 @@ def work(mod,title,slug,cat):
     dest=Path(tempfile.mkdtemp())
     repo='pirut/earth-platform' if earth else 'pirut/mc-mods'
     tag='combined-73' if earth else f'{mod}-v{version}'
-    subprocess.run(['gh','release','download',tag,'-R',repo,'-D',dest],check=True)
+    subprocess.run(['gh','release','download',tag,'-R',repo,'-D',dest,'-p','*.jar*','-p','SHA256SUMS.txt'],check=True)
     for sums in dest.glob('*.sha256' if earth else 'SHA256SUMS.txt'):
         subprocess.run(['sha256sum','-c',sums.name],cwd=dest,check=True)
     matches=[p for p in owned if p['slug']==slug or p['title']==title or p['source_url']==source]
     if len(matches)>1: raise ValueError('multiple matches')
     if matches: p=matches[0]
     else:
-        data=dict(title=title,slug=slug,description=props['mod_description'],body=(folder/'README.md').read_text().replace('](docs/',f'](https://github.com/pirut/mc-mods/blob/main/mods/{mod}/docs/'),categories=[cat],client_side='required',server_side='required',project_type='mod',license_id='LGPL-3.0-only',source_url=source,issues_url='https://github.com/pirut/mc-mods/issues',draft=True,initial_versions=[])
+        data=dict(title=title,slug=slug,description=props['mod_description'],body=(folder/'README.md').read_text().replace('](docs/',f'](https://github.com/pirut/mc-mods/blob/main/mods/{mod}/docs/'),categories=[cat],client_side='required',server_side='required',project_type='mod',license_id='LGPL-3.0-only',source_url=source,issues_url='https://github.com/pirut/mc-mods/issues',is_draft=True,initial_versions=[])
         files={'data':(None,json.dumps(data),'application/json')}
         icon=next(folder.glob('common/src/main/resources/assets/*/icon.png'),None)
         if icon: files['icon']=(icon.name,icon.read_bytes(),'image/png')
