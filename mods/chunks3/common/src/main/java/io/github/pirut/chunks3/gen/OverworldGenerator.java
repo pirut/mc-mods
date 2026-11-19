@@ -44,6 +44,7 @@ public final class OverworldGenerator extends SurfaceGenerator {
 
     /** Footprints this wide can contain distinct ridges or shores. */
     private static final int MULTISAMPLE_LEVEL = 5;
+    private static final int COVER_CELL = 128, SPECIES_CELL = 64;
 
     private final VanillaTerrain vanilla;
 
@@ -122,7 +123,7 @@ public final class OverworldGenerator extends SurfaceGenerator {
         return vanilla.biome(x, water == DRY ? Math.max(centre, SEA) : water, z);
     }
 
-    /** Biome and slope use unfiltered heights inside this voxel, before the silhouette's height adjustment. */
+    /** Biome and local slope use unfiltered heights. At coarse levels the neighbours also capture cross-slope. */
     @Override protected Surface farSurface(int level, int x, int z, int ground, int water, int slope) {
         if (level < 2) return surface(x, z, ground, water, slope);
         boolean smooth = level >= SMOOTH_LEVEL;
@@ -131,7 +132,8 @@ public final class OverworldGenerator extends SurfaceGenerator {
             int half = 1 << (level - 1), dz = diagonal(level, x, z, half);
             int a = vanilla.farHeight(x - half, z - dz, smooth);
             int b = vanilla.farHeight(x + half, z + dz, smooth);
-            slope = (Math.abs(a - centre) + Math.abs(b - centre)) / half;
+            int diagonalSlope = (Math.abs(a - centre) + Math.abs(b - centre)) / half;
+            slope = Math.max(slope, diagonalSlope);
         } else if (level >= 3 && slope >= 4) {
             // Check potential cliffs at vanilla cell spacing. Broad height changes can hide flat shelves.
             int d = VanillaTerrain.CELL_WIDTH;
@@ -145,21 +147,18 @@ public final class OverworldGenerator extends SurfaceGenerator {
     /** Interpolate tree cover in world space so whole stands and their clearings span several voxels. */
     @Override @Nullable protected BlockState canopy(Surface surface, int x, int z, int v) {
         if (!canopyGround(surface)) return null;
-        int size = 4 * v, cellX = Math.floorDiv(x, size), cellZ = Math.floorDiv(z, size);
-        // Keep the species map aligned when 8-block standing crowns become 16-block flat crowns.
-        int speciesSize = Math.max(64, size);
-        long roll = mix(Math.floorDiv(x, speciesSize), 0x53504543494553L, Math.floorDiv(z, speciesSize));
-        Tree kind = surface.tree(Math.floorMod(roll, 10));
-        double tx = smoothstep(Math.floorMod(x, size) / (double) size);
-        double tz = smoothstep(Math.floorMod(z, size) / (double) size);
+        int cellX = Math.floorDiv(x, COVER_CELL), cellZ = Math.floorDiv(z, COVER_CELL);
+        long species = mix(Math.floorDiv(x, SPECIES_CELL), 0x53504543494553L, Math.floorDiv(z, SPECIES_CELL));
+        Tree kind = surface.tree(Math.floorMod(species, 10));
+        double tx = smoothstep(Math.floorMod(x, COVER_CELL) / (double) COVER_CELL);
+        double tz = smoothstep(Math.floorMod(z, COVER_CELL) / (double) COVER_CELL);
         double cover = Mth.lerp2(tx, tz, stand(cellX, cellZ), stand(cellX + 1, cellZ),
                 stand(cellX, cellZ + 1), stand(cellX + 1, cellZ + 1));
         // Interpolation clusters values around the middle. Spread them back out for patchy sparse woods too.
         int attempts = surface.trees() * Trees.full(kind);
-        // Coarse flat crowns cover a little more ground to make up for the loss of their shaded sides.
-        int crownArea = v == 8 ? 28 : 40;
-        if (smoothstep(cover) * 1000 >= canopyCoverage(attempts, crownArea)) return null;
-        return Trees.snowy(surface) && Math.floorMod(roll >>> 40, 3) != 0 ? SNOW_BLOCK : Vegetation.leaves(kind);
+        // Use the same coverage threshold for standing and flat crowns.
+        if (smoothstep(cover) * 1000 >= canopyCoverage(attempts, 40)) return null;
+        return Trees.snowy(surface) && Math.floorMod(mix(x, v, z) >>> 40, 3) != 0 ? SNOW_BLOCK : Vegetation.leaves(kind);
     }
 
     private double stand(int x, int z) { return (mix(x, 0x43414E4F5059L, z) >>> 11) * 0x1.0p-53; }

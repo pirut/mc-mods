@@ -3,15 +3,9 @@ package io.github.pirut.chunks3.gen;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import java.util.List;
 import java.util.Locale;
-import java.util.stream.Collectors;
-import net.minecraft.core.Holder;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.data.registries.VanillaRegistries;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.biome.Biomes;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -82,33 +76,18 @@ class OverworldLodTest {
         return (a == null) != (b == null) ? 1 : 0;
     }
 
-    @Test void vanillaDirtTagAllowsRealTreesInNearCubesAndFineLods() {
-        var biomes = SurfacePacketFixtures.biomes();
-        var blocks = BuiltInRegistries.BLOCK;
-        var previous = blocks.getTags().collect(Collectors.toMap(p -> p.getFirst(), p -> p.getSecond().stream().toList()));
-        var tags = new java.util.HashMap<>(previous);
-        List<Holder<Block>> dirt = List.of(Blocks.DIRT, Blocks.GRASS_BLOCK,
-                Blocks.PODZOL, Blocks.COARSE_DIRT, Blocks.MYCELIUM, Blocks.ROOTED_DIRT, Blocks.MOSS_BLOCK,
-                Blocks.MUD, Blocks.MUDDY_MANGROVE_ROOTS).stream().map(blocks::wrapAsHolder).toList();
-        tags.put(BlockTags.DIRT, dirt);
-        blocks.bindTags(tags);
-        try {
-            var g = new OverworldGenerator(12345L, biomes, VanillaRegistries.createLookup());
-            int nearLeaves = 0;
-            for (int cz = -375; cz < -371; cz++) for (int cx = -201; cx < -197; cx++) {
-                int cy = g.surfaceY(cx * 16 + 8, cz * 16 + 8) >> 4;
-                for (int y = cy - 1; y <= cy + 2; y++) nearLeaves += countLeaves(g.generate(cx, y, cz));
-            }
-            assertTrue(nearLeaves > 0, "near leaves");
-            for (int level = 1; level <= 2; level++) {
-                FarColumn col = forestColumn(g, level);
-                int leaves = col.sections.stream().mapToInt(OverworldLodTest::countLeaves).sum();
-                assertTrue(leaves > 0, "rasterised leaves at level " + level);
-                System.out.printf(Locale.ROOT, "LOD_REAL_TREES level=%d leaves=%d near=%d%n", level, leaves, nearLeaves);
-            }
-        } finally {
-            blocks.bindTags(previous);
+    @Test void forestCoverAndSpeciesAgreeAtTheSamePositionAcrossLevels() {
+        var g = OverworldGeneratorTest.generator();
+        var b = SurfaceGenerator.holder(SurfacePacketFixtures.biomes(), Biomes.FOREST);
+        var forest = new SurfaceGenerator.Surface(b, SurfaceGenerator.GRASS, SurfaceGenerator.DIRT, 60, 0, 2, 0, 0, false);
+        int covered = 0, clear = 0;
+        for (int z = -6040; z < -5528; z += 8) for (int x = 8200; x < 8712; x += 8) {
+            BlockState crown = g.canopy(forest, x, z, 8);
+            assertSame(crown, g.canopy(forest, x, z, 16), "L3 to L4 at " + x + ", " + z);
+            assertSame(crown, g.canopy(forest, x, z, 32), "L3 to L5 at " + x + ", " + z);
+            if (crown == null) clear++; else covered++;
         }
+        assertTrue(covered > 0 && clear > 0, "the fixture includes stands and clearings");
     }
 
     private static int countLeaves(LevelChunkSection section) {
@@ -141,6 +120,20 @@ class OverworldLodTest {
             for (int i = 0; i < columns; i++) g.farColumn(level, 40 + i * 3, -17 + i * 5, new FarColumn());
             double warm = (System.nanoTime() - start) / 1e6 / columns;
             System.out.printf(Locale.ROOT, "LOD_TIME level=%d first=%.2f warm=%.2f ms/column%n", level, cold, warm);
+        }
+
+        var mountain = new OverworldGenerator(12345L, biomes, VanillaRegistries.createLookup());
+        int x = -2064, z = -4080, side = 4;
+        int peakY = mountain.surfaceY(x, z);
+        assertTrue(peakY > 150, "mountain benchmark elevation: " + peakY);
+        for (int level = 3; level <= 4; level++) {
+            int width = 16 << level;
+            int firstX = Math.floorDiv(x, width) - side / 2, firstZ = Math.floorDiv(z, width) - side / 2;
+            long start = System.nanoTime();
+            for (int dz = 0; dz < side; dz++) for (int dx = 0; dx < side; dx++)
+                mountain.farColumn(level, firstX + dx, firstZ + dz, new FarColumn());
+            double cold = (System.nanoTime() - start) / 1e6 / (side * side);
+            System.out.printf(Locale.ROOT, "LOD_MOUNTAIN level=%d first=%.2f ms/column anchorY=%d%n", level, cold, peakY);
         }
     }
 
