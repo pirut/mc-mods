@@ -8,6 +8,7 @@ import io.github.pirut.chunks3.fabric.axiom.AxiomCubes;
 import io.github.pirut.chunks3.net.CubePayloads;
 import io.github.pirut.chunks3.portal.CubicTravel;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -17,6 +18,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.SpawnPlacements;
@@ -24,7 +26,8 @@ import net.minecraft.world.entity.SpawnPlacements;
 /**
  * The Fabric entry point: Fabric API's events (and, where it has none, the mixins in
  * {@code io.github.pirut.chunks3.fabric.mixin}) handed to the same engine code NeoForge's events reach.
- * Chunks3 adds nothing to the game by itself: a mod makes its dimensions cubic with {@link Cubic#register}.
+ * A world made with the Cubic world type is cubic through its dimension type; other mods make their own
+ * dimensions cubic with {@link Cubic#register}.
  */
 public final class Chunks3Fabric implements ModInitializer {
     /** Extra spawn rules, OR'd with vanilla's in {@code SpawnPlacementsMixin}, as NeoForge's Operation.OR does. */
@@ -33,6 +36,7 @@ public final class Chunks3Fabric implements ModInitializer {
     @Override
     public void onInitialize() {
         CubePayloads.register(new FabricPayloads());
+        FabricVersionCheck.register();
 
         CubicSpawns.placements(new CubicSpawns.Rules() {
             @Override public <T extends Entity> void or(EntityType<T> type, SpawnPlacements.SpawnPredicate<T> rule) { SPAWN_RULES.put(type, rule); }
@@ -45,8 +49,14 @@ public final class Chunks3Fabric implements ModInitializer {
 
         CommandRegistrationCallback.EVENT.register((dispatcher, context, selection) -> CubicEvents.commands(dispatcher));
 
-        ServerLifecycleEvents.SERVER_STARTING.register(server -> FabricPlatform.server = server);
-        ServerLifecycleEvents.SERVER_STOPPED.register(server -> FabricPlatform.server = null);
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            FabricPlatform.server = server;
+            Cubic.adopt(server.registryAccess().registryOrThrow(Registries.LEVEL_STEM));
+        });
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            FabricPlatform.server = null;
+            Cubic.adopt(List.of());
+        });
         if (FabricLoader.getInstance().isModLoaded("axiom")) ServerTickEvents.END_SERVER_TICK.register(server -> AxiomCubes.flush(false));
 
         ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register((player, from, to) ->

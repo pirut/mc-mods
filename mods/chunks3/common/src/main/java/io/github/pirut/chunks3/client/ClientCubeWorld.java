@@ -42,9 +42,11 @@ public final class ClientCubeWorld extends CubeWorld {
     @Nullable public static ClientCubeWorld current() { return attach(Minecraft.getInstance().level); }
 
     @Nullable public static ClientCubeWorld attach(@Nullable ClientLevel level) {
-        if (level == null || !Cubic.isCubic(level.dimension())) return null;
-        CubeWorld existing = CubicLevel.of(level);
-        if (existing instanceof ClientCubeWorld world) return world;
+        if (level == null) return null;
+        if (CubicLevel.of(level) instanceof ClientCubeWorld world) return world;
+        // A dedicated server's adopted dimensions are known here only by their dimension type.
+        Cubic.adoptLevel(level.dimension(), level.dimensionTypeRegistration().is(Cubic.CUBIC_TYPE));
+        if (!Cubic.isCubic(level.dimension())) return null;
         ClientCubeWorld created = new ClientCubeWorld(level);
         ((CubicLevel) level).chunks3$setCubes(created);
         return created;

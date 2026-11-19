@@ -29,10 +29,13 @@ PATHS = [
     ('geography/src/main/java/io/earthplatform/geography/globe/NamedThreads.java', 'mods/chunks3/common/src/main/java/io/github/pirut/chunks3/util/NamedThreads.java'),
     ('geography/src/main/java/io/earthplatform/geography/globe/TickShare.java', 'mods/chunks3/common/src/main/java/io/github/pirut/chunks3/util/TickShare.java'),
     ('geography/src/main/java/io/earthplatform/geography/globe/DataWaits.java', 'mods/chunks3/common/src/main/java/io/github/pirut/chunks3/util/DataWaits.java'),
+    ('minecraft/src/main/resources/assets/earthplatform/shaders/core/earthplatform_water.', 'mods/chunks3/common/src/main/resources/assets/chunks3/shaders/core/chunks3_water.'),
+    ('geography/src/main/java/io/earthplatform/geography/globe/MemoryPressure.java', 'mods/chunks3/common/src/main/java/io/github/pirut/chunks3/util/MemoryPressure.java'),
+    ('minecraft/src/test/java/io/earthplatform/geography/globe/MemoryPressureTest.java', 'mods/chunks3/common/src/test/java/io/github/pirut/chunks3/util/MemoryPressureTest.java'),
 ]
 # Earth's own parts of the engine package, and loader glue that only wires Earth's features.
 EARTH_ONLY = re.compile(r'/cubic/(earth|play|jet)/|/mixin/(CubicJet\w*|Earth\w*|CubicBoat|CubicCurrentMove|GliderTurn|CubicWaterTint)Mixin\.java$'
-                        r'|/compat/SableWind\.java$|/cubic/CubicSettings\.java$|EarthPlatform(NeoForge|Fabric|FabricClient)\.java$'
+                        r'|/compat/(SableWind|CreateSkyCompat)\.java$|/mixin/compat/CreateSky\w*Mixin\.java$|/cubic/CubicSettings\.java$|EarthPlatform(NeoForge|Fabric|FabricClient)\.java$'
                         r'|NeoForgeBuildCheck\.java$|/neoforge/mixin/(ElytraFlight|GliderChunkLoad)Mixin\.java$'
                         r'|/fabric/mixin/(ElytraWear|PresetEditor)Mixin\.java$|(FirstVisit|Cubic)Bench\.java$')
 # Names saved in worlds and player data: kept as Earth Platform wrote them, so its worlds load unchanged.
@@ -53,10 +56,14 @@ def rename(text):
                      ('io.earthplatform.geography.globe.NamedThreads', 'io.github.pirut.chunks3.util.NamedThreads'),
                      ('io.earthplatform.geography.globe.TickShare', 'io.github.pirut.chunks3.util.TickShare'),
                      ('io.earthplatform.geography.globe.DataWaits', 'io.github.pirut.chunks3.util.DataWaits'),
-                     ('EarthPlatformMod.LOGGER', 'Cubic.LOGGER'), ('EarthPlatformMod.MOD_ID', 'Cubic.MOD_ID'),
+                     ('io.earthplatform.geography.globe.MemoryPressure', 'io.github.pirut.chunks3.util.MemoryPressure'),
+                     ('package io.earthplatform.geography.globe;', 'package io.github.pirut.chunks3.util;'),
+                     ('import io.earthplatform.minecraft.EarthPlatformMod;', 'import io.github.pirut.chunks3.Cubic;'), ('EarthPlatformMod.LOGGER', 'Cubic.LOGGER'), ('EarthPlatformMod.MOD_ID', 'Cubic.MOD_ID'),
                      ('earthplatform$', 'chunks3$'), ('earthplatform.cubic.mixins.json', 'chunks3.mixins.json'),
-                     ('"earthplatform.', '"chunks3.'), ('-Dearthplatform.', '-Dchunks3.')]:
+                     ('"earthplatform.', '"chunks3.'), ('earthplatform_water', 'chunks3_water'), ('assets/earthplatform/', 'assets/chunks3/'), ('-Dearthplatform.', '-Dchunks3.')]:
         text = text.replace(old, new)
+    # Earth's settings class: the engine's part of it is Chunks3's own config.
+    text = text.replace('io.github.pirut.chunks3.play.EarthConfig', 'io.github.pirut.chunks3.config.Chunks3Config').replace('EarthConfig', 'Chunks3Config')
     for token, name in kept.items():
         text = text.replace(token, name)
     return text

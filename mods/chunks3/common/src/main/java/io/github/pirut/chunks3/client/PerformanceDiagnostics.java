@@ -41,7 +41,7 @@ public final class PerformanceDiagnostics {
             record.addProperty("gpu_sample_every_frames",FarGpuTimers.sampleEvery());record.addProperty("frame_quantile_precision_ms",1);
             record.addProperty("frame_quantile_cap_ms",2000);record.addProperty("local_only",true);
             record.addProperty("log_max_files",3);record.addProperty("log_max_file_bytes",4<<20);
-            log=new LocalPerfLog(mc.gameDirectory.toPath().resolve(Cubic.MOD_ID).resolve("perf"),record.toString());
+            log=new LocalPerfLog(PerfExport.directory(mc.gameDirectory.toPath()),record.toString());
             Runtime.getRuntime().addShutdownHook(new Thread(log::close,"Performance log close"));
             Cubic.LOGGER.info("Local performance logs: {}/perf/latest.jsonl (local only)", Cubic.MOD_ID);
         }
@@ -59,12 +59,12 @@ public final class PerformanceDiagnostics {
             ClientCubeWorld world=ClientCubeWorld.current();record.addProperty("cubic_world_loaded",world!=null);
             if(world!=null) {
                 record.add("far",gson.toJsonTree(world.far().perfState()));
-                JsonObject cubes=new JsonObject();cubes.addProperty("loaded",world.loadedCubes());cubes.addProperty("meshes",world.renderer().meshCount());cubes.addProperty("pending_meshes",world.renderer().pendingCount());record.add("cubes",cubes);
+                JsonObject cubes=new JsonObject();cubes.addProperty("loaded",world.loadedCubes());cubes.addProperty("meshes",world.renderer().meshCount());cubes.addProperty("pending_meshes",world.renderer().pendingCount());cubes.addProperty("visible_meshes",world.renderer().visibleMeshCount());cubes.addProperty("cave_culled_meshes",world.renderer().caveCulledCount());cubes.addProperty("occlusion_tested_meshes",world.renderer().occlusionTestedCount());cubes.addProperty("draw_calls",world.renderer().drawCallCount());cubes.addProperty("region_buffers",world.renderer().regionBufferCount());cubes.addProperty("far_two_phase_frames",world.far().twoPhaseFrames());cubes.add("snapshot_cache",gson.toJsonTree(world.renderer().snapshotStats()));cubes.addProperty("interior_meshes_skipped",CubeMesher.interiorSkipped());record.add("cubes",cubes);
             }
             record.add("run_mesher",gson.toJsonTree(FarMesher.runStats()));
             JsonObject stages=new JsonObject();
-            Timings[] timers={Timings.FRAME,Timings.FAR_MAKE,Timings.FAR_MESH,Timings.FAR_UPLOAD,Timings.FAR_DRAW,Timings.FAR_WATER,Timings.CUBE_MESH,Timings.CUBE_UPLOAD,Timings.CUBE_DRAW,Timings.SERVER_TICK,Timings.CUBE_UNLOAD,Timings.CUBE_FLUSH};
-            String[] names={"frame","far_generation","far_mesh","far_upload","far_draw","far_water","cube_mesh","cube_upload","cube_draw","server_cubes","cube_unload","cube_flush"};
+            Timings[] timers={Timings.FRAME,Timings.FAR_MAKE,Timings.FAR_MESH,Timings.FAR_UPLOAD,Timings.FAR_DRAW,Timings.FAR_WATER,Timings.CUBE_MESH,Timings.CUBE_UPLOAD,Timings.CUBE_DRAW,Timings.CUBE_CAVES,Timings.CUBE_SNAPSHOT,Timings.CUBE_LIGHT,Timings.SERVER_TICK,Timings.CUBE_UNLOAD,Timings.CUBE_FLUSH};
+            String[] names={"frame","far_generation","far_mesh","far_upload","far_draw","far_water","cube_mesh","cube_upload","cube_draw","cube_caves","cube_snapshot","cube_light","server_cubes","cube_unload","cube_flush"};
             for(int i=0;i<timers.length;i++) {
                 var total=timers[i].total();var before=previous.put(timers[i],total);
                 long count=before==null?total.calls():Math.max(0,total.calls()-before.calls());

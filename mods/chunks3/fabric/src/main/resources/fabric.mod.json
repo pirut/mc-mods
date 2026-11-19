@@ -3,7 +3,7 @@
   "id": "${mod_id}",
   "version": "${mod_version}",
   "name": "${mod_name}",
-  "description": "Cubic chunks for other mods to build on. A mod registers a dimension with Chunks3 and its blocks then live in 16-block cubes from Y -16,384 to 16,383, with vanilla mining, building, light, mobs and redstone working on top and a distant terrain renderer that works with Sodium and Iris shader packs. Adds nothing to the game by itself.",
+  "description": "Cubic chunks for Minecraft. Pick the \"Cubic\" world type when making a world: a vanilla-looking overworld whose ground goes on down for thousands of blocks to bedrock at Y -4,096, with a distant terrain renderer that draws to the horizon and works with Sodium and Iris shader packs. Other mods can register their own dimensions, whose blocks then live in 16-block cubes from Y -16,384 to 16,383, with vanilla mining, building, light, mobs and redstone on top.",
   "authors": ["JR Bussard"],
   "contact": {
     "homepage": "https://github.com/pirut/mc-mods/tree/main/mods/chunks3",
@@ -14,7 +14,9 @@
   "environment": "*",
   "entrypoints": {
     "main": ["io.github.pirut.chunks3.fabric.Chunks3Fabric"],
-    "client": ["io.github.pirut.chunks3.fabric.Chunks3FabricClient"]
+    "client": ["io.github.pirut.chunks3.fabric.Chunks3FabricClient"],
+    "modmenu": ["io.github.pirut.chunks3.fabric.Chunks3ModMenu"],
+    "sodium:config_api_user": ["io.github.pirut.chunks3.config.SodiumOptions"]
   },
   "mixins": [
     "${mod_id}.mixins.json",
@@ -29,7 +31,8 @@
   },
   "suggests": {
     "sodium": "*",
-    "iris": "*"
+    "iris": "*",
+    "modmenu": "*"
   },
   "breaks": {
     "sodium": "<0.8.12-beta.1",
