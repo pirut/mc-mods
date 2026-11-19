@@ -106,22 +106,29 @@ final class VanillaTerrain {
     }
 
     /**
-     * A function of X and Z only, remembered per thread for the last column asked: a column's densities
-     * are read top down, so its continents, erosion and splines are worked out once. Like vanilla's flat
-     * cache it reads its input at Y 0.
+     * A function of X and Z only. Keep one value for each parity of the noise-cell grid, so the four
+     * corner columns interleaved by the exact height search can stay hot together. As with vanilla's
+     * flat cache, the function reads its input at Y 0.
      */
     private static final class Flat implements DensityFunction.SimpleFunction {
         private final DensityFunction wrapped;
-        private final ThreadLocal<double[]> last = ThreadLocal.withInitial(() -> new double[]{Double.NaN, Double.NaN, 0});
+        private final ThreadLocal<double[]> last = ThreadLocal.withInitial(() -> {
+            double[] memo = new double[12];
+            java.util.Arrays.fill(memo, Double.NaN);
+            return memo;
+        });
 
         Flat(DensityFunction wrapped) { this.wrapped = wrapped; }
 
         @Override public double compute(DensityFunction.FunctionContext context) {
             double[] memo = last.get();
             int x = context.blockX(), z = context.blockZ();
-            if (memo[0] == x && memo[1] == z) return memo[2];
+            int slot = 3 * (((x & CELL_WIDTH) + 2 * (z & CELL_WIDTH)) / CELL_WIDTH);
+            if (memo[slot] == x && memo[slot + 1] == z) return memo[slot + 2];
             double value = wrapped.compute(new DensityFunction.SinglePointContext(x, 0, z));
-            memo[0] = x; memo[1] = z; memo[2] = value;
+            memo[slot] = x;
+            memo[slot + 1] = z;
+            memo[slot + 2] = value;
             return value;
         }
         @Override public double minValue() { return wrapped.minValue(); }
@@ -172,6 +179,8 @@ final class VanillaTerrain {
                 air = Math.min(CELLS, air + STRIDE);
             }
         } else {
+            // Start with the nearest cell: for ordinary slopes the depth estimate is within one cell.
+            if (guess > 0 && column.at(guess - 1) > 0) return guess - 1;
             air = guess;
             solid = guess - STRIDE;
             while (true) {
