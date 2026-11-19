@@ -84,6 +84,15 @@ final class FarGpu {
     /** The same three, drawing only where the game drew none of its blocks (see {@link FarShaders#GROUND}). */
     private final Program[] vanillaGround = new Program[3], packGround = new Program[3], packNearGround = new Program[3];
     private final boolean[] vanillaGroundFailed = new boolean[3], packGroundFailed = new boolean[3], packNearGroundFailed = new boolean[3];
+    /** The vanilla three in far terrain's own finer depth, testing the game's blocks by hand (see {@link FarShaders#PRECISE_DEPTH}). */
+    @Nullable private Program[] precise;
+    @Nullable private boolean[] preciseFailed;
+    /** The game's projection while far terrain draws in its own finer depth (see {@link FarPlainDepth}); null otherwise. */
+    @Nullable private Matrix4f gameProjection;
+    /** Whether this draw bound the copy of the game's depth, to put back at its end. */
+    private boolean blocksBound;
+    /** The Earth's curve and the high-altitude haze for this frame (see {@link EarthView}, {@link FarAtmosphere}). */
+    private float curvature, atmosphere;
     @Nullable private FarShaders.PackPatch packSource;
     @Nullable private Object packPipeline;
     private boolean packOwnDepth, packJittered;
@@ -108,6 +117,8 @@ final class FarGpu {
     private final boolean[] phasedFailed = new boolean[3];
     /** The fade clock both passes of a pre-passed draw read, so a fade's dither drops the same fragments in both; 0 when not. */
     private int frozenNow;
+    /** The next {@link #begin} is a two-phase pre-pass's second pass (see {@link #restAfterFirst}). */
+    private boolean secondPass;
     private int shadeDepthFunc;
 
     /** Faces drawn whole; faces fading out over the outer ring of their level; faces of the coarser level fading in there. */
@@ -305,7 +316,8 @@ final class FarGpu {
         previousActive = GlStateManager._getActiveTexture();
         bind2d(ATLAS_UNIT, atlas, packMode);
         bind2d(LIGHT_UNIT, lightmap, packMode);
-        if (this.ground) bind2d(BLOCKS_UNIT, FarBlockDepth.texture(), packMode);
+        blocksBound = this.ground || precise();
+        if (blocksBound) bind2d(BLOCKS_UNIT, FarBlockDepth.texture(), packMode);
         bindBuffer(LOOK_UNIT, looks.texture);
         bindBuffer(COLUMN_UNIT, columns.texture);
         GlStateManager._activeTexture(previousActive);
@@ -316,7 +328,10 @@ final class FarGpu {
         RenderSystem.enableDepthTest();
         RenderSystem.depthMask(true);
         RenderSystem.enableCull();
-        if (phase == PREPASS) frozenNow = now();
+        // A two-phase pre-pass's second pass keeps the first's clock: fades dither by it, and the shading pass must
+        // meet every face at the depth the pre-pass left.
+        if (phase == PREPASS && !secondPass) frozenNow = now();
+        secondPass = false;
         if (phase == SHADE) {
             shadeDepthFunc = GL11C.glGetInteger(GL11C.GL_DEPTH_FUNC);
             RenderSystem.depthMask(false);
@@ -384,12 +399,27 @@ final class FarGpu {
             FloatBuffer matrix = stack.mallocFloat(16);
             GL20C.glUniformMatrix4fv(program.location("earth_ModelView"), false, modelView.get(matrix));
             GL20C.glUniformMatrix4fv(program.location("earth_Projection"), false, projection.get(matrix));
+            if (precise()) GL20C.glUniformMatrix4fv(program.location("earth_GameProjection"), false, gameProjection.get(matrix));
             GL20C.glUniform1fv(program.location("earth_Shade"), shade);
+            if (program.dh) {
+                // What Iris sets on a pack's Distant Horizons program in place of the old built-in matrices.
+                Matrix4f inverse = new Matrix4f();
+                GL20C.glUniformMatrix4fv(program.location("iris_ModelViewMatrix"), false, modelView.get(matrix));
+                GL20C.glUniformMatrix4fv(program.location("iris_ModelViewMatrixInverse"), false, modelView.invert(inverse).get(matrix));
+                GL20C.glUniformMatrix4fv(program.location("iris_ProjectionMatrix"), false, projection.get(matrix));
+                GL20C.glUniformMatrix4fv(program.location("iris_ProjectionMatrixInverse"), false, projection.invert(inverse).get(matrix));
+                GL20C.glUniformMatrix3fv(program.location("iris_NormalMatrix"), false,
+                        modelView.invert(inverse).transpose3x3(new org.joml.Matrix3f()).get(stack.mallocFloat(9)));
+                GL20C.glUniform1f(program.location("mircoOffset"), 0.01F);
+                GL20C.glUniform1f(program.location("clipDistance"), FarLod.nearReach());
+            }
         }
         int bx = (int) Math.floor(camera.x), by = (int) Math.floor(camera.y), bz = (int) Math.floor(camera.z);
         GL20C.glUniform3i(program.location("earth_CameraBlock"), bx, by, bz);
         GL20C.glUniform3f(program.location("earth_CameraFraction"), (float) (camera.x - bx), (float) (camera.y - by), (float) (camera.z - bz));
         GL20C.glUniform1f(program.location("earth_Grow"), grow(projection));
+        if (EarthView.ENABLED) GL20C.glUniform1f(program.location("earth_Curvature"), curvature);
+        if (FarAtmosphere.ENABLED) GL20C.glUniform1f(program.location("earth_Atmosphere"), atmosphere);
         GL20C.glUniform1i(program.location("earth_FogShape"), RenderSystem.getShaderFogShape().getIndex());
         GL20C.glUniform1f(program.location("earth_FogStart"), RenderSystem.getShaderFogStart());
         GL20C.glUniform1f(program.location("earth_FogEnd"), RenderSystem.getShaderFogEnd());
@@ -405,6 +435,7 @@ final class FarGpu {
         GL20C.glUniform1i(program.location("earth_Blocks"), BLOCKS_UNIT);
         if (packMode && packOwnDepth && !near) FarLod.shadowUniforms(program::location);
         GL20C.glUniform1f(program.location("earth_FadeHole"), Far.hole());
+        GL20C.glUniform1f(program.location("earth_Edge"), FarRenderer.edge());
         GL20C.glUniform1f(program.location("earth_NearReach"), FarLod.nearReach());
         GL30C.glUniform1ui(program.location("earth_Now"), frozenNow != 0 ? frozenNow : now());
         GL20C.glUniform1fv(program.location("earth_FadeTicks"), fadeTicks);
@@ -501,7 +532,7 @@ final class FarGpu {
         for (int unit : new int[] {QUAD_UNIT, LOOK_UNIT, COLUMN_UNIT}) bindBuffer(unit, 0);
         restore2d(ATLAS_UNIT);
         restore2d(LIGHT_UNIT);
-        if (ground) restore2d(BLOCKS_UNIT);
+        if (blocksBound) restore2d(BLOCKS_UNIT);
         GlStateManager._activeTexture(previousActive);
         GL30C.glBindVertexArray(previousVao);
         BufferUploader.invalidate();
@@ -532,7 +563,8 @@ final class FarGpu {
      * has a program for has both passes' programs too, and nothing blends.
      */
     boolean prepassReady(@Nullable FarShaders.PackPatch patch) {
-        if (!depthPrepass || patch == null || !prepassSafe(patch) || GL11C.glIsEnabled(GL11C.GL_BLEND)) return false;
+        // A pack's Distant Horizons program is its own vertex shader too, which the pre-pass can't match corner for corner.
+        if (!depthPrepass || patch == null || patch.dh() || !prepassSafe(patch) || GL11C.glIsEnabled(GL11C.GL_BLEND)) return false;
         boolean wasNear = near, wasGround = ground;
         int was = phase;
         near = ground = false;
@@ -626,7 +658,30 @@ final class FarGpu {
      * What a pass drew, multi-draw by multi-draw, with the fade each was drawn with, for drawing it
      * again (see {@link #play}), and what the caller drew it for (see {@link #drew}).
      */
-    static final class Recording {
+    /** A recording's ranges as {@link FarQueryCull} reads them: by multi-draw, then by range in it. */
+    interface RangeSource {
+        int draws();
+        int ranges(int draw);
+        /** Faces in the range, and its first face. */
+        int count(int draw, int range);
+        int first(int draw, int range);
+        /** Writes the range's box at {@code at}: its low corner, the widest column in it, its high corner, 0. */
+        void box(int draw, int range, FloatBuffer into, int at);
+    }
+
+    static final class Recording implements RangeSource {
+        @Override public int draws() { return count; }
+        @Override public int ranges(int draw) { return draws.get(draw).draws; }
+        @Override public int count(int draw, int range) { return draws.get(draw).counts[range]; }
+        @Override public int first(int draw, int range) { return draws.get(draw).firsts[range]; }
+        @Override public void box(int draw, int range, FloatBuffer into, int at) {
+            Kept kept = draws.get(draw);
+            float[] boxes = kept.boxes;
+            int from = range * 6;
+            into.put(at, boxes[from]).put(at + 1, boxes[from + 1]).put(at + 2, boxes[from + 2]).put(at + 3, kept.reaches[range]);
+            into.put(at + 4, boxes[from + 3]).put(at + 5, boxes[from + 4]).put(at + 6, boxes[from + 5]).put(at + 7, 0.0F);
+        }
+
         private final List<Kept> draws = new ArrayList<>();
         private int count;
         private int pick = -1;
@@ -681,6 +736,7 @@ final class FarGpu {
         int fade, draws;
         int[] firsts = new int[256], counts = new int[256];
         float[] boxes = new float[256 * 6];
+        float[] reaches = new float[256];
     }
 
     /** Records what is drawn from now until {@link #end}, in place of what the recording held. */
@@ -698,7 +754,9 @@ final class FarGpu {
             draw.firsts = new int[arena.draws];
             draw.counts = new int[arena.draws];
             draw.boxes = new float[arena.draws * 6];
+            draw.reaches = new float[arena.draws];
         }
+        System.arraycopy(arena.reaches, 0, draw.reaches, 0, arena.draws);
         System.arraycopy(arena.firsts, 0, draw.firsts, 0, arena.draws);
         System.arraycopy(arena.counts, 0, draw.counts, 0, arena.draws);
         System.arraycopy(arena.boxes, 0, draw.boxes, 0, arena.draws * 6);
@@ -728,6 +786,7 @@ final class FarGpu {
                 arena.firsts = new int[draw.draws];
                 arena.counts = new int[draw.draws];
                 arena.boxes = new float[draw.draws * 6];
+                arena.reaches = new float[draw.draws];
             }
             System.arraycopy(draw.firsts, 0, arena.firsts, 0, draw.draws);
             System.arraycopy(draw.counts, 0, arena.counts, 0, draw.draws);
@@ -737,6 +796,85 @@ final class FarGpu {
         end();
         return true;
     }
+
+    /** Where {@link FarQueryCull} binds its boxes while it tests: the faces' unit, bound again before every draw. */
+    static final int QUERY_BOX_UNIT = QUAD_UNIT;
+    @Nullable private FarQueryCull queryCull;
+    private boolean queryCullChecked;
+
+    /** Ranges the last one-pass draw left out or drew only on condition (see {@link FarQueryCull}). */
+    int queryHidden() { return queryCull == null ? 0 : queryCull.hiddenCount(); }
+
+    /**
+     * After {@link #begin} for a one-pass draw: draws what a recording holds with the ranges hidden behind others left
+     * out by occlusion queries (see {@link FarQueryCull}), then ends as {@link #end} does. The recording's boxes are
+     * measured from a point (shiftX, shiftY, shiftZ) away from the camera. False, drawing nothing, when it can't.
+     */
+    boolean playQueried(Recording recording, float shiftX, float shiftY, float shiftZ) {
+        if (phase != ONE_PASS || !INDEXED || recording.count == 0) return false;
+        if (!queryCullChecked) {
+            queryCullChecked = true;
+            if (FarQueryCull.ENABLED && FarQueryCull.supported()) queryCull = new FarQueryCull();
+        }
+        FarQueryCull cull = queryCull;
+        if (cull == null || !cull.prepare(recording, recording)) return false;
+        for (int i = 0; i < recording.count; i++) {
+            if (cull.seenRanges(i) == 0) continue;
+            Kept draw = recording.draws.get(i);
+            if (draw.fade != drawingFade) fade(draw.fade);
+            faces(draw.arena);
+            cull.drawSeen(i);
+            ranges += cull.seenRanges(i);
+        }
+        // Two pixels' worth of distance for the pack's jitter, with the faces' own reach past their columns.
+        int height = Math.max(1, Minecraft.getInstance().getMainRenderTarget().height);
+        double focal = Math.abs(projection.m11());
+        float share = grow(projection) * 1.5F + (focal > 0.0 ? (float) (4.0 / (focal * height)) : 0.0F);
+        cull.test(new Matrix4f(projection).mul(modelView).translate(shiftX, shiftY, shiftZ), share,
+                (float) Math.sqrt(shiftX * shiftX + shiftY * shiftY + shiftZ * shiftZ), dropsNearReach());
+        for (int i = 0; i < recording.count; i++) {
+            int groups = cull.groups(i);
+            if (groups == 0) continue;
+            Kept draw = recording.draws.get(i);
+            if (draw.fade != drawingFade) fade(draw.fade);
+            faces(draw.arena);
+            for (int group = 0; group < groups; group++) ranges += cull.drawGroup(i, group);
+        }
+        end();
+        return true;
+    }
+
+    private void faces(Arena arena) {
+        GlStateManager._activeTexture(GL13C.GL_TEXTURE0 + QUAD_UNIT);
+        GL11C.glBindTexture(GL31C.GL_TEXTURE_BUFFER, arena.buffer.texture);
+        GlStateManager._activeTexture(previousActive);
+    }
+
+    /**
+     * The first pass of a two-phase depth pre-pass (see {@link FarHiddenCull#TWO_PHASE}), after {@link #begin}: draws
+     * the ranges of the recording the last frame's test showed, then ends as {@link #end} does. False, drawing nothing,
+     * when there is no such test of this recording; the caller then draws the pre-pass whole.
+     */
+    boolean playLastShown(Recording recording) {
+        int commands = phase == PREPASS && hiddenCull != null && recording.count != 0 ? hiddenCull.lastShown(recording) : 0;
+        if (commands == 0) return false;
+        playCulled(recording, commands);
+        return true;
+    }
+
+    /**
+     * Between a two-phase pre-pass's passes: the commands of the ranges the first pass left out that the faces it drew
+     * don't hide, or 0 when they can't be worked out (the caller then draws every range again: the same depth).
+     */
+    int restAfterFirst(Recording recording, int faces, int width, int height, Matrix4f modelView, Matrix4f projection,
+            float shiftX, float shiftY, float shiftZ) {
+        if (hiddenCull == null) return 0;
+        secondPass = true;
+        return hiddenCull.rest(recording, faces, width, height, new Matrix4f(projection).mul(modelView).translate(shiftX, shiftY, shiftZ), grow(projection));
+    }
+
+    /** After {@link #begin}: draws a recording through the indirect commands in {@code commands}, then ends as {@link #end} does. */
+    void playCommands(Recording recording, int commands) { playCulled(recording, commands); }
 
     /** Draws a recording through the indirect commands {@link FarHiddenCull} has culled, then ends as {@link #end} does. */
     private void playCulled(Recording recording, int commands) {
@@ -769,12 +907,21 @@ final class FarGpu {
      * the pre-pass's recording that lie wholly behind the faces it kept. False when it can't.
      */
     boolean cullHidden(Recording recording, int faces, int width, int height, Matrix4f modelView, Matrix4f projection) {
+        return cullHidden(recording, faces, width, height, modelView, projection, 0, 0, 0);
+    }
+
+    /**
+     * The same, for a recording whose boxes are relative to a point (shiftX, shiftY, shiftZ) away
+     * from the camera: where the view was last worked out, when it still holds (see FarRenderer).
+     */
+    boolean cullHidden(Recording recording, int faces, int width, int height, Matrix4f modelView, Matrix4f projection,
+            float shiftX, float shiftY, float shiftZ) {
         if (!hiddenCullChecked) {
             hiddenCullChecked = true;
             if (FarHiddenCull.ENABLED && INDEXED && FarHiddenCull.supported()) hiddenCull = new FarHiddenCull();
         }
         if (hiddenCull == null || recording.count == 0) return false;
-        return hiddenCull.cull(recording, faces, width, height, new Matrix4f(projection).mul(modelView), grow(projection));
+        return hiddenCull.cull(recording, faces, width, height, new Matrix4f(projection).mul(modelView).translate(shiftX, shiftY, shiftZ), grow(projection));
     }
 
     /** After the shading pass: its culling was for that pass alone. */
@@ -820,6 +967,7 @@ final class FarGpu {
 
     @Nullable private Program vanillaProgram(int fade) {
         if (ground) return vanillaGroundProgram(fade);
+        if (gameProjection != null) return preciseProgram(fade);
         if (vanilla[fade] == null && !vanillaFailed[fade]) {
             String header = version + FarShaders.fade(fade);
             try { vanilla[fade] = Program.link(header + FarShaders.VERTEX, header + FarShaders.FRAGMENT, "far terrain"); }
@@ -831,6 +979,35 @@ final class FarGpu {
         }
         return vanilla[fade];
     }
+
+    /** The vanilla program in far terrain's own finer depth (see {@link FarShaders#PRECISE_DEPTH}). */
+    @Nullable private Program preciseProgram(int fade) {
+        if (precise == null) {
+            precise = new Program[3];
+            preciseFailed = new boolean[3];
+        }
+        if (precise[fade] == null && !preciseFailed[fade]) {
+            String header = version + FarShaders.PRECISE_DEPTH + FarShaders.fade(fade);
+            try { precise[fade] = Program.link(header + FarShaders.VERTEX, header + FarShaders.FRAGMENT, "far terrain in its own depth"); }
+            catch (IllegalStateException failure) {
+                preciseFailed[fade] = true;
+                if (fade == NO_FADE) Cubic.LOGGER.warn("Far terrain in its own depth failed to build; it stays in the game's", failure);
+            }
+        }
+        return precise[fade];
+    }
+
+    /** Whether the precise program builds, which far terrain needs before it draws in its own depth. */
+    boolean preciseReady() { return preciseProgram(NO_FADE) != null; }
+
+    /** Has the draws that follow use far terrain's own finer depth, against this game projection; null puts them back in the game's. */
+    void plainDepth(@Nullable Matrix4f game) { gameProjection = game; }
+
+    private boolean precise() { return gameProjection != null && !packMode; }
+
+    void curvature(float value) { curvature = value; }
+
+    void atmosphere(float value) { atmosphere = value; }
 
     /** The vanilla program drawing only where the game drew none of its blocks (see {@link FarShaders#GROUND}). */
     @Nullable private Program vanillaGroundProgram(int fade) {
@@ -879,7 +1056,28 @@ final class FarGpu {
         // Every fade builds as the plain program did: the same patch, jittered or not.
         String jitter = packJittered && patch != null && ShaderBlocks.IRIS ? FarIrisUniforms.jitter(patch.taaOffset()) : null;
         String header = version + FarShaders.fade(fade);
-        if (packPatched) {
+        if (packPatched && patch.dh()) {
+            // The pack's own vertex shader places far terrain, with whatever jitter the pack gives its terrain.
+            pack[fade] = ownDepth && FarLod.dhFits(patch.outputs())
+                    ? linkPack(null, FarShaders.dhFragment(version, patch, true, fade, false), "far terrain (shader pack's Distant Horizons program)", header, true, patch)
+                    : null;
+            if (pack[fade] != null) {
+                if (fade == NO_FADE) {
+                    packJittered = false;
+                    Cubic.LOGGER.info("Far terrain uses the shader pack's Distant Horizons terrain program ({} targets)", patch.outputs());
+                }
+                return pack[fade];
+            }
+            if (fade != NO_FADE) {
+                packFailed[fade] = true;
+                Cubic.LOGGER.warn("Far terrain's fade between levels does not build with the shader pack; levels meet without it");
+                return null;
+            }
+            packPatched = false;
+            Cubic.LOGGER.warn("The shader pack's Distant Horizons terrain program does not build for far terrain; using plain colors");
+            // From the next frame far terrain draws as under a pack with no support for it, in the game's own depth.
+            if (ShaderBlocks.IRIS) FarDhPack.failed(patch);
+        } else if (packPatched) {
             pack[fade] = linkPack(jitter, FarShaders.packFragment(version, packCode(patch), ownDepth, fade), "far terrain (shader pack)", header, packSamplers);
             if (pack[fade] != null) {
                 if (fade == NO_FADE) {
@@ -921,7 +1119,11 @@ final class FarGpu {
         ground = keep;
         if (main == null || patch == null || !packPatched || !packOwnDepth) { failed[fade] = true; return null; }
         String jitter = main.jittered && ShaderBlocks.IRIS ? FarIrisUniforms.jitter(patch.taaOffset()) : null;
-        programs[fade] = linkPack(jitter, FarShaders.packNearFragment(version, packCode(patch), fade, ground),
+        programs[fade] = patch.dh()
+                // In the game's own depth a Distant Horizons program has no place; plain colours, as under a pack with no far terrain support.
+                ? linkPack(null, FarShaders.dhNearFragment(version + (ground ? FarShaders.GROUND : "") + FarShaders.fade(fade)),
+                        "far terrain near by (plain, shader pack)", version + FarShaders.fade(fade), false)
+                : linkPack(jitter, FarShaders.packNearFragment(version, packCode(patch), fade, ground),
                 ground ? "far terrain near by, under the game's blocks (shader pack)" : "far terrain near by (shader pack)", version + FarShaders.fade(fade), packSamplers);
         if (programs[fade] == null) {
             failed[fade] = true;
@@ -944,7 +1146,10 @@ final class FarGpu {
         if (main == null) { packGroundFailed[fade] = true; return null; }
         String jitter = main.jittered && patch != null && ShaderBlocks.IRIS ? FarIrisUniforms.jitter(patch.taaOffset()) : null;
         String header = version + FarShaders.GROUND + FarShaders.fade(fade);
-        packGround[fade] = packPatched && patch != null
+        packGround[fade] = packPatched && patch != null && patch.dh()
+                ? linkPack(null, FarShaders.dhFragment(version, patch, packOwnDepth, fade, true), "far terrain under the game's blocks (shader pack's Distant Horizons program)",
+                        header, true, patch)
+                : packPatched && patch != null
                 ? linkPack(jitter, FarShaders.packFragment(version, packCode(patch), packOwnDepth, fade, true), "far terrain under the game's blocks (shader pack)",
                         header, packSamplers)
                 : linkPack(jitter, header + FarShaders.PACK_FALLBACK, "far terrain under the game's blocks (plain, shader pack)", header, false);
@@ -960,8 +1165,21 @@ final class FarGpu {
 
     /** Links a pack program, jittered when {@code jitter} builds, and finds the pack's uniforms in it. */
     @Nullable private Program linkPack(@Nullable String jitter, String fragment, String name, String header, boolean samplers) {
+        return linkPack(jitter, fragment, name, header, samplers, null);
+    }
+
+    /** The same; with {@code dh}, the vertex shader is the pack's Distant Horizons one after far terrain's own (see {@link FarShaders#dhVertex}). */
+    @Nullable private Program linkPack(@Nullable String jitter, String fragment, String name, String header, boolean samplers,
+            @Nullable FarShaders.PackPatch dh) {
         Program program = null;
-        if (jitter != null) {
+        if (dh != null) {
+            try { program = Program.link(FarShaders.dhVertex(header, dh), fragment, name); program.dh = true; }
+            catch (IllegalStateException failure) {
+                Cubic.LOGGER.warn("Could not build {}", name, failure);
+                return null;
+            }
+        }
+        if (program == null && jitter != null) {
             try { program = Program.link(FarShaders.packVertex(header, jitter), fragment, name); program.jittered = true; }
             catch (IllegalStateException failure) {
                 Cubic.LOGGER.warn("The shader pack's TAA jitter does not build for far terrain; far terrain goes without it", failure);
@@ -977,7 +1195,7 @@ final class FarGpu {
         if (ShaderBlocks.IRIS) {
             try { program.irisUniforms = FarIrisUniforms.create(program.id, name, samplers); }
             catch (FarIrisUniforms.TooManySamplers full) {
-                Cubic.LOGGER.warn("Shader pack {}: its Voxy code reads more textures than are left for far terrain ({}); far terrain uses plain colours",
+                Cubic.LOGGER.warn("Shader pack {}: its code for far terrain reads more textures than are left for far terrain ({}); far terrain uses plain colours",
                         net.irisshaders.iris.Iris.getCurrentPackName(), full.getMessage());
                 program.close();
                 return null;
@@ -1014,11 +1232,12 @@ final class FarGpu {
         arenas.clear();
         columns.close();
         looks.close();
-        for (Program[] programs : new Program[][] {vanilla, pack, packNear, vanillaGround, packGround, packNearGround})
-            for (Program program : programs) if (program != null) program.close();
+        for (Program[] programs : new Program[][] {vanilla, precise, pack, packNear, vanillaGround, packGround, packNearGround})
+            if (programs != null) for (Program program : programs) if (program != null) program.close();
         for (Program program : prepass) if (program != null) program.close();
         for (Program program : shading) if (program != null) program.close();
         if (hiddenCull != null) { hiddenCull.close(); hiddenCull = null; }
+        if (queryCull != null) { queryCull.close(); queryCull = null; }
         GL30C.glDeleteVertexArrays(vao);
         if (indices != 0) GL15C.glDeleteBuffers(indices);
     }
@@ -1030,6 +1249,8 @@ final class FarGpu {
         /** The shader pack's uniforms; only ever set with Iris, so FarIrisUniforms never loads without it. */
         @Nullable FarIrisUniforms irisUniforms;
         boolean jittered;
+        /** Whether this is a pack's Distant Horizons program, which takes its matrices under Iris's names. */
+        boolean dh;
 
         private Program(int id) { this.id = id; }
 
@@ -1146,8 +1367,10 @@ final class FarGpu {
          */
         int[] firsts = new int[1024], counts = new int[1024];
         float[] boxes = new float[1024 * 6];
+        /** The widest column in each queued range, in blocks, which {@link FarQueryCull} grows its box by. */
+        float[] reaches = new float[1024];
         /** The box of the column whose ranges are queued next (see {@link FarGpu#add}). */
-        private float boxMinX, boxMinY, boxMinZ, boxMaxX, boxMaxY, boxMaxZ;
+        private float boxMinX, boxMinY, boxMinZ, boxMaxX, boxMaxY, boxMaxZ, boxReach;
         /** The same ranges as the multi-draw takes them: corner counts, and where each range starts. */
         private IntBuffer drawCounts = MemoryUtil.memAllocInt(1024), drawStarts = MemoryUtil.memAllocInt(1024);
         private PointerBuffer offsets = MemoryUtil.memAllocPointer(1024);
@@ -1167,6 +1390,7 @@ final class FarGpu {
         void box(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
             boxMinX = minX; boxMinY = minY; boxMinZ = minZ;
             boxMaxX = maxX; boxMaxY = maxY; boxMaxZ = maxZ;
+            boxReach = Math.max(maxX - minX, maxZ - minZ);
         }
 
         /** Queues a range of faces. */
@@ -1183,6 +1407,7 @@ final class FarGpu {
                 box[at + 3] = Math.max(box[at + 3], boxMaxX);
                 box[at + 4] = Math.max(box[at + 4], boxMaxY);
                 box[at + 5] = Math.max(box[at + 5], boxMaxZ);
+                reaches[draws - 1] = Math.max(reaches[draws - 1], boxReach);
                 return;
             }
             // An indexed range reaches only as far as the quad indices do.
@@ -1195,6 +1420,7 @@ final class FarGpu {
                 firsts = java.util.Arrays.copyOf(firsts, draws * 2);
                 counts = java.util.Arrays.copyOf(counts, draws * 2);
                 boxes = java.util.Arrays.copyOf(boxes, draws * 12);
+                reaches = java.util.Arrays.copyOf(reaches, draws * 2);
             }
             firsts[draws] = first;
             counts[draws] = count;
@@ -1206,6 +1432,7 @@ final class FarGpu {
             box[at + 3] = boxMaxX;
             box[at + 4] = boxMaxY;
             box[at + 5] = boxMaxZ;
+            reaches[draws] = boxReach;
             draws++;
         }
 

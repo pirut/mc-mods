@@ -30,6 +30,8 @@ public final class CubicEvents {
         if (!(levelAccessor instanceof ServerLevel level) || !Cubic.isCubic(level.dimension()) || CubicLevel.of(level) != null) return;
         var folder = DimensionType.getStorageFolder(level.dimension(), level.getServer().getWorldPath(LevelResource.ROOT));
         CubeGenerator generator = Cubic.open(level, folder);
+        // Caches and far workers make room when memory runs short (see MemoryPressure); started once, by the first cubic level.
+        io.github.pirut.chunks3.util.MemoryPressure.watch(Cubic.LOGGER::warn);
         ((CubicLevel) level).chunks3$setCubes(new ServerCubeWorld(level, generator));
         // Fetch the data around the arrival point now, so the first visit does not wait on it.
         int[] home = generator.arrival();
@@ -38,6 +40,21 @@ public final class CubicEvents {
         Util.ioPool().execute(() -> {
             generator.prepareNear(home[0], home[1]);
             generator.prepareFar(home[0], home[1]);
+        });
+        // Beside them, the little the horizon's quick stand-ins read, and the stand-ins themselves, ready for the first player.
+        if (CubicLevel.of(level) instanceof ServerCubeWorld cubes) standIns(generator, cubes, home[0], home[1]);
+    }
+
+    /** Fetches the data of the far stand-ins round a place and makes them ahead of a player arriving there, off-thread. */
+    private static void standIns(CubeGenerator generator, ServerCubeWorld cubes, int x, int z) {
+        if (!generator.farPreviews(io.github.pirut.chunks3.far.Far.MAX_LEVEL)) return;
+        Util.ioPool().execute(() -> {
+            try {
+                generator.preparePreview(x, z, io.github.pirut.chunks3.far.Far.BACKDROP_LEVEL);
+                cubes.far().warmPreviews(x, z);
+            } catch (RuntimeException failure) {
+                Cubic.LOGGER.warn("Could not make the far stand-ins ahead", failure);
+            }
         });
     }
 

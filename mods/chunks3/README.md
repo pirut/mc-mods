@@ -91,7 +91,8 @@ NeoForge project as NeoForge unit tests, so the mixins they check are applied.
 Until Earth Platform depends on this library, its engine keeps changing in Earth's tree.
 `tools/port_from_earth.py` turns the engine part of an Earth commit range into a patch here (renamed, Earth-only
 files left out) and applies it; hunks that no longer fit are left in `.rej` files. 0.1.0-alpha.1 was made from
-Earth Platform build 69 (`59fdd45`). [`MIGRATING-EARTH.md`](MIGRATING-EARTH.md) lists what Earth needs to do to
+Earth Platform build 69 (`59fdd45`); the engine now follows Earth up to build 74 (`4e639cc5`), so the next port
+starts there. [`MIGRATING-EARTH.md`](MIGRATING-EARTH.md) lists what Earth needs to do to
 switch over.
 
 ## License
