@@ -385,7 +385,10 @@ final class FarZoom {
         double voxel();
         /** The heights of the quarter ({@code dz * 2 + dx}) a finer column covers, for that column until it is held. */
         default Box quarter(int quarter) { return this; }
-        /** The top of the ground (or what stands on it) at block {@code x}, {@code z} in the column; its highest where not known finer. */
+        /**
+         * The top of the ground (or what stands on it) at block {@code x}, {@code z} in the column, or minus infinity
+         * where nothing stands there; the column's highest where it is not known finer.
+         */
         default double topAt(int x, int z) { return highY(); }
     }
 

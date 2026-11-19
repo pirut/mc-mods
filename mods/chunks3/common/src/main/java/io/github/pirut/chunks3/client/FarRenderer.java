@@ -530,11 +530,15 @@ public final class FarRenderer {
         @Override public double highY() { return heights()[1]; }
         @Override public double voxel() { return Far.voxel(level); }
 
-        /** The top of the voxel column holding block x, z, drop and all; its box's floor where it holds only air. */
+        /**
+         * The top of the voxel column holding block x, z, less its drop. A voxel column of only air (a shaft dug to the
+         * column's base) is no ground at all: minus infinity, so a ray goes on through it, where the lowest top
+         * elsewhere in the column read the air as ground and put the spot too near.
+         */
         @Override public double topAt(int bx, int bz) {
             int vx = Math.clamp((bx - x0) >> level, 0, 15), vz = Math.clamp((bz - z0) >> level, 0, 15);
             int row = topRow(vx, vz);
-            return row < 0 ? lowY() : baseY() + (row + 1) * (double) Far.voxel(level) - drops[vz * 16 + vx] / (double) Far.DROP_UNIT;
+            return row < 0 ? Double.NEGATIVE_INFINITY : baseY() + (row + 1) * (double) Far.voxel(level) - drops[vz * 16 + vx] / (double) Far.DROP_UNIT;
         }
 
         /** The heights of the quarter a finer column covers ({@code dz * 2 + dx}), for that column until it is held. */

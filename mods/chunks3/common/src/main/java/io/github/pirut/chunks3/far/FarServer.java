@@ -634,7 +634,7 @@ public final class FarServer {
             folded = true;
             int baseX = (CubeKey.x(key) - minX) * perCube, baseY = voxelY & 15, baseZ = (CubeKey.z(key) - minZ) * perCube;
             for (int y = 0; y < perCube; y++) for (int z = 0; z < perCube; z++) for (int x = 0; x < perCube; x++) {
-                BlockState state = blocks ? cube.getBlockState(x, y, z) : downsample(cube, x << level, y << level, z << level, 1 << level);
+                BlockState state = blocks ? blockVoxel(cube.getBlockState(x, y, z)) : downsample(cube, x << level, y << level, z << level, 1 << level);
                 BlockState here = target.getBlockState(baseX + x, baseY + y, baseZ + z);
                 if (blocks) {
                     if (here != state) target.setBlockState(baseX + x, baseY + y, baseZ + z, state, false);
@@ -654,6 +654,15 @@ public final class FarServer {
             if (section.hasOnlyAir()) column.sections.set(i, null);
         }
         if (blocks && folded) blockDrops(column);
+    }
+
+    /**
+     * A saved block as a level 0 voxel: itself, but water of any level, flowing or falling, is a full water voxel.
+     * A far water voxel's level is the share of it filled (see {@link Far#fill}), not vanilla's flow, which read
+     * falling water (level 8) as half full and left gaps down every waterfall. Waterlogged blocks stay as they are.
+     */
+    static BlockState blockVoxel(BlockState saved) {
+        return saved.getBlock() == net.minecraft.world.level.block.Blocks.WATER ? net.minecraft.world.level.block.Blocks.WATER.defaultBlockState() : saved;
     }
 
     /**

@@ -20,6 +20,17 @@ import net.minecraft.network.chat.contents.TranslatableContents;
 public final class PauseMenu {
     private PauseMenu() {}
 
+    /** The distance slider on the pause menu now open, committed when that screen closes (see {@link #closing}). */
+    private static FarDistanceSlider open;
+
+    /** Called by each loader as a screen closes: a drag still held on the pause menu's slider applies. */
+    public static void closing(Screen screen) {
+        FarDistanceSlider slider = open;
+        if (slider == null || !(screen instanceof PauseScreen)) return;
+        open = null;
+        slider.commit();
+    }
+
     /** Called by each loader once a screen has laid out its widgets; {@code add} adds one more. */
     public static void afterInit(Screen screen, List<? extends GuiEventListener> listeners, Consumer<AbstractWidget> add) {
         if (!(screen instanceof PauseScreen) || ClientCubeWorld.current() == null) return;
@@ -32,7 +43,8 @@ public final class PauseMenu {
         for (var other : listeners)
             if (other instanceof AbstractWidget widget && widget.getY() > anchor.getY()) widget.setY(widget.getY() + row);
         int slider = (width - 4) * 2 / 3, rest = width - 4 - slider;
-        add.accept(new FarDistanceSlider(anchor.getX(), y, slider, anchor.getHeight()));
+        open = new FarDistanceSlider(anchor.getX(), y, slider, anchor.getHeight());
+        add.accept(open);
         add.accept(Chunks3ConfigScreen.sharpness().createButton(Minecraft.getInstance().options, anchor.getX() + slider + 4, y, rest));
     }
 

@@ -31,6 +31,7 @@ public final class Chunks3FabricClient implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
             var buttons = Screens.getButtons(screen);
             PauseMenu.afterInit(screen, java.util.List.copyOf(buttons), buttons::add);
+            ScreenEvents.remove(screen).register(PauseMenu::closing);
         });
         FabricPayloads.registerClient();
         FabricVersionCheck.registerClient();

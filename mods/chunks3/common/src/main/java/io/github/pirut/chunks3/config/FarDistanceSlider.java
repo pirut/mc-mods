@@ -30,9 +30,22 @@ final class FarDistanceSlider extends AbstractSliderButton {
         super.onClick(mouseX, mouseY);
     }
 
+    /** Only a release ending a press that began on this slider commits: the game hands any release over it here. */
     @Override public void onRelease(double mouseX, double mouseY) {
-        held = false;
         super.onRelease(mouseX, mouseY);
+        commit();
+    }
+
+    /** A drag still held when the slider loses focus or its screen closes (Escape mid-drag) keeps what it shows. */
+    @Override public void setFocused(boolean focused) {
+        if (!focused) commit();
+        super.setFocused(focused);
+    }
+
+    /** Applies a drag in progress, once; nothing when none is. */
+    void commit() {
+        if (!held) return;
+        held = false;
         Chunks3Config.setDetail(detail());
     }
 

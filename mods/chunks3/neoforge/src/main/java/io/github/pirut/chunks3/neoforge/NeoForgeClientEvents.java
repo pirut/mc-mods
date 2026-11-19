@@ -40,6 +40,8 @@ public final class NeoForgeClientEvents {
         PauseMenu.afterInit(event.getScreen(), event.getListenersList(), event::addListener);
     }
 
+    @SubscribeEvent public static void screenClosing(net.neoforged.neoforge.client.event.ScreenEvent.Closing event) { PauseMenu.closing(event.getScreen()); }
+
     /** Client setup and registration, on the mod's own event bus. */
     @EventBusSubscriber(modid = Cubic.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
     public static final class Setup {
