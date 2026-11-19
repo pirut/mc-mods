@@ -36,13 +36,12 @@ final class FarDistanceSlider extends AbstractSliderButton {
         commit();
     }
 
-    /** A drag still held when the slider loses focus or its screen closes (Escape mid-drag) keeps what it shows. */
-    @Override public void setFocused(boolean focused) {
-        if (!focused) commit();
-        super.setFocused(focused);
-    }
-
-    /** Applies a drag in progress, once; nothing when none is. */
+    /**
+     * Applies a drag in progress, once; nothing when none is. Called on release (the screen sends a drag's release to
+     * the focused slider wherever the mouse is) and when the pause screen closes mid-drag ({@link PauseMenu#closing}).
+     * Not on focus loss: a click hands focus to the slider after its press, unfocusing it first even when it already
+     * had focus, so from the second drag on that applied the value at the press and then at every step.
+     */
     void commit() {
         if (!held) return;
         held = false;
