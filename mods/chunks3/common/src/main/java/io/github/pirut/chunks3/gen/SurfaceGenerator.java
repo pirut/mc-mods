@@ -588,20 +588,25 @@ public abstract class SurfaceGenerator implements CubeGenerator {
      * Leaves for a far cell that trees cover, or null. Uses tree()'s placement odds, since a voxel
      * many blocks wide cannot follow individual trees.
      */
-    private BlockState canopy(Surface surface, int wx, int wz, int v) {
-        if (surface.top() != GRASS && surface.top() != MUD && !surface.top().is(Blocks.PODZOL) || surface.trees() <= 0) return null;
+    @Nullable protected BlockState canopy(Surface surface, int wx, int wz, int v) {
+        if (!canopyGround(surface)) return null;
         long r = mix(wx, v, wz);
         Tree kind = surface.tree((int) Math.floorMod(r >>> 24, 10));
-        // Thousandths covered, from the trees' attempts per 256 columns. Crowns standing a voxel tall (8 blocks) show
-        // their shaded sides and hide the ground between them, so a crown covering about 20 columns looks as dense as
-        // the trees drawn nearer. Leaves lying flat on wider voxels show neither, so they cover what a crown's 4-block
-        // voxels fill nearer, about 80 columns, overlapping at random: 1 - e^-(trees per column x 80). Otherwise
-        // forests turn paler and browner past the last standing crowns.
+        // Standing crowns show shaded sides. Flat crowns need a wider area to give the same impression of density.
         int attempts = surface.trees() * Trees.full(kind);
-        int covered = v == 8 ? attempts * 3 / 4 : (int) (1000 * (1 - Math.exp(-attempts / 25600.0 * 80)));
-        if (Math.floorMod(r, 1000) >= Math.min(950, covered)) return null;
+        int covered = v == 8 ? Math.min(950, attempts * 3 / 4) : canopyCoverage(attempts, 80);
+        if (Math.floorMod(r, 1000) >= covered) return null;
         // Where snow falls it lies on most crowns, as it does on the trees nearer.
         return Trees.snowy(surface) && Math.floorMod(r >>> 40, 3) != 0 ? SNOW_BLOCK : Vegetation.leaves(kind);
+    }
+
+    static boolean canopyGround(Surface surface) {
+        return surface.trees() > 0 && (surface.top() == GRASS || surface.top() == MUD || surface.top().is(Blocks.PODZOL));
+    }
+
+    /** Thousandths covered by overlapping crowns of this projected area, from tree attempts per chunk. */
+    static int canopyCoverage(int attempts, int area) {
+        return Math.min(950, (int) (1000 * (1 - Math.exp(-attempts / 25600.0 * area))));
     }
 
     // Cubes --------------------------------------------------------------------------------------

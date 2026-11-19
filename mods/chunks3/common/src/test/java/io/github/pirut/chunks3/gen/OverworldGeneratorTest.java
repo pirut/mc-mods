@@ -48,11 +48,11 @@ class OverworldGeneratorTest {
         OverworldGenerator g = generator();
         for (int level : new int[]{3, OverworldGenerator.SMOOTH_LEVEL}) {
             long total = 0;
-            int n = 0;
+            int n = 0, half = 1 << (level - 1);
             for (int z = -2048; z <= 2048; z += 64) for (int x = -2048; x <= 2048; x += 64) {
                 int[] near = new int[2], far = new int[2];
-                g.ground(x, z, near);
-                g.farGround(level, x, z, far);
+                g.ground(x + half, z + half, near);
+                g.farGround(level, x + half, z + half, far);
                 total += Math.abs(near[0] - far[0]);
                 n++;
             }
