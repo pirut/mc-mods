@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- A **Cubic** world type on the Create World screen, on NeoForge and Fabric. Before, Chunks3 on its own made
+  every new world a vanilla one, and the far terrain never ran, since no dimension was cubic unless another mod
+  registered one. A Cubic world's overworld is cubic: vanilla's terrain, sea and biomes at vanilla's heights from
+  the seed, with the ground going on down past Y -64 to a bedrock floor at Y -4,096
+  (`-Dchunks3.cubic.bedrockY`), and the far terrain out to the horizon.
+- Far terrain in a Cubic world reads vanilla's noise only as finely as each far level needs: one height and one
+  biome per far voxel, a short search down from vanilla's own depth estimate instead of a read at every height,
+  heights kept so one sample serves every coarser level, and no 3D noise from 32-block voxels out
+  (`-Dchunks3.cubic.smoothLevel`). The idea of filling far levels straight from the seed comes from SeedGen by
+  MobiusMeansBusiness; the code is Chunks3's own.
+- New players and players respawning with no bed land on the ground in a cubic overworld, within the spawn radius.
+- Opening a Cubic world on Fabric skips the experimental settings warning.
+- `SurfaceGenerator` subclasses can set a fixed rock datum, the bedrock floor and what fills caves at each height.
+
 ## 0.1.0-alpha.1
 
 The first release: Earth Platform's cubic engine (as of Earth Platform build 69) as its own library mod, for

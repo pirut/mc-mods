@@ -1,6 +1,5 @@
 package io.github.pirut.chunks3.gen;
 
-import io.github.pirut.chunks3.CubeWorld;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
@@ -34,8 +33,10 @@ import net.minecraft.world.level.levelgen.synth.ImprovedNoise;
  * A block's vanilla-equivalent height is {@code y - floor + 64}, so deepslate starts 64 blocks
  * under a valley or seabed, diamonds and lava lie about 120 under it, and a mountain is solid
  * rock above its valleys with iron, coal and emeralds as vanilla's mountains have. Below the
- * depth where vanilla's world ends, the bottom layers carry on down to bedrock at the true
- * bottom of the world.
+ * depth where vanilla's world ends, the bottom layers carry on down to bedrock at the
+ * generator's {@linkplain SurfaceGenerator#bedrockY bedrock floor} (the true bottom of the world unless it
+ * says otherwise). A generator with a fixed {@linkplain SurfaceGenerator#datum datum} hangs the layers from
+ * that height everywhere instead, as vanilla does.
  */
 final class Underground {
     static final BlockState AIR = Blocks.AIR.defaultBlockState(), STONE = Blocks.STONE.defaultBlockState(),
@@ -80,12 +81,17 @@ final class Underground {
 
     /** The smoothed lowest ground around a column, from which the layers hang. Never above the column's own ground. */
     int floor(int x, int z, int ground) {
+        int datum = terrain.datum();
+        if (datum != SurfaceGenerator.SMOOTHED) return datum;
         int nx = Math.floorDiv(x, NODE), nz = Math.floorDiv(z, NODE);
         double tx = (x - nx * NODE) / (double) NODE, tz = (z - nz * NODE) / (double) NODE;
         double f = Mth.lerp2(tx, tz, node(nx, nz), node(nx + 1, nz), node(nx, nz + 1), node(nx + 1, nz + 1));
         return Math.min(ground, Mth.floor(f));
     }
-    int floor(int x, int z) { return floor(x, z, terrain.surfaceY(x, z)); }
+    int floor(int x, int z) {
+        int datum = terrain.datum();
+        return datum != SurfaceGenerator.SMOOTHED ? datum : floor(x, z, terrain.surfaceY(x, z));
+    }
 
     private int node(int nx, int nz) {
         long key = it.unimi.dsi.fastutil.HashCommon.mix(((long) nx << 32) | (nz & 0xFFFFFFFFL));
@@ -103,9 +109,10 @@ final class Underground {
 
     // Rock and caves -----------------------------------------------------------------------------
 
-    /** Stone, deepslate or bedrock for solid rock at a height, before veins. */
+    /** Stone, deepslate or bedrock for solid rock at a height, before veins; bedrock all through below the floor. */
     BlockState rock(int x, int y, int z, int floor) {
-        if (y <= CubeWorld.MIN_Y + 4 && y - CubeWorld.MIN_Y < 1 + Math.floorMod(mix(x, y, z), 5)) return BEDROCK;
+        int bottom = terrain.bedrockY();
+        if (y < bottom || y <= bottom + 4 && y - bottom < 1 + Math.floorMod(mix(x, y, z), 5)) return BEDROCK;
         int vy = vanillaY(y, floor);
         BlockState vein = largeVein(x, y, z, vy);
         if (vein != null) return vein;
@@ -200,7 +207,7 @@ final class Underground {
         if (y > ground) return false;
         int depth = ground - y;
         if (depth < caveRoofAt(x, z, ground)) return true;
-        return !cave(x, y, z);
+        return !cave(x, y, z) || terrain.cavity(y, floor(x, z, ground)) == null;
     }
     private int caveRoofAt(int x, int z, int ground) {
         int slope = Math.abs(terrain.surfaceY(x + 1, z) - terrain.surfaceY(x - 1, z)) + Math.abs(terrain.surfaceY(x, z + 1) - terrain.surfaceY(x, z - 1));

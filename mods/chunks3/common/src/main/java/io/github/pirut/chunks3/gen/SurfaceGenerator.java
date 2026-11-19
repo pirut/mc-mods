@@ -116,6 +116,26 @@ public abstract class SurfaceGenerator implements CubeGenerator {
     /** Whether a cube column whose highest ground is {@code maxGround} is mountainous enough for emeralds. */
     protected abstract boolean emeralds(int maxGround);
 
+    /** {@link #datum} of a world whose rock layers hang from the smoothed lowest ground around each column. */
+    public static final int SMOOTHED = Integer.MIN_VALUE;
+
+    /**
+     * The height the rock layers, ores and fixed-depth structures hang from, as vanilla's Y 64:
+     * {@link #SMOOTHED} (the default) follows the lowest ground around each column, so valleys and
+     * seabeds anywhere get vanilla's layers under them; a fixed height lays them out at vanilla's
+     * own heights everywhere.
+     */
+    protected int datum() { return SMOOTHED; }
+
+    /** The lowest Y of the bedrock floor, a few rough blocks thick; everything below it is bedrock too. */
+    protected int bedrockY() { return io.github.pirut.chunks3.CubeWorld.MIN_Y; }
+
+    /**
+     * What fills a cave at a height over a column's {@linkplain #datum floor}: air, or lava where vanilla's
+     * deep caves hold it; null keeps the rock, so no cave opens there.
+     */
+    @Nullable protected BlockState cavity(int y, int floor) { return Underground.cavity(y, floor); }
+
     /** Whether giant sequoia groves may be near a column; their trees stand far taller than any other. */
     protected boolean giants(int x, int z) { return false; }
 
@@ -688,7 +708,10 @@ public abstract class SurfaceGenerator implements CubeGenerator {
                     else if (rock == null && depth >= 4 && bedrock(surface.under()) && Strata.Layers.face(depth, col.height, gi)) state = surface.under();
                     // Cave mouths open the top blocks only where nothing grows on them.
                     boolean open = depth >= roof[ci] && (depth > 1 || surface.trees() == 0 && (Underground.rock(surface.top()) || surface.top() == GRAVEL));
-                    if (open && state != Underground.BEDROCK && Underground.cave(caveField, lx, ly, lz)) state = Underground.cavity(y, floor[ci]);
+                    if (open && state != Underground.BEDROCK && Underground.cave(caveField, lx, ly, lz)) {
+                        BlockState hollow = cavity(y, floor[ci]);
+                        if (hollow != null) state = hollow;
+                    }
                 }
                 if (state != AIR) section.setBlockState(lx, ly, lz, state, false);
             }

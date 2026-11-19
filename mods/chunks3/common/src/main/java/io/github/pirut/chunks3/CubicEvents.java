@@ -27,7 +27,7 @@ public final class CubicEvents {
     private CubicEvents() {}
 
     public static void load(LevelAccessor levelAccessor) {
-        if (!(levelAccessor instanceof ServerLevel level) || !Cubic.isCubic(level.dimension())) return;
+        if (!(levelAccessor instanceof ServerLevel level) || !Cubic.isCubic(level.dimension()) || CubicLevel.of(level) != null) return;
         var folder = DimensionType.getStorageFolder(level.dimension(), level.getServer().getWorldPath(LevelResource.ROOT));
         CubeGenerator generator = Cubic.open(level, folder);
         ((CubicLevel) level).chunks3$setCubes(new ServerCubeWorld(level, generator));
@@ -39,6 +39,30 @@ public final class CubicEvents {
             generator.prepareNear(home[0], home[1]);
             generator.prepareFar(home[0], home[1]);
         });
+    }
+
+    /**
+     * A new world's spawn, when its overworld is cubic: a dry, gentle landing near the generator's arrival
+     * point, on the ground. False for any other level, which vanilla gives its spawn as usual.
+     */
+    public static boolean initialSpawn(ServerLevel level, net.minecraft.world.level.storage.ServerLevelData data) {
+        if (level.dimension() != Level.OVERWORLD || !Cubic.isCubic(level.dimension())) return false;
+        load(level);
+        if (!(CubicLevel.of(level) instanceof ServerCubeWorld cubes)) return false;
+        int[] spot = landing(cubes, null);
+        BlockPos spawn = BlockPos.containing(standOn(cubes, spot[0], spot[1]));
+        data.setSpawn(spawn, 0.0F);
+        Cubic.LOGGER.info("Cubic world: spawn at {}", spawn.toShortString());
+        return true;
+    }
+
+    /**
+     * Where a player starts about the world spawn of a cubic overworld (a first join, or a respawn with no
+     * bed): a spot on the ground within the spawn radius, with its cubes loaded. Null for other levels.
+     */
+    public static @Nullable BlockPos spawnNear(ServerLevel level, BlockPos spawn) {
+        if (level.dimension() != Level.OVERWORLD || !(CubicLevel.of(level) instanceof ServerCubeWorld cubes)) return null;
+        return BlockPos.containing(arrivalAt(cubes, new int[]{spawn.getX(), spawn.getZ()}));
     }
 
     public static void save(LevelAccessor levelAccessor) {

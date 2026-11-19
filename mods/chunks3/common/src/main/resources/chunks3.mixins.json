@@ -17,6 +17,8 @@
     "CubicEntityHoldMixin",
     "CubicTravelMixin",
     "CubicRespawnMixin",
+    "CubicWorldSpawnMixin",
+    "CubicPlayerSpawnMixin",
     "CubicSpawnerMixin",
     "compat.CreateContraptionMixin",
     "compat.CreateBuildHeightMixin",
