@@ -1,6 +1,8 @@
 package io.github.pirut.chunks3.neoforge;
 
 import io.github.pirut.chunks3.Cubic;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 
 /**
@@ -11,7 +13,9 @@ import net.neoforged.fml.common.Mod;
  */
 @Mod(Cubic.MOD_ID)
 public final class Chunks3NeoForge {
-    public Chunks3NeoForge() {
+    public Chunks3NeoForge(ModContainer container, Dist dist) {
+        // The settings first, before any engine class reads the properties they set.
+        if (dist.isClient()) NeoForgeClientEvents.construct(container);
         Cubic.LOGGER.info("Chunks3 loaded");
     }
 }

@@ -14,6 +14,9 @@ dependencies {
     // The far renderer reads shader packs through Iris when it is installed; never bundled.
     modCompileOnly("maven.modrinth:iris:${iris_fabric_version}") { transitive = false }
     compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    // The Chunks3 page in Sodium's Video Settings, and Mod Menu's config button; used only when installed.
+    modCompileOnly("maven.modrinth:sodium:${sodium_fabric_version}") { transitive = false }
+    modCompileOnly("maven.modrinth:modmenu:${modmenu_version}") { transitive = false }
 }
 
 // The engine's tests share common/src/test and run in the NeoForge project, where the mixins they check are

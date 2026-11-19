@@ -14,7 +14,9 @@
   "environment": "*",
   "entrypoints": {
     "main": ["io.github.pirut.chunks3.fabric.Chunks3Fabric"],
-    "client": ["io.github.pirut.chunks3.fabric.Chunks3FabricClient"]
+    "client": ["io.github.pirut.chunks3.fabric.Chunks3FabricClient"],
+    "modmenu": ["io.github.pirut.chunks3.fabric.Chunks3ModMenu"],
+    "sodium:config_api_user": ["io.github.pirut.chunks3.config.SodiumOptions"]
   },
   "mixins": [
     "${mod_id}.mixins.json",
@@ -29,7 +31,8 @@
   },
   "suggests": {
     "sodium": "*",
-    "iris": "*"
+    "iris": "*",
+    "modmenu": "*"
   },
   "breaks": {
     "sodium": "<0.8.12-beta.1",
