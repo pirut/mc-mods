@@ -66,7 +66,8 @@ public final class CubicEvents {
         int radius = Math.max(0, Math.min(level.getServer().getSpawnRadius(level), border - 1));
         int[] spot = scatter(cubes, new int[]{spawn.getX(), spawn.getZ()}, radius);
         int moved = Math.max(Math.abs(spot[0] - spawn.getX()), Math.abs(spot[1] - spawn.getZ()));
-        return BlockPos.containing(standOn(cubes, spot[0], spot[1], radius - moved));
+        // The radius bounds where the spot is scattered; the search round it stays local, however wide the radius.
+        return BlockPos.containing(standOn(cubes, spot[0], spot[1], Math.min(STAND_REACH, radius - moved)));
     }
 
     public static void save(LevelAccessor levelAccessor) {
@@ -218,7 +219,10 @@ public final class CubicEvents {
      * of snow leave room) and not on powder snow, which a player sinks into and freezes in; else on
      * top of whatever stands there, such as a tree, with a drift underfoot packed firm.
      */
-    private static Vec3 standOn(ServerCubeWorld cubes, int x, int z) { return standOn(cubes, x, z, 15); }
+    /** How far, in blocks, a landing looks from its column for a better spot to stand. */
+    private static final int STAND_REACH = 15;
+
+    private static Vec3 standOn(ServerCubeWorld cubes, int x, int z) { return standOn(cubes, x, z, STAND_REACH); }
 
     /** The same, looking no more than {@code reach} blocks from the column for a better spot. */
     private static Vec3 standOn(ServerCubeWorld cubes, int x, int z, int reach) {
