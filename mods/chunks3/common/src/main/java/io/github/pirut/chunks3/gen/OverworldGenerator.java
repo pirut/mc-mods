@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.gen;
 
+import io.github.pirut.chunks3.far.Far;
 import javax.annotation.Nullable;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -111,6 +112,34 @@ public final class OverworldGenerator extends SurfaceGenerator {
         out[1] = wet ? SEA : DRY;
         // Read the biome while the centre's continents, erosion and ridges are still in the noise cache.
         farBiome(x, z, centre, out[1]);
+    }
+
+    /**
+     * Quick stand-ins for every far level (Earth Platform's build 70), shown at once and replaced by the real
+     * columns as they come, so the whole far view stands within seconds: one sample at the voxel's centre, as
+     * {@link #farGround} takes its own, without vanilla's 3D noise and without the diagonal samples, a few times
+     * cheaper to read. {@code -Dchunks3.far.previews=false} turns them off.
+     */
+    /**
+     * Level 0, for zoomed views: its far ground and cover below 4-block voxels are the near ground's own
+     * ({@link #ground}, {@link #surface}), so these columns hold the blocks the cubes will, but for caves and structures.
+     */
+    @Override public boolean farBlocks() { return true; }
+
+    @Override public boolean farPreviews(int level) { return PREVIEWS && level >= Far.PREVIEW_LEVEL && level <= Far.MAX_LEVEL; }
+
+    private static final boolean PREVIEWS = !"false".equals(System.getProperty("chunks3.far.previews"));
+
+    @Override protected void previewGround(int level, int x, int z, int[] out) {
+        int y = vanilla.farHeight(x, z, true);
+        out[0] = y;
+        out[1] = y < SEA ? SEA : DRY;
+        farBiome(x, z, y, out[1]);
+    }
+
+    /** A stand-in's cover from its one centre sample, the slope from its neighbours as the column found it. */
+    @Override protected Surface previewSurface(int level, int x, int z, int ground, int water, int slope) {
+        return submerged(land(farBiome(x, z, ground, water), x, z, ground, slope, level >= 3), ground, water);
     }
 
     private static int diagonal(int level, int x, int z, int half) {

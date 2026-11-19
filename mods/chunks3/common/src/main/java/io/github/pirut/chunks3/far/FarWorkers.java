@@ -1,6 +1,7 @@
 package io.github.pirut.chunks3.far;
 
 import io.github.pirut.chunks3.util.DataWaits;
+import io.github.pirut.chunks3.util.MemoryPressure;
 import io.github.pirut.chunks3.util.NamedThreads;
 import io.github.pirut.chunks3.util.TickShare;
 import java.util.concurrent.ExecutorService;
@@ -28,6 +29,8 @@ public final class FarWorkers {
     private int running, waiting, turns;
     /** Set while cubes near players are waiting to be made: they come first, so no more than {@code busy} run. */
     private volatile boolean held;
+    /** Processors the quick stand-ins are using now, which come off {@code busy}: they are a few seconds' work and fill the view. */
+    private volatile int taken;
 
     public FarWorkers(String name, int busy, int most) {
         this.busy = busy;
@@ -45,7 +48,12 @@ public final class FarWorkers {
      */
     public int allowed() {
         synchronized (gate) {
-            return held ? busy : Math.min(most, busy + waiting - turns);
+            // Half stay at the real columns: the ground right round the player is theirs, and it came seconds later with none.
+        int atWork = Math.max((busy + 1) / 2, busy - taken);
+            // While memory is short, half the usual at work and none more for those waiting on data: each column under way holds
+            // its data and voxels, and on many cores a new place's columns all at once filled a 4 GB game in a big mod pack.
+            if (MemoryPressure.high()) return Math.max(1, atWork / 2);
+            return held ? atWork : Math.min(most, atWork + waiting - turns);
         }
     }
 
@@ -54,6 +62,17 @@ public final class FarWorkers {
         if (this.held == held) return;
         this.held = held;
         if (!held) synchronized (gate) { gate.notifyAll(); }
+    }
+
+    /**
+     * Leaves {@code taken} processors to the quick stand-ins being made: that many fewer columns are
+     * at work, down to half of them, so a view's worth of stand-ins is not shared with the real columns'
+     * far longer work. Stand-ins waiting on data take none, and columns under way finish.
+     */
+    public void giveWay(int taken) {
+        int before = this.taken;
+        this.taken = Math.max(0, taken);
+        if (this.taken < before) synchronized (gate) { gate.notifyAll(); }
     }
 
     private void waiting(boolean now) {
@@ -85,7 +104,8 @@ public final class FarWorkers {
             TickShare.giveWay();
             synchronized (gate) {
                 try {
-                    while (running >= allowed()) gate.wait();
+                    // Timed while memory is short, so columns start again once it frees up.
+                    while (running >= allowed()) gate.wait(MemoryPressure.high() ? 250 : 0);
                 } catch (InterruptedException stopped) {
                     Thread.currentThread().interrupt();
                     return;

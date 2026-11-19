@@ -21,6 +21,14 @@ out to the horizon (about 94 km at the default detail).
   world and keep it, since ground made with another value will not match.
 - A Cubic world opened without Chunks3 is an empty world: its blocks live in Chunks3's cube files.
 
+## Settings
+
+Mods > Chunks3 > Config (NeoForge), Mod Menu's config button (Fabric, with Mod Menu installed), or the Chunks3
+page in Sodium's Video Settings: the far terrain's distance (37 to 397 km, default 94 km) and sharpness, which
+apply at once while playing, a frame rate to hold, and the engine's switches. In a cubic world the distance and
+sharpness are on the pause menu too. Zoomed in (a spyglass, a zoom mod, a narrow field of view), the far terrain
+where you look sharpens down to single blocks. The settings are kept in `config/chunks3-client.properties`.
+
 ## Using it from another mod
 
 It is the engine of [Earth Platform](https://github.com/pirut/earth-platform), split out so other mods can build
@@ -91,7 +99,8 @@ NeoForge project as NeoForge unit tests, so the mixins they check are applied.
 Until Earth Platform depends on this library, its engine keeps changing in Earth's tree.
 `tools/port_from_earth.py` turns the engine part of an Earth commit range into a patch here (renamed, Earth-only
 files left out) and applies it; hunks that no longer fit are left in `.rej` files. 0.1.0-alpha.1 was made from
-Earth Platform build 69 (`59fdd45`). [`MIGRATING-EARTH.md`](MIGRATING-EARTH.md) lists what Earth needs to do to
+Earth Platform build 69 (`59fdd45`); the engine now follows Earth up to build 74 (`4e639cc5`), so the next port
+starts there. [`MIGRATING-EARTH.md`](MIGRATING-EARTH.md) lists what Earth needs to do to
 switch over.
 
 ## License

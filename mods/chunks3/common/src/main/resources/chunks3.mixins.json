@@ -117,6 +117,8 @@
     "CubicIrisPhotonCompatMixin",
     "CubicIrisCloudsMixin",
     "CubicIrisVoxyMixin",
+    "CubicIrisDhMixin",
+    "CubicIrisDhDepthMixin",
     "CubicIrisLodSamplersMixin",
     "CubicIrisLodUniformsMixin",
     "compat.XaeroMinimapWriterMixin",

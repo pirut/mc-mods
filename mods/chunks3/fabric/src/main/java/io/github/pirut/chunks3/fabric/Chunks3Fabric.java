@@ -36,6 +36,7 @@ public final class Chunks3Fabric implements ModInitializer {
     @Override
     public void onInitialize() {
         CubePayloads.register(new FabricPayloads());
+        FabricVersionCheck.register();
 
         CubicSpawns.placements(new CubicSpawns.Rules() {
             @Override public <T extends Entity> void or(EntityType<T> type, SpawnPlacements.SpawnPredicate<T> rule) { SPAWN_RULES.put(type, rule); }
