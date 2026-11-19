@@ -105,16 +105,19 @@ class FarZoomViewTest {
     @Test void earthCurveBringingGroundAboveTheCameraInsideTheReachKeepsItsColumn() {
         double aspect = 16 / 9.0, spread = SPREAD;
         float curve = EarthView.curvature(4512, 0.1, false);
-        FarZoom curved = FarZoom.at(6, spread, aspect, false, curve, 0, 4512, 0, 100, 0, -45.35F, null);
-        FarZoom flat = FarZoom.at(6, spread, aspect, false, 0, 0, 4512, 0, 100, 0, -45.35F, null);
+        double reach = Far.hole(2) * Far.width(2) * Math.pow(2, 2.5) * FarZoom.SHARPER;
+        // Level 2's column 0, 61 (its middle 3,936 blocks off), its ground a block past the reach above the camera, looked at.
+        int low = 4512 + (int) Math.floor(reach) + 1;
+        float pitch = -(float) Math.toDegrees(Math.atan2(low + 2 - 4512, 3936));
+        FarZoom curved = FarZoom.at(6, spread, aspect, false, curve, 0, 4512, 0, 100, 0, pitch, null);
+        FarZoom flat = FarZoom.at(6, spread, aspect, false, 0, 0, 4512, 0, 100, 0, pitch, null);
         assertNotNull(curved);
         assertNotNull(flat);
         assertEquals(Math.pow(2, 2.5), curved.zoom, 1e-9);
-        FarZoom.Box ground = box(8496, 8500);
-        double reach = Far.hole(2) * Far.width(2) * curved.zoom, drop = EarthView.drop(32, 3936, curve);
-        assertEquals(3982.43, reach, 0.01);
-        assertTrue(8496 - drop - 4512 < reach && 8496 - 4512 > reach, "its flat gap is past the reach, its drawn gap inside");
-        assertTrue(new View(0, 4512, 0, 0, -45.35F, 0, 0, curved.zoom, spread, aspect).sees(32, 8498 - drop, 3936), "drawn there it is on the screen");
+        FarZoom.Box ground = box(low, low + 4);
+        double drop = EarthView.drop(32, 3936, curve);
+        assertTrue(low - drop - 4512 < reach && low - 4512 > reach, "its flat gap is past the reach, its drawn gap inside");
+        assertTrue(new View(0, 4512, 0, 0, pitch, 0, 0, curved.zoom, spread, aspect).sees(32, low + 2 - drop, 3936), "drawn there it is on the screen");
         assertTrue(curved.refined(2, 0, 61, ground));
         // On flat ground it is where it lies, past the reach.
         assertFalse(flat.refined(2, 0, 61, ground));

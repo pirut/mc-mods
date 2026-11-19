@@ -62,7 +62,7 @@ public final class FarSurfacePacket {
     }
     private FarSurfacePacket(int level, int bottom, int height, short[] drops, Holder<Biome> initialBiome,
                              List<Holder<Biome>> biomes, Runs data) {
-        if (level < Far.MIN_LEVEL || level > Far.MAX_LEVEL || height < 16 || height % 16 != 0
+        if (level < Far.FINEST_LEVEL || level > Far.MAX_LEVEL || height < 16 || height % 16 != 0
                 || height > Far.MAX_SECTIONS * 16 || drops.length != 256 || biomes.size() != 16
                 || data.offsets.length != 257 || data.offsets[0] != 0 || data.offsets[256] > MAX_RUNS
                 || data.offsets[256] > data.words.length) throw new IllegalArgumentException("Unsupported surface packet dimensions");

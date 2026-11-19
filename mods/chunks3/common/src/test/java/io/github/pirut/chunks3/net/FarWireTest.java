@@ -38,11 +38,12 @@ class FarWireTest {
     @Test void scaleSaysWhetherStandInsAreToBeHad() {
         for (boolean previews : new boolean[] {false, true}) {
             var buffer = buffer();
-            CubePayloads.FarScale.CODEC.encode(buffer, new CubePayloads.FarScale(1.2643, previews));
+            CubePayloads.FarScale.CODEC.encode(buffer, new CubePayloads.FarScale(1.2643, previews, !previews));
             CubePayloads.FarScale back = CubePayloads.FarScale.CODEC.decode(buffer);
             assertEquals(0, buffer.readableBytes());
             assertEquals(1.2643, back.metresPerBlock());
             assertEquals(previews, back.previews());
+            assertEquals(!previews, back.blocks());
         }
     }
 

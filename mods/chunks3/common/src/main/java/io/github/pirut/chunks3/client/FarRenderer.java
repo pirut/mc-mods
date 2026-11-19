@@ -179,7 +179,10 @@ public final class FarRenderer {
      * for. The projection's focal length, the tangent of the angle to its corners and its width over
      * its height, from the last frame drawn.
      */
-    @Nullable private FarZoom zoom, walkZoom;
+    @Nullable private FarZoom zoom;
+    /** The columns the zoomed view's plan splits (see {@link FarZoom#plan}), and those the kept walk split; a new set comes with a new version. */
+    private LongOpenHashSet zoomSplit = new LongOpenHashSet(), walkSplit = zoomSplit;
+    private int zoomVersion, walkZoomVersion;
     private float focal;
     private double spread, aspect;
     /** The columns the zoomed view wants, and those it would want but for {@link FarZoom#MAX_COLUMNS}, for the debug screen. */
@@ -525,7 +528,7 @@ public final class FarRenderer {
         @Override public double voxel() { return Far.voxel(level); }
 
         /** The heights of the quarter a finer column covers ({@code dz * 2 + dx}), for that column until it is held. */
-        FarZoom.Box quarter(int quarter) {
+        @Override public FarZoom.Box quarter(int quarter) {
             int[] heights = heights();
             int low = heights[2 + 2 * quarter], high = heights[3 + 2 * quarter];
             return new FarZoom.Box() {
@@ -626,6 +629,8 @@ public final class FarRenderer {
         this.biomes = world.client().registryAccess().registryOrThrow(Registries.BIOME);
         requested.defaultReturnValue(Integer.MIN_VALUE / 2);
         previewsAsked.defaultReturnValue(Integer.MIN_VALUE / 2);
+        // Until the server says it makes them (see #scale), zoomed views stop at level 1.
+        FarZoom.finest = Far.MIN_LEVEL;
     }
 
     private long diagnosticReceivedColumns, diagnosticReceivedEstimatedBytes;
@@ -896,6 +901,7 @@ public final class FarRenderer {
         var eye = player.getEyePosition();
         double height = eye.y - ground(player.getBlockX(), player.getBlockZ(), eye.y);
         FarZoom before = zoomView;
+        FarZoom.nearBlocks = FarLod.nearReach();
         // The view as the game draws it may be tipped by walking (view bobbing), and ground is drawn lower under the Earth's curve.
         // Counted a client tick at a time, as this runs, and held for a second after the bob dies away, so a jump does not change the view twice.
         bobHold = FarZoom.bobHold(Minecraft.getInstance().options.bobView().get(), player.bob, player.oBob, bobHold);
@@ -904,7 +910,13 @@ public final class FarRenderer {
         // A view that zooms in or turns is planned for at once, not at the next half second: what it looks at is asked for first.
         if (zoomView != null && zoomView != before) planNow = true;
         // The plan works out how much of the zoom counts; unzoomed, the walk drops it at once.
-        if (zoomView == null) zoom = null;
+        if (zoomView == null) {
+            zoom = null;
+            if (!zoomSplit.isEmpty()) {
+                zoomSplit = new LongOpenHashSet();
+                zoomVersion++;
+            }
+        }
     }
 
     /**
@@ -912,46 +924,6 @@ public final class FarRenderer {
      * {@code -Dchunks3.far.zoom=false} keeps the levels round the player alone, as before.
      */
     private static final boolean ZOOM = !"false".equals(System.getProperty("chunks3.far.zoom"));
-
-    /**
-     * The columns a zoomed view splits its own into (see {@link FarZoom#refined}) that the player's own
-     * levels do not keep, from the top level down. A column not held yet counts as high as the quarter
-     * of the nearest one held above it that it lies in.
-     */
-    private LongArrayList zoomColumns(FarZoom zoom, FarZoom.Horizon horizon, int bx, int bz, int finest, int hole) {
-        LongArrayList seen = new LongArrayList(), level = new LongArrayList(), next = new LongArrayList();
-        List<FarZoom.Box> boxes = new ArrayList<>(), nextBoxes = new ArrayList<>();
-        int px = Far.column(bx, Far.MAX_LEVEL), pz = Far.column(bz, Far.MAX_LEVEL);
-        for (int z = pz - outer; z <= pz + outer; z++) for (int x = px - outer; x <= px + outer; x++) {
-            level.add(Far.key(Far.MAX_LEVEL, x, z));
-            boxes.add(null);
-        }
-        // Past twice as many as may be asked for, the count only says there are too many.
-        for (int at = Far.MAX_LEVEL; at > Far.MIN_LEVEL && !level.isEmpty() && seen.size() <= 2 * FarZoom.MAX_COLUMNS; at--) {
-            next.clear();
-            nextBoxes.clear();
-            for (int i = 0; i < level.size(); i++) {
-                long key = level.getLong(i);
-                int x = Far.x(key), z = Far.z(key);
-                Column column = held(at, x, z);
-                FarZoom.Box box = column != null ? column : boxes.get(i);
-                if (box == null || !zoom.refined(at, x, z, box, horizon)) continue;
-                for (int dz = 0; dz < 2; dz++) for (int dx = 0; dx < 2; dx++) {
-                    long child = Far.key(at - 1, 2 * x + dx, 2 * z + dz);
-                    next.add(child);
-                    nextBoxes.add(column != null ? column.quarter(dz * 2 + dx) : box);
-                    if (!Far.kept(child, bx, bz, finest, hole, outer)) seen.add(child);
-                }
-            }
-            LongArrayList swap = level;
-            level = next;
-            next = swap;
-            List<FarZoom.Box> swapBoxes = boxes;
-            boxes = nextBoxes;
-            nextBoxes = swapBoxes;
-        }
-        return seen;
-    }
 
     /** The ground the columns held show in the zoomed view's directions, each column and each of its quarters (see {@link FarZoom.Horizon}). */
     private FarZoom.Horizon horizon(FarZoom view) {
@@ -1014,30 +986,20 @@ public final class FarRenderer {
             counts[4]++;
             if (!places.want(Far.level(key), Far.x(key), Far.z(key), ticks)) missing.add(key);
         });
-        // Zoomed, the columns the zoomed view splits its own columns into too (see FarZoom), coarsest
-        // first and the middle of the view first among them, so the view sharpens a level at a time from
-        // the middle out. As much zoom counts as keeps them within FarZoom.MAX_COLUMNS: sharpening only
-        // some of them left a patchwork of levels with walls between them all over the view.
+        // Zoomed, the columns the zoomed view splits its own columns into too (see FarZoom#plan): the spot
+        // the player looks at first, down to its blocks, then the rest of the view as evenly as
+        // FarZoom.MAX_COLUMNS lets it, each column after the one it splits.
         LongOpenHashSet zoomed = new LongOpenHashSet();
         LongArrayList zoomMissing = new LongArrayList(), zoomBare = new LongArrayList();
-        FarZoom view = zoomView, zoom = null;
+        FarZoom view = zoomView, zoom = view;
+        LongOpenHashSet split = new LongOpenHashSet();
         if (view != null) {
             FarZoom.Horizon horizon = horizon(view);
-            LongArrayList seen = null;
-            for (int steps = view.steps(); steps >= 1; steps--) {
-                zoom = view.limited(steps);
-                if (zoom.equals(this.zoom)) zoom = this.zoom;
-                seen = zoomColumns(zoom, horizon, bx, bz, finest, hole);
-                if (seen.size() <= FarZoom.MAX_COLUMNS) break;
-            }
-            Long2LongOpenHashMap order = new Long2LongOpenHashMap(seen.size());
+            var player = Minecraft.getInstance().player;
+            float yaw = player == null ? 0 : player.getYRot(), pitch = player == null ? 0 : player.getXRot();
+            LongArrayList seen = view.plan(horizon, yaw, pitch, Far.column(bx, Far.MAX_LEVEL), Far.column(bz, Far.MAX_LEVEL), outer, this::held,
+                    key -> Far.kept(key, bx, bz, finest, hole, outer), FarZoom.MAX_COLUMNS, split);
             for (int i = 0; i < seen.size(); i++) {
-                long key = seen.getLong(i);
-                // Coarsest first, then by how near the middle of the view, in ten-thousandths.
-                order.put(key, (long) (Far.MAX_LEVEL - Far.level(key)) << 32 | (long) ((1 - zoom.central(key)) * 1e4));
-            }
-            seen.unstableSort((a, b) -> Long.compare(order.get(a), order.get(b)));
-            for (int i = 0; i < Math.min(seen.size(), FarZoom.MAX_COLUMNS); i++) {
                 long key = seen.getLong(i);
                 zoomed.add(key);
                 counts[4]++;
@@ -1051,6 +1013,11 @@ public final class FarRenderer {
                 }
             }
             zoomSeen = seen.size();
+        }
+        // The walk splits just the columns the plan asked for the children of, and walks again when they change.
+        if (!split.equals(zoomSplit)) {
+            zoomSplit = split;
+            zoomVersion++;
         }
         this.zoom = zoom;
         zoomWanted = zoomed.size();
@@ -1214,7 +1181,7 @@ public final class FarRenderer {
 
     /** The ground's height under a block position from the finest column held there, or {@code fallback} when none is. */
     private double ground(int bx, int bz, double fallback) {
-        for (int level = Far.MIN_LEVEL; level <= Far.MAX_LEVEL; level++) {
+        for (int level = Far.FINEST_LEVEL; level <= Far.MAX_LEVEL; level++) {
             Column column = held(level, Far.column(bx, level), Far.column(bz, level));
             if (column == null) continue;
             int row = column.topRow((bx - column.x0) >> level, (bz - column.z0) >> level);
@@ -1230,7 +1197,7 @@ public final class FarRenderer {
      * anything else, -1 while no column is held there.
      */
     public int sea(int bx, int bz, int surface) {
-        for (int level = Far.MIN_LEVEL; level <= Far.MAX_LEVEL; level++) {
+        for (int level = Far.FINEST_LEVEL; level <= Far.MAX_LEVEL; level++) {
             Column column = held(level, Far.column(bx, level), Far.column(bz, level));
             if (column == null) continue;
             int x = (bx - column.x0) >> level, z = (bz - column.z0) >> level, voxel = Far.voxel(level);
@@ -1374,7 +1341,7 @@ public final class FarRenderer {
             long cube = it.nextLong();
             if (sunk.contains(cube)) continue;
             int bx = CubeKey.x(cube) << 4, bz = CubeKey.z(cube) << 4;
-            for (int level = Far.MIN_LEVEL; level <= Far.MAX_LEVEL; level++) {
+            for (int level = Far.FINEST_LEVEL; level <= Far.MAX_LEVEL; level++) {
                 int v = Far.voxel(level);
                 for (int x = Far.column(bx - v, level); x <= Far.column(bx + 15 + v, level); x++) {
                     for (int z = Far.column(bz - v, level); z <= Far.column(bz + 15 + v, level); z++) {
@@ -1453,7 +1420,7 @@ public final class FarRenderer {
     /** Notes a cube under every held column it is inside, as {@link #cubesByColumn} goes over them. */
     private void byColumn(long cube, Long2ObjectOpenHashMap<LongArrayList> lists) {
         int bx = CubeKey.x(cube) << 4, bz = CubeKey.z(cube) << 4;
-        for (int level = Far.MIN_LEVEL; level <= Far.MAX_LEVEL; level++) {
+        for (int level = Far.FINEST_LEVEL; level <= Far.MAX_LEVEL; level++) {
             int v = Far.voxel(level);
             for (int x = Far.column(bx - v, level); x <= Far.column(bx + 15 + v, level); x++) {
                 for (int z = Far.column(bz - v, level); z <= Far.column(bz + 15 + v, level); z++) {
@@ -2085,7 +2052,7 @@ public final class FarRenderer {
 
     /** The same but for the camera's column, which a patch can follow (see {@link #moveRoots}). */
     private boolean walkKept(boolean band) {
-        return walked && !walkStale && finest == walkFinest && Far.hole() == walkHole && outer == walkOuter && band == walkBand && Objects.equals(zoom, walkZoom);
+        return walked && !walkStale && finest == walkFinest && Far.hole() == walkHole && outer == walkOuter && band == walkBand && zoomVersion == walkZoomVersion;
     }
 
     /** Whether something the kept walk does not draw yet has changed: a column meshed, or a fade it saw ended. */
@@ -2208,7 +2175,7 @@ public final class FarRenderer {
     /** Bits of a walk key (see {@link #walkKey}) for each level. */
     private static final int KEY_BITS = 3;
 
-    private static int keyShift(int level) { return KEY_BITS * (level - Far.MIN_LEVEL); }
+    private static int keyShift(int level) { return KEY_BITS * (level - Far.FINEST_LEVEL); }
 
     /** The walk key of a column's child in a quarter (north-west, north-east, south-west, south-east). */
     private static long childKey(long key, int level, int slot) { return key | (long) (slot + 1) << keyShift(level - 1); }
@@ -2524,7 +2491,8 @@ public final class FarRenderer {
     }
 
     private void walk(int bx, int bz, boolean band, int now) {
-        walkZoom = zoom;
+        walkSplit = zoomSplit;
+        walkZoomVersion = zoomVersion;
         drawn.clear();
         pickSerial++;
         pickAnimating = false;
@@ -2910,8 +2878,10 @@ public final class FarRenderer {
     private static final double SPHERE_RADIUS = 6_378_137.0;
 
     /** Sets a Mercator world's metres per block at the equator (0 for a world that is not one), from the server. */
-    public void scale(double metresPerBlock, boolean previews) {
+    public void scale(double metresPerBlock, boolean previews, boolean blocks) {
         this.metresPerBlock = metresPerBlock;
+        // Zoomed views go down to single blocks where the server makes them.
+        FarZoom.finest = blocks ? Far.FINEST_LEVEL : Far.MIN_LEVEL;
         // The first plan went out before the server said so: plan again now, to ask for the stand-ins at once.
         if (previews && !previewsOffered) planNow = true;
         previewsOffered = previews;
@@ -3270,7 +3240,7 @@ public final class FarRenderer {
      */
     boolean holeFor(long cube) {
         int bx = CubeKey.x(cube) << 4, bz = CubeKey.z(cube) << 4;
-        for (int level = Far.MIN_LEVEL; level <= Far.MAX_LEVEL; level++) {
+        for (int level = Far.FINEST_LEVEL; level <= Far.MAX_LEVEL; level++) {
             int v = Far.voxel(level);
             for (int x = Far.column(bx - v, level); x <= Far.column(bx + 15 + v, level); x++) {
                 for (int z = Far.column(bz - v, level); z <= Far.column(bz + 15 + v, level); z++) {
@@ -3350,10 +3320,13 @@ public final class FarRenderer {
         return (Far.refined(level, x, z, bx, bz, finest) || zoomed(level, x, z, held(level, x, z))) && childrenReady(level, x, z, bx, bz);
     }
 
-    /** Whether the kept walk's zoomed view (see {@link FarZoom}) draws a level's column x, z, held or null, with its next finer level. */
+    /**
+     * Whether the kept walk's zoomed view (see {@link FarZoom}) draws a level's column x, z with its next finer level:
+     * one the plan asked for the children of. Asking the view itself split every column within its reach that was not
+     * held yet, all the way down, so a sharper zoom would have walked hundreds of thousands of places nothing was held at.
+     */
     private boolean zoomed(int level, int x, int z, @Nullable Column column) {
-        FarZoom zoom = walkZoom;
-        return zoom != null && zoom.refined(level, x, z, column);
+        return walkSplit.contains(Far.key(level, x, z));
     }
 
     private boolean childrenReady(int level, int x, int z, int bx, int bz) {
@@ -3376,7 +3349,7 @@ public final class FarRenderer {
     /** Links a column just put in the map with its parent, kids and sides (see {@link Column#kids}). */
     private void link(Column column) {
         int level = column.level, x = Far.x(column.key), z = Far.z(column.key);
-        if (level > Far.MIN_LEVEL)
+        if (level > Far.FINEST_LEVEL)
             for (int dz = 0; dz < 2; dz++) for (int dx = 0; dx < 2; dx++) column.kids[dz * 2 + dx] = held(level - 1, 2 * x + dx, 2 * z + dz);
         if (level < Far.MAX_LEVEL) {
             Column parent = held(level + 1, x >> 1, z >> 1);

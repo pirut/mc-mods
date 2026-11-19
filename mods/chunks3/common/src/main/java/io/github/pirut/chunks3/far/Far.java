@@ -23,6 +23,13 @@ import net.minecraft.world.level.block.state.BlockState;
  */
 public final class Far {
     public static final int MIN_LEVEL = 1, MAX_LEVEL = 8, SIZE = 16;
+    /**
+     * The finest level of all: voxels of one block, so a column is the blocks of a 16 by 16 block column as
+     * the generator makes them, and edits fold in whole. The rings round the player stop at {@link #MIN_LEVEL},
+     * where the game's own blocks take over; only a zoomed view asks for these (see {@code FarZoom}), so
+     * through a spyglass or a zoom mod distant ground ends up block for block, at block textures, as it is.
+     */
+    public static final int FINEST_LEVEL = 0;
     /** The detail when nothing sets it: about 94 km. */
     public static final int DEFAULT_DETAIL = 11;
     /** Most detail the normal settings reach, in {@link #hole} columns: 24 is about 201 km. */
@@ -136,7 +143,7 @@ public final class Far {
     public static int level(long key) { return (int) (key >>> 60); }
     public static int x(long key) { return (int) (key << 4 >> 34); }
     public static int z(long key) { return (int) (key << 34 >> 34); }
-    public static boolean valid(long key) { int level = level(key); return level >= MIN_LEVEL && level <= MAX_LEVEL; }
+    public static boolean valid(long key) { int level = level(key); return level >= FINEST_LEVEL && level <= MAX_LEVEL; }
 
     /** Height of a still water block's surface within it, as the block renderer draws it. */
     public static final float WATER_SURFACE = 8.0F / 9.0F;

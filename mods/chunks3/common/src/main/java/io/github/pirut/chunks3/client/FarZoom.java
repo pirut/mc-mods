@@ -1,6 +1,9 @@
 package io.github.pirut.chunks3.client;
 
 import io.github.pirut.chunks3.far.Far;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import java.util.PriorityQueue;
 import javax.annotation.Nullable;
 
 /**
@@ -68,6 +71,26 @@ final class FarZoom {
      * view, and walk it again, twice a jump; a longer hold only widens the view.
      */
     static final int BOB_HOLD = 20;
+    /**
+     * How much sharper a zoomed view draws far terrain than the same ground looks unzoomed: each level's middle
+     * reaches this many times further than the zoom alone would take it. At 1 a zoomed view only kept each voxel
+     * the size it looks unzoomed, four or five pixels across on a 1080p screen at the default sharpness, so zooming
+     * in never showed the ground as it is; at 2 a voxel is about two pixels across, so a block is a pixel or more
+     * only where it is drawn as one: through a spyglass (10 times), single blocks out to 7 km. {@code -Dchunks3.far.zoomSharpness} sets it (1 to 8); the column budget
+     * ({@link #MAX_COLUMNS}) still caps what a view asks for, counting less of the zoom where it would pass it.
+     */
+    static final double SHARPER = Math.clamp(Double.parseDouble(System.getProperty("chunks3.far.zoomSharpness", "2")), 1, 8);
+    /**
+     * The finest level a zoomed view splits columns into: {@link Far#FINEST_LEVEL}, single blocks, where the
+     * server makes them (it says so when the far terrain starts), else {@link Far#MIN_LEVEL}. Render thread.
+     */
+    static volatile int finest = Far.MIN_LEVEL;
+    /**
+     * Blocks round the camera that the game's own blocks fill: block-sized far columns start past them, as
+     * the finer level there would only be drawn under the blocks themselves. Set by the renderer each plan.
+     */
+    static volatile double nearBlocks;
+
     /** The factor the Earth's curve is rounded up by, so that it is not walked again as the camera goes north or south. */
     private static final double CURVE_STEP = 1.25;
 
@@ -220,7 +243,7 @@ final class FarZoom {
 
     /** As {@link #refined(int, int, int, Box)}, and false too for a column the ground nearer the camera hides from it. */
     boolean refined(int level, int cx, int cz, @Nullable Box column, @Nullable Horizon horizon) {
-        if (level <= Far.MIN_LEVEL) return false;
+        if (level <= finest) return false;
         int width = Far.width(level);
         // To the column's middle: round the player, a column whose middle is a hole's width off is the
         // last one its level splits, so unzoomed this splits none the player's own levels do not.
@@ -230,7 +253,10 @@ final class FarZoom {
         // ground below only moves farther.
         double ox = (cx + 0.5) * width - x, oz = (cz + 0.5) * width - z;
         double vertical = column == null ? height : Math.max(0, Math.max(column.lowY() - drop(cx, cz, width) - y, y - column.highY()));
-        if (Math.max(Math.sqrt(ox * ox + oz * oz), vertical) > Far.hole(level) * width * zoom) return false;
+        double flat = Math.sqrt(ox * ox + oz * oz);
+        if (Math.max(flat, vertical) > Far.hole(level) * width * zoom * SHARPER) return false;
+        // Single blocks only past the game's own: its nearest corner beyond them, camera's rounding and all.
+        if (level - 1 < Far.MIN_LEVEL && flat - width * 0.75 - CAMERA < nearBlocks) return false;
         if (column == null) return true;
         return inView(cx, cz, width, column.lowY(), column.highY())
                 && (horizon == null || !horizon.hidden((cx + 0.5) * width, (cz + 0.5) * width, width / 2.0, column.highY() + 2 * column.voxel()));
@@ -357,6 +383,105 @@ final class FarZoom {
         double highY();
         /** The height of the voxels the heights were read from, in blocks. */
         double voxel();
+        /** The heights of the quarter ({@code dz * 2 + dx}) a finer column covers, for that column until it is held. */
+        default Box quarter(int quarter) { return this; }
+    }
+
+    /** The held column at a level's column x, z as a box, or null where none is held. */
+    interface Held { @Nullable Box at(int level, int x, int z); }
+
+    /** Whether the player's own levels keep a column already, so the zoomed view need not ask for it. */
+    interface Kept { boolean kept(long key); }
+
+    /** How much coarser the voxels may look at the edge of the view than at its middle once the budget runs out (see {@link #plan}). */
+    private static final double EDGE = 4;
+    /**
+     * The spot the player zooms in on: within this share of the view's half angle (to its corners) of the look, and
+     * from two thirds to one and a half times as far as where the look meets the ground. Its columns count
+     * {@link #FOCUS_WEIGHT} times as big, so they come down to their sharpest before the rest of the view.
+     */
+    private static final double FOCUS = Double.parseDouble(System.getProperty("chunks3.far.zoomFocus", "0.12")), FOCUS_WEIGHT = 64, FOCUS_DEPTH = 1.5;
+
+    /**
+     * The columns this view asks for past those the player's own levels keep, at most {@code budget} of them,
+     * in the order to ask for them; and in {@code split} each column the view draws as its four finer ones,
+     * which the walk then splits (and no other). The column whose voxels look biggest through the zoom goes
+     * first, the spot the player looks at ({@link #FOCUS}) counting many times bigger and the edges of the view up
+     * to {@link #EDGE} times smaller: the ground looked at comes down to the sharpness {@link #SHARPER} gives, a
+     * voxel a couple of pixels across, single blocks where blocks are that big, and then the rest of the view as
+     * evenly as the budget lets it. A spyglass's view across open land holds hundreds of thousands of columns at
+     * that sharpness; before, the view counted less of the zoom until all of it fitted, under three times for a
+     * spyglass, so the ground it looked at never came near its blocks. A column counts only where it is held, or
+     * a quarter of one held above it; the coarsest level's columns round {@code topX}, {@code topZ} begin it.
+     * {@code yaw} and {@code pitch} are the player's look now, in degrees, not rounded as the view's is: the
+     * rounding, a quarter of the view's half angle, is wider than the spot.
+     */
+    LongArrayList plan(@Nullable Horizon horizon, float yaw, float pitch, int topX, int topZ, int outer, Held held, Kept kept, int budget, LongOpenHashSet split) {
+        record Node(long key, Box box, double size) {}
+        double yr = Math.toRadians(yaw), pr = Math.toRadians(pitch);
+        double lx = -Math.sin(yr) * Math.cos(pr), ly = -Math.sin(pr), lz = Math.cos(yr) * Math.cos(pr);
+        double half = Math.acos(cone), target = target(held, outer, lx, ly, lz);
+        PriorityQueue<Node> queue = new PriorityQueue<>((a, b) -> Double.compare(b.size, a.size));
+        java.util.function.BiFunction<Long, Box, Node> node = (key, box) -> {
+            int level = Far.level(key), width = Far.width(level);
+            double ox = (Far.x(key) + 0.5) * width - x, oy = (box.lowY() + box.highY()) / 2 - y, oz = (Far.z(key) + 0.5) * width - z;
+            double distance = Math.max(width, Math.sqrt(ox * ox + oy * oy + oz * oz));
+            double off = Math.acos(Math.max(-1, Math.min(1, (ox * lx + oy * ly + oz * lz) / distance)));
+            // Within the column's own size of the look it counts as on it.
+            double from = Math.max(0, off - Math.asin(Math.min(1, width * 0.75 / distance))) / half;
+            boolean focus = from < FOCUS && (target <= 0 || distance + width >= target / FOCUS_DEPTH && distance - width <= target * FOCUS_DEPTH);
+            // How big a voxel looks, in radians through the zoom, weighted toward what the player looks at. In the
+            // spot it counts as at the spot's own distance, so the columns nearest the look come first there.
+            if (focus) {
+                double near = from / FOCUS;
+                return new Node(key, box, Far.voxel(level) / (target > 0 ? Math.max(width, target) : distance) * zoom * FOCUS_WEIGHT / (1 + 3 * near * near));
+            }
+            return new Node(key, box, Far.voxel(level) / distance * zoom / (1 + (EDGE - 1) * Math.min(1, from * from)));
+        };
+        for (int cz = topZ - outer; cz <= topZ + outer; cz++) for (int cx = topX - outer; cx <= topX + outer; cx++) {
+            Box box = held.at(Far.MAX_LEVEL, cx, cz);
+            if (box != null) queue.add(node.apply(Far.key(Far.MAX_LEVEL, cx, cz), box));
+        }
+        LongArrayList asked = new LongArrayList();
+        long[] kids = new long[4];
+        while (!queue.isEmpty()) {
+            Node at = queue.poll();
+            int level = Far.level(at.key), cx = Far.x(at.key), cz = Far.z(at.key);
+            if (!refined(level, cx, cz, at.box, horizon)) continue;
+            int count = 0;
+            for (int q = 0; q < 4; q++) {
+                kids[q] = Far.key(level - 1, 2 * cx + (q & 1), 2 * cz + (q >> 1));
+                if (!kept.kept(kids[q])) count++;
+            }
+            // A column is split whole or not at all: its parent stands in for it until all four come.
+            if (asked.size() + count > budget) continue;
+            split.add(at.key);
+            for (int q = 0; q < 4; q++) {
+                if (!kept.kept(kids[q])) asked.add(kids[q]);
+                if (level - 1 <= finest) continue;
+                Box box = held.at(level - 1, 2 * cx + (q & 1), 2 * cz + (q >> 1));
+                queue.add(node.apply(kids[q], box != null ? box : at.box.quarter(q)));
+            }
+        }
+        return asked;
+    }
+
+    /**
+     * How far along the look ({@code lx}, {@code ly}, {@code lz}) the ground held stands in its way, in blocks, or 0 where the look clears it all:
+     * stepped out from the camera over the finest column held at each step, to the coarsest level's reach.
+     */
+    double target(Held held, int outer, double lx, double ly, double lz) {
+        double reach = (outer + 0.5) * Far.width(Far.MAX_LEVEL);
+        for (double t = 16; t < reach; t += Math.max(8, t / 128)) {
+            double px = x + lx * t, py = y + ly * t, pz = z + lz * t;
+            for (int level = Far.FINEST_LEVEL; level <= Far.MAX_LEVEL; level++) {
+                Box box = held.at(level, Far.column((int) Math.floor(px), level), Far.column((int) Math.floor(pz), level));
+                if (box == null) continue;
+                if (py <= box.highY()) return t;
+                break;
+            }
+        }
+        return 0;
     }
 
     @Override public boolean equals(Object other) {

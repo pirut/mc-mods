@@ -313,6 +313,9 @@ public abstract class SurfaceGenerator implements CubeGenerator {
 
     // Far terrain: voxel columns sampled from the same height, cover and tree rules -------------
 
+    /** Level 0 columns are the near ground's own heights, cover and trees, a block to a voxel. */
+    @Override public boolean farBlocks() { return true; }
+
     @Override public void farColumn(int level, int columnX, int columnZ, FarColumn out) {
         farColumn(level, columnX, columnZ, out, false, true, true, false);
     }
@@ -332,7 +335,7 @@ public abstract class SurfaceGenerator implements CubeGenerator {
 
     /** The column as runs, or null where only the dense form can hold it. */
     @Nullable public final FarSurfacePacket surfacePacket(int level, int columnX, int columnZ) {
-        if (level < Far.MIN_LEVEL || level > Far.MAX_LEVEL) throw new IllegalArgumentException("Unsupported far level");
+        if (level < Far.FINEST_LEVEL || level > Far.MAX_LEVEL) throw new IllegalArgumentException("Unsupported far level");
         FarColumn out = new FarColumn();
         farColumn(level, columnX, columnZ, out, true, false, false, false);
         return out.packet;

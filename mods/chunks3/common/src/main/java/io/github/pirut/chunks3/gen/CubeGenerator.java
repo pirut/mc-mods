@@ -83,6 +83,14 @@ public interface CubeGenerator {
     void farColumn(int level, int columnX, int columnZ, FarColumn out);
 
     /**
+     * Whether {@link #farColumn} also makes level {@link io.github.pirut.chunks3.far.Far#FINEST_LEVEL}, columns of
+     * one-block voxels, which zoomed views ask for: a column of the very blocks the generator makes there, without
+     * what only the cubes carve (caves) or place (structures). Off unless a generator says so, since a generator
+     * written for levels from 1 up may divide by half a voxel; the far server ignores level 0 requests then.
+     */
+    default boolean farBlocks() { return false; }
+
+    /**
      * The same column, which a generator that can may leave as runs alone: {@link FarColumn#packet} set and
      * no sections. The runs then hold exactly what {@link #farColumn} would have filled.
      */

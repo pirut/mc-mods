@@ -165,6 +165,8 @@ public final class FarServer {
     private static final int PREVIEW_MOVE = 4 * Far.SIZE << Far.MAX_LEVEL;
     /** Whether this world's generator makes quick stand-ins for the coarsest levels (see {@link CubeGenerator#farPreviews}). */
     private final boolean previews;
+    /** Whether this world's generator makes level 0's block-sized columns for zoomed views (see {@link CubeGenerator#farBlocks}). */
+    private final boolean blocks;
     /**
      * Makes the stand-ins on a few low-priority threads of their own, never behind the real columns'
      * long queue: the ones players asked for first, in the order asked, then the ones made ahead of
@@ -335,6 +337,7 @@ public final class FarServer {
         this.codec = codec;
         this.biomeIds = biomes.asHolderIdMap();
         this.previews = generator.farPreviews(Far.MAX_LEVEL);
+        this.blocks = generator.farBlocks();
         previewWorkers.allowCoreThreadTimeOut(true);
         this.builds = new FarBuilds(storage.directory().resolveSibling("builds"));
         this.store = openStore(storage.directory().resolveSibling("far"), generator, biomes);
@@ -433,6 +436,7 @@ public final class FarServer {
         for (long key : keys) {
             if (!mayQueue(session.queued.size())) break;
             if (!Far.valid(key) || session.queued.contains(key)) continue;
+            if (Far.level(key) < Far.MIN_LEVEL && !blocks) continue;
             boolean zoomed = !Far.near(key, bx, bz);
             if (zoomed) {
                 if (session.zoomed.size() >= ZOOMED || !Far.inReach(key, bx, bz)) continue;
@@ -451,7 +455,8 @@ public final class FarServer {
         if (session == null) {
             sessions.put(player.getUUID(), session = new Session());
             double scale = generator.mercatorMetresPerBlock();
-            if (scale > 0 || previews) Platform.INSTANCE.sendToPlayer(player, new CubePayloads.FarScale(Math.max(0, scale), previews));
+            // Always: it also says whether zoomed views may ask for block-sized columns.
+            Platform.INSTANCE.sendToPlayer(player, new CubePayloads.FarScale(Math.max(0, scale), previews, blocks));
         }
         return session;
     }
@@ -497,7 +502,7 @@ public final class FarServer {
 
     /** A saved cube changed: its columns at the levels that can show it get remade for everyone holding them. */
     public void edited(int cubeX, int cubeZ) {
-        for (int level = Far.MIN_LEVEL; level <= Far.EDIT_LEVELS; level++) {
+        for (int level = Far.FINEST_LEVEL; level <= Far.EDIT_LEVELS; level++) {
             long key = Far.key(level, cubeX >> level, cubeZ >> level);
             forget(key);
             prints.edited(key);

@@ -1,5 +1,6 @@
 package io.github.pirut.chunks3.gen;
 
+import io.github.pirut.chunks3.far.Far;
 import javax.annotation.Nullable;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -90,6 +91,28 @@ public final class OverworldGenerator extends SurfaceGenerator {
         out[1] = y < SEA ? SEA : DRY;
         // The biome now, while the column's continents, erosion and ridges are still at hand: farSurface asks for it next.
         biome(sx, sz, out[0], out[1]);
+    }
+
+    /**
+     * Quick stand-ins for every far level (Earth Platform's build 70): the same columns from vanilla's terrain
+     * without its 3D noise, a few times cheaper to read, shown at once and replaced by the real ones as they
+     * come, so the whole far view stands within seconds. {@code -Dchunks3.far.previews=false} turns them off.
+     */
+    @Override public boolean farPreviews(int level) { return PREVIEWS && level >= Far.PREVIEW_LEVEL && level <= Far.MAX_LEVEL; }
+
+    private static final boolean PREVIEWS = !"false".equals(System.getProperty("chunks3.far.previews"));
+
+    @Override protected void previewGround(int level, int x, int z, int[] out) {
+        int v = 1 << level, sx = Math.floorDiv(x, v) * v, sz = Math.floorDiv(z, v) * v;
+        int y = vanilla.farHeight(sx, sz, true);
+        out[0] = y;
+        out[1] = y < SEA ? SEA : DRY;
+        biome(sx, sz, out[0], out[1]);
+    }
+
+    @Override protected Surface previewSurface(int level, int x, int z, int ground, int water, int slope) {
+        int v = 1 << level;
+        return surface(Math.floorDiv(x, v) * v, Math.floorDiv(z, v) * v, ground, water, slope);
     }
 
     /** A far voxel's cover, from one biome lookup at the same corner its height came from. */

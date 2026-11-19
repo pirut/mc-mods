@@ -158,15 +158,16 @@ public final class CubePayloads {
     }
 
     /**
-     * A Mercator world's map scale (such as the Earth's), sent when a player's far terrain starts: how many metres a block
-     * spans at the equator. Map stretch grows toward the poles, so the client measures its haze in
+     * What the server's far terrain offers, sent when a player's far terrain starts. A Mercator world's map scale
+     * (such as the Earth's): how many metres a block spans at the equator. Map stretch grows toward the poles, so the client measures its haze in
      * ground metres rather than blocks; 0 for a world that is not one. {@code previews} says the server answers
-     * {@link FarPreviewRequest}.
+     * {@link FarPreviewRequest}, and {@code blocks} that it makes the one-block far level zoomed views ask for.
      */
-    public record FarScale(double metresPerBlock, boolean previews) implements CustomPacketPayload {
+    public record FarScale(double metresPerBlock, boolean previews, boolean blocks) implements CustomPacketPayload {
         public static final Type<FarScale> TYPE = new Type<>(id("far_scale"));
         public static final StreamCodec<RegistryFriendlyByteBuf, FarScale> CODEC = StreamCodec.of(
-                (buf, p) -> { buf.writeDouble(p.metresPerBlock); buf.writeBoolean(p.previews); }, buf -> new FarScale(buf.readDouble(), buf.readBoolean()));
+                (buf, p) -> { buf.writeDouble(p.metresPerBlock); buf.writeBoolean(p.previews); buf.writeBoolean(p.blocks); },
+                buf -> new FarScale(buf.readDouble(), buf.readBoolean(), buf.readBoolean()));
         @Override public Type<FarScale> type() { return TYPE; }
     }
 
