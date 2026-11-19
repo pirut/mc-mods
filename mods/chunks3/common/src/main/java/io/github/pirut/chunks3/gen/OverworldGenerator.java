@@ -120,6 +120,12 @@ public final class OverworldGenerator extends SurfaceGenerator {
      * {@link #farGround} takes its own, without vanilla's 3D noise and without the diagonal samples, a few times
      * cheaper to read. {@code -Dchunks3.far.previews=false} turns them off.
      */
+    /**
+     * Level 0, for zoomed views: its far ground and cover below 4-block voxels are the near ground's own
+     * ({@link #ground}, {@link #surface}), so these columns hold the blocks the cubes will, but for caves and structures.
+     */
+    @Override public boolean farBlocks() { return true; }
+
     @Override public boolean farPreviews(int level) { return PREVIEWS && level >= Far.PREVIEW_LEVEL && level <= Far.MAX_LEVEL; }
 
     private static final boolean PREVIEWS = !"false".equals(System.getProperty("chunks3.far.previews"));

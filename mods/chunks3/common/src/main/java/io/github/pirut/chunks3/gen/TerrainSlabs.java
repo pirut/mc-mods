@@ -35,10 +35,10 @@ public final class TerrainSlabs {
             load();
             return true;
         } catch (IllegalStateException unsupported) {
-            Cubic.LOGGER.warn("Terrain Slabs does not have the blocks Earth needs for half-block steps");
+            Cubic.LOGGER.warn("Terrain Slabs does not have the blocks needed for half-block steps");
             return false;
         } catch (ReflectiveOperationException | LinkageError failure) {
-            Cubic.LOGGER.warn("Could not read Terrain Slabs generation settings; Earth will use full blocks", failure);
+            Cubic.LOGGER.warn("Could not read Terrain Slabs generation settings; the world will use full blocks", failure);
             return false;
         }
     }
@@ -56,7 +56,7 @@ public final class TerrainSlabs {
     private static void register(Map<Block, BlockState> steps, Block ground, String name) {
         Block block = BuiltInRegistries.BLOCK.get(ResourceLocation.fromNamespaceAndPath(MOD_ID, name));
         if (!(block instanceof SlabBlock slab) || !(slab.getStateDefinition().getProperty("generated") instanceof BooleanProperty generated)) {
-            throw new IllegalStateException("This Earth world uses Countered's Terrain Slabs. Install Terrain Slabs 3.1.2 for Minecraft 1.21.1 to open it.");
+            throw new IllegalStateException("This world uses Countered's Terrain Slabs. Install Terrain Slabs 3.1.2 for Minecraft 1.21.1 to open it.");
         }
         steps.put(ground, slab.defaultBlockState().setValue(generated, true));
     }

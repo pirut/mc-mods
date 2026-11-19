@@ -33,6 +33,7 @@ public final class Chunks3FabricClient implements ClientModInitializer {
             PauseMenu.afterInit(screen, java.util.List.copyOf(buttons), buttons::add);
         });
         FabricPayloads.registerClient();
+        FabricVersionCheck.registerClient();
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> Flawless.offer());
 
         ClientTickEvents.START_CLIENT_TICK.register(client -> CubicClient.tickStart());

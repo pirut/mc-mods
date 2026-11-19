@@ -40,7 +40,7 @@ class FarZoomPlanTest {
         FarZoom view = FarZoom.at(zoom, SPREAD, WIDE, false, 0, 0, 64 + EYE, 0, EYE, 0, pitch, null);
         LongOpenHashSet split = new LongOpenHashSet();
         int outer = Far.outer(), hole = Far.hole();
-        LongArrayList asked = view.plan(null, 0, pitch, 0, 0, outer, (level, x, z) -> new Flat(Far.voxel(level)),
+        LongArrayList asked = view.plan(null, 0, 64 + EYE, 0, 0, pitch, 0, 0, outer, (level, x, z) -> new Flat(Far.voxel(level)),
                 key -> Far.kept(key, 0, 0, Far.MIN_LEVEL, hole, outer), FarZoom.MAX_COLUMNS, split);
         return new Planned(view, asked, split);
     }
@@ -76,6 +76,49 @@ class FarZoomPlanTest {
         assertTrue(reached(plan(10, 50000), 50000) <= 4, table::toString);
         // A zoom mod at 80 times: single blocks 8 km off.
         assertEquals(Far.FINEST_LEVEL, reached(plan(80, 8000), 8000), table::toString);
+    }
+
+    /**
+     * Eye at Y 74 over flat ground whose top is Y 65, looking slightly down at a spot 2 km off: the view's culling
+     * rounds the camera to Y 64, under the ground, and a trace from there met the ground 16 blocks out.
+     */
+    @Test void theSpotIsWhereTheLookMeetsTheGroundFromTheEyeItself() {
+        double eye = 74, distance = 2000;
+        float pitch = (float) Math.toDegrees(Math.atan((eye - 65) / distance));
+        FarZoom view = FarZoom.at(10, SPREAD, WIDE, false, 0, 0, eye, 0, eye - 65, 0, pitch, null);
+        assertEquals(64, view.y, "the view's own camera is rounded under the ground");
+        double ly = -Math.sin(Math.toRadians(pitch)), lz = Math.cos(Math.toRadians(pitch));
+        double target = FarZoom.target((level, x, z) -> new Flat(Far.voxel(level)), Far.outer(), 0, eye, 0, 0, ly, lz);
+        assertEquals(distance, target, distance * 0.05, "met where the look comes down to the ground");
+    }
+
+    /** Turning a fiftieth of a degree, as a hand on the mouse does holding still, splits the same columns, so the far terrain is not walked again. */
+    @Test void aTinyPanSplitsTheSameColumns() {
+        double eye = 64 + EYE, distance = 1000;
+        float pitch = (float) Math.toDegrees(Math.atan(EYE / distance));
+        FarZoom view = FarZoom.at(10, SPREAD, WIDE, false, 0, 0, eye, 0, EYE, 0, pitch, null);
+        int outer = Far.outer(), hole = Far.hole();
+        LongOpenHashSet[] splits = {new LongOpenHashSet(), new LongOpenHashSet()};
+        float[] yaws = {0, 0.02F};
+        for (int i = 0; i < 2; i++)
+            view.plan(null, 0, eye, 0, yaws[i], pitch, 0, 0, outer, (level, x, z) -> new Flat(Far.voxel(level)),
+                    key -> Far.kept(key, 0, 0, Far.MIN_LEVEL, hole, outer), FarZoom.MAX_COLUMNS, splits[i]);
+        assertEquals(splits[0], splits[1]);
+    }
+
+    /** A ridge in a column beside the ray, higher than the ray, does not stop it: the ground under the ray counts. */
+    @Test void aRidgeBesideTheRayDoesNotStopIt() {
+        FarZoom.Box ridged = new FarZoom.Box() {
+            @Override public double lowY() { return 64; }
+            @Override public double highY() { return 200; }
+            @Override public double voxel() { return 1; }
+            @Override public double topAt(int x, int z) { return x > 4 ? 200 : 65; }
+        };
+        double eye = 74, distance = 2000;
+        float pitch = (float) Math.toDegrees(Math.atan((eye - 65) / distance));
+        double ly = -Math.sin(Math.toRadians(pitch)), lz = Math.cos(Math.toRadians(pitch));
+        double target = FarZoom.target((level, x, z) -> ridged, Far.outer(), 0, eye, 0, 0, ly, lz);
+        assertEquals(distance, target, distance * 0.05);
     }
 
     @Test void itStaysWithinItsBudgetAndAsksForEachColumnAfterTheOneItSplits() {

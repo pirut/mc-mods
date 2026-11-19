@@ -38,7 +38,10 @@
   sharpening, far trunks no longer brown posts, giant groves, near cube and far culling, shader packs made for
   Distant Horizons, making room when memory runs short, and a fix for 20 or more cores. Earth's vanilla caves are
   in for generators that ask for them; worlds keep the caves they were made with. The wire version is now
-  `cubic-3`, so client and server need the same build.
+  `cubic-3`, so client and server need the same build. On Fabric a server now refuses a client whose Chunks3 speaks
+  another version, saying so, as NeoForge does; either side without Chunks3 joins as before.
+- The performance report command is `/chunks3perf export` (was `/earthperf`), and it now finds the log Chunks3
+  writes (`chunks3/perf`); reports are named `chunks3-performance-*.zip`.
 
 ## 0.1.0-alpha.1
 

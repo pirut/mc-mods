@@ -62,7 +62,7 @@ public final class FarStore implements AutoCloseable {
     private final long limit;
     private final String stamp;
     private final Consumer<String> log;
-    private final ExecutorService writer = Executors.newSingleThreadExecutor(NamedThreads.daemon("Earth far store", Thread.MIN_PRIORITY));
+    private final ExecutorService writer = Executors.newSingleThreadExecutor(NamedThreads.daemon("Chunks3 far store", Thread.MIN_PRIORITY));
     private final Map<Long, Region> regions = new ConcurrentHashMap<>();
     /** How often each key was taken out this session: a column made from the ground as it was before is not kept. */
     private final Map<Long, Integer> epochs = new ConcurrentHashMap<>();

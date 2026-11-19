@@ -16,7 +16,8 @@ import net.minecraft.network.chat.Component;
 /**
  * Chunks3's settings screen: Mods > Chunks3 > Config on NeoForge, Mod Menu on Fabric, and the button at the
  * bottom of Sodium's Chunks3 page. The far distance and sharpness apply at once, also while playing; the
- * sliders apply when the mouse lets go, so the far terrain is asked for once and not at every step of a drag.
+ * sliders apply a moment after the last change, so the far terrain is asked for once and not at every step of a
+ * drag; Done, Escape and closing the screen apply what is still waiting (OptionsSubScreen#onClose).
  */
 public final class Chunks3ConfigScreen extends OptionsSubScreen {
     public Chunks3ConfigScreen(Screen parent) {
@@ -35,9 +36,15 @@ public final class Chunks3ConfigScreen extends OptionsSubScreen {
     /** The far distance, in kilometres and miles, from 4 (about 37 km) to {@link Far#MAX_DETAIL}; past {@link Far#NORMAL_DETAIL} marked extreme. */
     static OptionInstance<Integer> distance() {
         return new OptionInstance<>("chunks3.configuration.farDetail", value -> Tooltip.create(Component.translatable("chunks3.configuration.farDetail.tooltip")),
-                (caption, detail) -> Component.translatable(detail > Far.NORMAL_DETAIL ? "chunks3.configuration.farDetail.extreme" : "chunks3.configuration.farDetail.value",
-                        caption, Chunks3Config.distanceKm(detail), Math.round(Chunks3Config.distanceKm(detail) * 0.621371)),
+                (caption, detail) -> distanceLabel(detail),
                 new OptionInstance.IntRange(4, Far.MAX_DETAIL, false), Codec.INT, Chunks3Config.FAR_DETAIL.get(), Chunks3Config::setDetail);
+    }
+
+    /** "Far terrain distance: 94 km / 58 mi", and "(extreme)" past {@link Far#NORMAL_DETAIL}. */
+    static Component distanceLabel(int detail) {
+        int km = Chunks3Config.distanceKm(detail);
+        return Component.translatable(detail > Far.NORMAL_DETAIL ? "chunks3.configuration.farDetail.extreme" : "chunks3.configuration.farDetail.value",
+                Component.translatable("chunks3.configuration.farDetail"), km, Math.round(km * 0.621371));
     }
 
     static OptionInstance<Chunks3Config.Sharpness> sharpness() {

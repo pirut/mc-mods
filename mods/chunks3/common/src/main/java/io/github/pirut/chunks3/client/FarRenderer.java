@@ -107,6 +107,9 @@ public final class FarRenderer {
      * a texture blurs to at that distance anyway and stays steady when the camera moves.
      */
     private static final int TEXTURED_LEVELS = Integer.getInteger("chunks3.far.textured", Far.MAX_LEVEL);
+
+    /** Whether a level's faces carry textures: the levels from 1 up to {@link #TEXTURED_LEVELS}, and always level 0, a zoomed view's blocks. */
+    static boolean textured(int level) { return level < Far.MIN_LEVEL || level <= TEXTURED_LEVELS; }
     /**
      * Whether a level fades into the next coarser one over the coarser level's outer ring of
      * middle columns (see {@link FarShaders#fade}), rather than meeting it at a seam.
@@ -526,6 +529,13 @@ public final class FarRenderer {
         @Override public double lowY() { return heights()[0]; }
         @Override public double highY() { return heights()[1]; }
         @Override public double voxel() { return Far.voxel(level); }
+
+        /** The top of the voxel column holding block x, z, drop and all; its box's floor where it holds only air. */
+        @Override public double topAt(int bx, int bz) {
+            int vx = Math.clamp((bx - x0) >> level, 0, 15), vz = Math.clamp((bz - z0) >> level, 0, 15);
+            int row = topRow(vx, vz);
+            return row < 0 ? lowY() : baseY() + (row + 1) * (double) Far.voxel(level) - drops[vz * 16 + vx] / (double) Far.DROP_UNIT;
+        }
 
         /** The heights of the quarter a finer column covers ({@code dz * 2 + dx}), for that column until it is held. */
         @Override public FarZoom.Box quarter(int quarter) {
@@ -999,7 +1009,8 @@ public final class FarRenderer {
             FarZoom.Horizon horizon = horizon(view);
             var player = Minecraft.getInstance().player;
             float yaw = player == null ? 0 : player.getYRot(), pitch = player == null ? 0 : player.getXRot();
-            LongArrayList seen = view.plan(horizon, yaw, pitch, Far.column(bx, Far.MAX_LEVEL), Far.column(bz, Far.MAX_LEVEL), outer, this::held,
+            var eye = player == null ? new net.minecraft.world.phys.Vec3(view.x, view.y, view.z) : player.getEyePosition();
+            LongArrayList seen = view.plan(horizon, eye.x, eye.y, eye.z, yaw, pitch, Far.column(bx, Far.MAX_LEVEL), Far.column(bz, Far.MAX_LEVEL), outer, this::held,
                     key -> Far.kept(key, bx, bz, finest, hole, outer), FarZoom.MAX_COLUMNS, split);
             for (int i = 0; i < seen.size(); i++) {
                 long key = seen.getLong(i);
@@ -1570,7 +1581,7 @@ public final class FarRenderer {
         float[] shade = new float[6];
         for (Direction direction : Direction.values()) shade[direction.get3DDataValue()] = level.getShade(direction, true);
         FarMesher.Job job = new FarMesher.Job(column.key, column.version = nextVersion(), column.level, column.slot, column.x0, column.z0, column.bottom,
-                column.sections, column.drops, sides, diagonals, column.drawnCubes, column.level <= TEXTURED_LEVELS, looks, faces,
+                column.sections, column.drops, sides, diagonals, column.drawnCubes, textured(column.level), looks, faces,
                 ShaderBlocks.ids(), shade, white(), column.packet, FarAtmosphere.smoothFrom(cruising), EarthView.cutsWater(ShaderBlocks.packInUse()));
         meshing++;
         MESHER.execute(() -> {

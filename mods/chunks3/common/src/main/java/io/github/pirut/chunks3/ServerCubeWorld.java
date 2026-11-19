@@ -351,7 +351,7 @@ public final class ServerCubeWorld extends CubeWorld {
     }
 
     /** Keeps a chunk {@link #chunkLoaded} asked for loading; lapses five seconds after it was last asked for. */
-    private static final TicketType<ChunkPos> LANDING = TicketType.create("earthplatform_landing", Comparator.comparingLong(ChunkPos::toLong), 100);
+    private static final TicketType<ChunkPos> LANDING = TicketType.create("chunks3_landing", Comparator.comparingLong(ChunkPos::toLong), 100);
 
     /**
      * Server thread. Whether the chunk holding a block column is loaded; until it is, asks the workers for it and those

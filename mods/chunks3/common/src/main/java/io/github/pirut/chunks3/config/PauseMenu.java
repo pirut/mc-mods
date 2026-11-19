@@ -23,16 +23,17 @@ public final class PauseMenu {
     /** Called by each loader once a screen has laid out its widgets; {@code add} adds one more. */
     public static void afterInit(Screen screen, List<? extends GuiEventListener> listeners, Consumer<AbstractWidget> add) {
         if (!(screen instanceof PauseScreen) || ClientCubeWorld.current() == null) return;
-        Button anchor = find(listeners, "fml.menu.mods", "modmenu.title");
-        if (anchor == null) anchor = find(listeners, "menu.returnToGame");
+        Button back = find(listeners, "menu.returnToGame");
+        // Only a Mods button as wide as Back to Game: Mod Menu may put its own as a 20-pixel icon beside another.
+        Button mods = find(listeners, "fml.menu.mods", "modmenu.title");
+        Button anchor = mods != null && back != null && mods.getWidth() >= back.getWidth() ? mods : back;
         if (anchor == null) return;
         int width = anchor.getWidth(), row = anchor.getHeight() + 4, y = anchor.getY() + row;
         for (var other : listeners)
             if (other instanceof AbstractWidget widget && widget.getY() > anchor.getY()) widget.setY(widget.getY() + row);
         int slider = (width - 4) * 2 / 3, rest = width - 4 - slider;
-        var options = Minecraft.getInstance().options;
-        add.accept(Chunks3ConfigScreen.distance().createButton(options, anchor.getX(), y, slider));
-        add.accept(Chunks3ConfigScreen.sharpness().createButton(options, anchor.getX() + slider + 4, y, rest));
+        add.accept(new FarDistanceSlider(anchor.getX(), y, slider, anchor.getHeight()));
+        add.accept(Chunks3ConfigScreen.sharpness().createButton(Minecraft.getInstance().options, anchor.getX() + slider + 4, y, rest));
     }
 
     private static Button find(List<? extends GuiEventListener> listeners, String... keys) {

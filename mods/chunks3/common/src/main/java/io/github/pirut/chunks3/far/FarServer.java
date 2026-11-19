@@ -613,9 +613,14 @@ public final class FarServer {
 
     // Saved cubes --------------------------------------------------------------------------------
 
-    /** Overwrites the voxels each saved cube covers with that cube's own blocks, downsampled. */
+    /**
+     * Overwrites the voxels each saved cube covers with that cube's own blocks, downsampled. At level 0 the voxels
+     * are blocks: each takes the saved block as it is, water and air too, so a pond filled or drained shows, and a
+     * waterlogged block stays one; the voxel columns' drops then follow the ground and water as they now stand.
+     */
     private void foldSavedCubes(int level, int columnX, int columnZ, FarColumn column) throws IOException {
         int perCube = 16 >> level, cubes = 1 << level;
+        boolean blocks = level == Far.FINEST_LEVEL, folded = false;
         int minX = columnX * cubes, minZ = columnZ * cubes;
         for (long key : storage.savedIn(minX, minX + cubes - 1, minZ, minZ + cubes - 1)) {
             CompoundTag tag = storage.read(key);
@@ -626,10 +631,15 @@ public final class FarServer {
             // Edits below the column's ground are out of sight from afar.
             if (sectionIndex < 0 || sectionIndex >= Far.MAX_SECTIONS) continue;
             LevelChunkSection target = section(column, sectionIndex);
+            folded = true;
             int baseX = (CubeKey.x(key) - minX) * perCube, baseY = voxelY & 15, baseZ = (CubeKey.z(key) - minZ) * perCube;
             for (int y = 0; y < perCube; y++) for (int z = 0; z < perCube; z++) for (int x = 0; x < perCube; x++) {
-                BlockState state = downsample(cube, x << level, y << level, z << level, 1 << level);
+                BlockState state = blocks ? cube.getBlockState(x, y, z) : downsample(cube, x << level, y << level, z << level, 1 << level);
                 BlockState here = target.getBlockState(baseX + x, baseY + y, baseZ + z);
+                if (blocks) {
+                    if (here != state) target.setBlockState(baseX + x, baseY + y, baseZ + z, state, false);
+                    continue;
+                }
                 // The generated voxels are lowered by their column's drop so the water meets its real
                 // height, and a cube's own rows are not: swapping water and air between the two raised
                 // the water over every saved cube into a lighter patch with a stepped outline. Edits that
@@ -642,6 +652,28 @@ public final class FarServer {
             if (section == null) continue;
             section.recalcBlockCounts();
             if (section.hasOnlyAir()) column.sections.set(i, null);
+        }
+        if (blocks && folded) blockDrops(column);
+    }
+
+    /**
+     * A level 0 column's drops from its blocks: none under ground or a block on top, and under water the ninth of a
+     * block that a still water block's surface stands below its top, as the near water is drawn (see {@link Far#WATER_SURFACE}).
+     */
+    static void blockDrops(FarColumn column) {
+        short water = (short) Math.round((1 - Far.WATER_SURFACE) * Far.DROP_UNIT);
+        for (int cell = 0; cell < 256; cell++) {
+            int x = cell & 15, z = cell >> 4;
+            BlockState top = null;
+            for (int si = column.sections.size() - 1; si >= 0 && top == null; si--) {
+                LevelChunkSection section = column.sections.get(si);
+                if (section == null || section.hasOnlyAir()) continue;
+                for (int y = 15; y >= 0; y--) {
+                    BlockState state = section.getBlockState(x, y, z);
+                    if (!state.isAir()) { top = state; break; }
+                }
+            }
+            column.drops[cell] = top != null && top.getBlock() == net.minecraft.world.level.block.Blocks.WATER ? water : 0;
         }
     }
 

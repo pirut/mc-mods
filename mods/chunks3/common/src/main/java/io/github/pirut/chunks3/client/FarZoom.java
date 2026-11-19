@@ -385,6 +385,8 @@ final class FarZoom {
         double voxel();
         /** The heights of the quarter ({@code dz * 2 + dx}) a finer column covers, for that column until it is held. */
         default Box quarter(int quarter) { return this; }
+        /** The top of the ground (or what stands on it) at block {@code x}, {@code z} in the column; its highest where not known finer. */
+        default double topAt(int x, int z) { return highY(); }
     }
 
     /** The held column at a level's column x, z as a box, or null where none is held. */
@@ -413,18 +415,29 @@ final class FarZoom {
      * that sharpness; before, the view counted less of the zoom until all of it fitted, under three times for a
      * spyglass, so the ground it looked at never came near its blocks. A column counts only where it is held, or
      * a quarter of one held above it; the coarsest level's columns round {@code topX}, {@code topZ} begin it.
-     * {@code yaw} and {@code pitch} are the player's look now, in degrees, not rounded as the view's is: the
-     * rounding, a quarter of the view's half angle, is wider than the spot.
+     * {@code eyeX}, {@code eyeY}, {@code eyeZ}, {@code yaw} and {@code pitch} are the player's eye and look now, in
+     * blocks and degrees, not rounded as the view's are for its culling: that rounding, 32 blocks and a quarter of
+     * the view's half angle, is wider than the spot, and a camera 9 blocks over the ground rounded down under it.
+     * They are rounded much more finely here ({@link #EYE_STEP}, {@link #LOOK_STEP}; the spot's distance to a quarter
+     * of an octave), so panning a little or walking does not change the columns split, which walks the far terrain again.
      */
-    LongArrayList plan(@Nullable Horizon horizon, float yaw, float pitch, int topX, int topZ, int outer, Held held, Kept kept, int budget, LongOpenHashSet split) {
+    LongArrayList plan(@Nullable Horizon horizon, double eyeX, double eyeY, double eyeZ, float yaw, float pitch, int topX, int topZ, int outer,
+            Held held, Kept kept, int budget, LongOpenHashSet split) {
         record Node(long key, Box box, double size) {}
-        double yr = Math.toRadians(yaw), pr = Math.toRadians(pitch);
+        double half = Math.acos(cone), step = Math.toDegrees(half * FOCUS * LOOK_STEP);
+        // Where the look meets the ground, from the exact look: low over open land a tenth of a degree is tens of
+        // kilometres. Rounded to a quarter of an octave, so it only changes when the spot does.
+        double eyR = Math.toRadians(yaw), epR = Math.toRadians(pitch);
+        double hit = target(held, outer, eyeX, eyeY, eyeZ, -Math.sin(eyR) * Math.cos(epR), -Math.sin(epR), Math.cos(eyR) * Math.cos(epR));
+        double target = hit > 0 ? Math.pow(2, Math.round(4 * Math.log(hit) / Math.log(2)) / 4.0) : 0;
+        // The spot's direction, rounded to a share of the spot's own angle.
+        double yr = Math.toRadians(Math.round(yaw / step) * step), pr = Math.toRadians(Math.round(pitch / step) * step);
         double lx = -Math.sin(yr) * Math.cos(pr), ly = -Math.sin(pr), lz = Math.cos(yr) * Math.cos(pr);
-        double half = Math.acos(cone), target = target(held, outer, lx, ly, lz);
+        double ex = Math.round(eyeX / EYE_STEP) * EYE_STEP, ey = Math.round(eyeY / EYE_STEP) * EYE_STEP, ez = Math.round(eyeZ / EYE_STEP) * EYE_STEP;
         PriorityQueue<Node> queue = new PriorityQueue<>((a, b) -> Double.compare(b.size, a.size));
         java.util.function.BiFunction<Long, Box, Node> node = (key, box) -> {
             int level = Far.level(key), width = Far.width(level);
-            double ox = (Far.x(key) + 0.5) * width - x, oy = (box.lowY() + box.highY()) / 2 - y, oz = (Far.z(key) + 0.5) * width - z;
+            double ox = (Far.x(key) + 0.5) * width - ex, oy = (box.lowY() + box.highY()) / 2 - ey, oz = (Far.z(key) + 0.5) * width - ez;
             double distance = Math.max(width, Math.sqrt(ox * ox + oy * oy + oz * oz));
             double off = Math.acos(Math.max(-1, Math.min(1, (ox * lx + oy * ly + oz * lz) / distance)));
             // Within the column's own size of the look it counts as on it.
@@ -466,18 +479,24 @@ final class FarZoom {
         return asked;
     }
 
+    /** Blocks the eye is rounded to for the spot, and the share of the spot's angle the look is (see {@link #plan}). */
+    static final double EYE_STEP = 4, LOOK_STEP = 0.25;
+
     /**
-     * How far along the look ({@code lx}, {@code ly}, {@code lz}) the ground held stands in its way, in blocks, or 0 where the look clears it all:
-     * stepped out from the camera over the finest column held at each step, to the coarsest level's reach.
+     * How far along the look ({@code lx}, {@code ly}, {@code lz}) from the eye ({@code ex}, {@code ey}, {@code ez}) the
+     * ground held stands in its way, in blocks, or 0 where the look clears it all: stepped out over the finest column
+     * held at each step, against the top of the voxel column under the ray there (see {@link Box#topAt}), to the
+     * coarsest level's reach. A whole column's highest ground stopped it on a ridge beside the ray.
      */
-    double target(Held held, int outer, double lx, double ly, double lz) {
+    static double target(Held held, int outer, double ex, double ey, double ez, double lx, double ly, double lz) {
         double reach = (outer + 0.5) * Far.width(Far.MAX_LEVEL);
         for (double t = 16; t < reach; t += Math.max(8, t / 128)) {
-            double px = x + lx * t, py = y + ly * t, pz = z + lz * t;
+            double px = ex + lx * t, py = ey + ly * t, pz = ez + lz * t;
+            int bx = (int) Math.floor(px), bz = (int) Math.floor(pz);
             for (int level = Far.FINEST_LEVEL; level <= Far.MAX_LEVEL; level++) {
-                Box box = held.at(level, Far.column((int) Math.floor(px), level), Far.column((int) Math.floor(pz), level));
+                Box box = held.at(level, Far.column(bx, level), Far.column(bz, level));
                 if (box == null) continue;
-                if (py <= box.highY()) return t;
+                if (py <= box.topAt(bx, bz)) return t;
                 break;
             }
         }

@@ -313,9 +313,6 @@ public abstract class SurfaceGenerator implements CubeGenerator {
 
     // Far terrain: voxel columns sampled from the same height, cover and tree rules -------------
 
-    /** Level 0 columns are the near ground's own heights, cover and trees, a block to a voxel. */
-    @Override public boolean farBlocks() { return true; }
-
     @Override public void farColumn(int level, int columnX, int columnZ, FarColumn out) {
         farColumn(level, columnX, columnZ, out, false, true, true, false);
     }
