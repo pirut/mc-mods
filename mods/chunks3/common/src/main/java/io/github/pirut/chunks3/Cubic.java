@@ -50,6 +50,8 @@ public final class Cubic {
 
     private static final Map<ResourceKey<Level>, CubicDimension> DIMENSIONS = new ConcurrentHashMap<>();
     private static final List<ResourceKey<Level>> ORDER = new CopyOnWriteArrayList<>();
+    /** Dimensions a client adopted itself from a dedicated server's levels, dropped when it leaves. */
+    private static final java.util.Set<ResourceKey<Level>> CLIENT_ADOPTED = ConcurrentHashMap.newKeySet();
     private static final List<Predicate<Entity>> TRANSIT = new CopyOnWriteArrayList<>();
     private static final List<Consumer<ServerPlayer>> ARRIVALS = new CopyOnWriteArrayList<>();
 
@@ -86,6 +88,8 @@ public final class Cubic {
      * after a Cubic one in the same game stays vanilla. Registered dimensions are never touched.
      */
     public static synchronized void adopt(Collection<ResourceKey<Level>> keys) {
+        // The server's choice now: nothing stays the client's own to drop when it leaves.
+        CLIENT_ADOPTED.clear();
         for (ResourceKey<Level> key : new ArrayList<>(ORDER)) {
             CubicDimension dimension = DIMENSIONS.get(key);
             if (dimension.adopted() && !keys.contains(key)) { DIMENSIONS.remove(key); ORDER.remove(key); }
@@ -119,11 +123,40 @@ public final class Cubic {
             if (cubicType && dimension == null) {
                 DIMENSIONS.put(key, new CubicDimension(key, WORLD_TYPE, true));
                 ORDER.add(key);
+                CLIENT_ADOPTED.add(key);
             } else if (!cubicType && dimension != null && dimension.adopted()) {
                 DIMENSIONS.remove(key);
                 ORDER.remove(key);
+                CLIENT_ADOPTED.remove(key);
             }
         }
+    }
+
+    /**
+     * Drops what a client {@linkplain #adoptLevel adopted itself} when it leaves a server, so a dedicated Cubic
+     * server's overworld is not cubic for the next world. An integrated server's adoptions are its own, and go
+     * when it stops.
+     */
+    public static synchronized void dropClientAdopted() {
+        for (ResourceKey<Level> key : new ArrayList<>(CLIENT_ADOPTED)) {
+            CubicDimension dimension = DIMENSIONS.get(key);
+            if (dimension != null && dimension.adopted()) { DIMENSIONS.remove(key); ORDER.remove(key); }
+        }
+        CLIENT_ADOPTED.clear();
+    }
+
+    /**
+     * Whether a world's dimensions (its level stems, by key) hold a cubic one: a stem of the {@linkplain
+     * #CUBIC_TYPE Cubic type}, or one a mod {@linkplain #register registered}. Dimensions adopted for the
+     * world played before count for nothing.
+     */
+    public static boolean cubicWorld(Collection<? extends java.util.Map.Entry<ResourceKey<LevelStem>, LevelStem>> stems) {
+        for (var entry : stems) {
+            if (entry.getValue().type().is(CUBIC_TYPE)) return true;
+            CubicDimension dimension = DIMENSIONS.get(ResourceKey.create(Registries.DIMENSION, entry.getKey().location()));
+            if (dimension != null && !dimension.adopted()) return true;
+        }
+        return false;
     }
 
     public static boolean isCubic(@Nullable ResourceKey<Level> key) { return key != null && DIMENSIONS.containsKey(key); }

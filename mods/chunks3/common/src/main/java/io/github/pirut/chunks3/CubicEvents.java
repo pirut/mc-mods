@@ -43,26 +43,30 @@ public final class CubicEvents {
 
     /**
      * A new world's spawn, when its overworld is cubic: a dry, gentle landing near the generator's arrival
-     * point, on the ground. False for any other level, which vanilla gives its spawn as usual.
+     * point, on the ground. Null for any other level, which vanilla gives its spawn as usual.
      */
-    public static boolean initialSpawn(ServerLevel level, net.minecraft.world.level.storage.ServerLevelData data) {
-        if (level.dimension() != Level.OVERWORLD || !Cubic.isCubic(level.dimension())) return false;
+    public static @Nullable BlockPos initialSpawn(ServerLevel level) {
+        if (level.dimension() != Level.OVERWORLD || !Cubic.isCubic(level.dimension())) return null;
         load(level);
-        if (!(CubicLevel.of(level) instanceof ServerCubeWorld cubes)) return false;
+        if (!(CubicLevel.of(level) instanceof ServerCubeWorld cubes)) return null;
         int[] spot = landing(cubes, null);
         BlockPos spawn = BlockPos.containing(standOn(cubes, spot[0], spot[1]));
-        data.setSpawn(spawn, 0.0F);
         Cubic.LOGGER.info("Cubic world: spawn at {}", spawn.toShortString());
-        return true;
+        return spawn;
     }
 
     /**
      * Where a player starts about the world spawn of a cubic overworld (a first join, or a respawn with no
-     * bed): a spot on the ground within the spawn radius, with its cubes loaded. Null for other levels.
+     * bed): a spot on the ground with its cubes loaded, never farther from the spawn than the spawnRadius rule
+     * (0 is the spawn column itself) nor past the world border, as vanilla keeps it. Null for other levels.
      */
     public static @Nullable BlockPos spawnNear(ServerLevel level, BlockPos spawn) {
         if (level.dimension() != Level.OVERWORLD || !(CubicLevel.of(level) instanceof ServerCubeWorld cubes)) return null;
-        return BlockPos.containing(arrivalAt(cubes, new int[]{spawn.getX(), spawn.getZ()}));
+        int border = net.minecraft.util.Mth.floor(level.getWorldBorder().getDistanceToBorder(spawn.getX(), spawn.getZ()));
+        int radius = Math.max(0, Math.min(level.getServer().getSpawnRadius(level), border - 1));
+        int[] spot = scatter(cubes, new int[]{spawn.getX(), spawn.getZ()}, radius);
+        int moved = Math.max(Math.abs(spot[0] - spawn.getX()), Math.abs(spot[1] - spawn.getZ()));
+        return BlockPos.containing(standOn(cubes, spot[0], spot[1], radius - moved));
     }
 
     public static void save(LevelAccessor levelAccessor) {
@@ -167,7 +171,13 @@ public final class CubicEvents {
         if (!(cubes.level() instanceof ServerLevel level)) return spot;
         // An Earth world sets the rule to 0 so vanilla never searches the stand-in overworld for a
         // spawn; the Earth then scatters over vanilla's default instead.
-        int rule = level.getServer().getSpawnRadius(level), radius = rule > 0 ? rule : DEFAULT_SPAWN_RADIUS;
+        int rule = level.getServer().getSpawnRadius(level);
+        return scatter(cubes, spot, rule > 0 ? rule : DEFAULT_SPAWN_RADIUS);
+    }
+
+    /** A random dry column within {@code radius} blocks of a spot, as {@link #scatter(ServerCubeWorld, int[])}; the spot itself for 0. */
+    private static int[] scatter(ServerCubeWorld cubes, int[] spot, int radius) {
+        if (radius <= 0 || !(cubes.level() instanceof ServerLevel level)) return spot;
         CubeGenerator generator = cubes.generator();
         int ground = generator.surfaceY(spot[0], spot[1]);
         for (int attempt = 0; attempt < 16; attempt++) {
@@ -208,14 +218,17 @@ public final class CubicEvents {
      * of snow leave room) and not on powder snow, which a player sinks into and freezes in; else on
      * top of whatever stands there, such as a tree, with a drift underfoot packed firm.
      */
-    private static Vec3 standOn(ServerCubeWorld cubes, int x, int z) {
+    private static Vec3 standOn(ServerCubeWorld cubes, int x, int z) { return standOn(cubes, x, z, 15); }
+
+    /** The same, looking no more than {@code reach} blocks from the column for a better spot. */
+    private static Vec3 standOn(ServerCubeWorld cubes, int x, int z, int reach) {
         CubeGenerator generator = cubes.generator();
         int ground = Math.max(generator.surfaceY(x, z), generator.waterY(x, z));
         cubes.loadAround(new BlockPos(x, ground, z));
         // First somewhere dry and roomy, so nobody arrives in a one-block pit facing a wall, then dry
         // with headroom; swimming only where there is no dry ground (a start on a sea stack or islet).
         for (int pass = 0; pass < 4; pass++)
-            for (int radius = 0; radius <= 15; radius++) for (int dz = -radius; dz <= radius; dz++) for (int dx = -radius; dx <= radius; dx++) {
+            for (int radius = 0; radius <= reach; radius++) for (int dz = -radius; dz <= radius; dz++) for (int dx = -radius; dx <= radius; dx++) {
                 if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
                 boolean roomy = pass % 2 == 0, dry = generator.waterY(x + dx, z + dz) < generator.surfaceY(x + dx, z + dz);
                 if (pass < 2 && !dry) continue;

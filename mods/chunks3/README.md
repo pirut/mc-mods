@@ -15,7 +15,8 @@ out to the horizon (about 94 km at the default detail).
 
 - The ground's shape and the biomes are vanilla's for the seed. The cover (grass, sand, snow, trees, plants),
   the caves and the ores are Chunks3's own, made to look vanilla, so a Cubic world is not block for block the
-  vanilla world of the same seed. Vanilla structures generate through the engine as in other cubic dimensions.
+  vanilla world of the same seed. Vanilla structures generate through the engine as in other cubic dimensions (none with Generate Structures
+  off).
 - `-Dchunks3.cubic.bedrockY=<y>` moves the bedrock floor (default -4096) for new ground; set it before making a
   world and keep it, since ground made with another value will not match.
 - A Cubic world opened without Chunks3 is an empty world: its blocks live in Chunks3's cube files.

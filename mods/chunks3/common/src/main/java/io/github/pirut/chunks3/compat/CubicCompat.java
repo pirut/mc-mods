@@ -37,6 +37,7 @@ public final class CubicCompat {
 
     public static void logout() {
         inCubic = false;
+        io.github.pirut.chunks3.Cubic.dropClientAdopted();
         CubicMaps.leave();
         if (DH) dhSettled = DhCompat.update(false);
     }

@@ -24,8 +24,7 @@ abstract class CubicOpenWorldMixin {
     private Lifecycle chunks3$trustCubic(WorldData data, Operation<Lifecycle> original,
                                                LevelStorageSource.LevelStorageAccess storage, WorldStem stem, PackRepository packs, Runnable onFail) {
         var stems = stem.registries().compositeAccess().registryOrThrow(Registries.LEVEL_STEM);
-        boolean cubic = Cubic.dimensions().stream().anyMatch(key -> stems.containsKey(key.location()))
-                || stems.stream().anyMatch(level -> level.type().is(Cubic.CUBIC_TYPE));
+        boolean cubic = Cubic.cubicWorld(stems.entrySet());
         return cubic ? Lifecycle.stable() : original.call(data);
     }
 }

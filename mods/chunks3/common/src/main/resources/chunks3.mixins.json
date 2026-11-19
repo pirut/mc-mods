@@ -103,6 +103,7 @@
   ],
   "client": [
     "FrustumAccess",
+    "CubicCreateWorldMixin",
     "CubicPredictionMixin",
     "CubicDestroyProgressMixin",
     "CubicFarPlaneMixin",

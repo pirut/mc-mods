@@ -158,8 +158,8 @@ final class VanillaTerrain {
     /**
      * The highest cell of a column with its density above zero: from the guess, {@link #STRIDE} cells at a
      * time up or down until the density changes sign, then cell by cell within that stride. A few reads where
-     * a search from the top reads dozens; a ledge thinner than the stride over open air above the guess can be
-     * missed, as vanilla's own preliminary surface misses it. -1 where no cell is solid.
+     * a search from the top reads dozens, but it can stop on an overhang or ledge with land above it, so only
+     * far terrain uses it; the near ground reads from the top. -1 where no cell is solid.
      */
     private static int topCell(Cells column, int guess) {
         int solid, air;
@@ -193,12 +193,12 @@ final class VanillaTerrain {
         return slide(function.compute(new DensityFunction.SinglePointContext(x, y, z)), y);
     }
 
-    /** A cell corner column's densities, by cell, and its {@linkplain #topCell top solid cell} last; NaN until asked for. */
+    /** A cell corner column's densities, by cell; NaN until asked for. */
     private double[] corner(int x, int z) {
         long key = it.unimi.dsi.fastutil.HashCommon.mix(((long) x << 32) | (z & 0xFFFFFFFFL));
         double[] column = corners.get(key);
         if (column == null) {
-            double[] fresh = new double[CELLS + 2];
+            double[] fresh = new double[CELLS + 1];
             java.util.Arrays.fill(fresh, Double.NaN);
             if (corners.size() > 65536) corners.clear();
             column = corners.putIfAbsent(key, fresh);
@@ -213,24 +213,17 @@ final class VanillaTerrain {
         return value;
     }
 
-    private int cornerTop(int x, int z) {
-        double[] column = corner(x, z);
-        double top = column[CELLS + 1];
-        if (Double.isNaN(top)) column[CELLS + 1] = top = topCell(cell -> corner(column, x, z, cell), guessCell(x, z));
-        return (int) top;
-    }
-
     /**
      * The top solid block of vanilla's terrain in a block column, from the cells' corners interpolated as
      * vanilla does; vanilla's floor ({@link #MIN_Y}) where there is none, as its bottom slide fills it.
-     * Above the highest top cell of its four corners every corner is open, so the interpolation is too.
+     * Read down from the top of vanilla's terrain, so land over an overhang or a detached ledge is found
+     * (a search from a guess can stop on the ledge, putting sea where the land stands).
      */
     int height(int x, int z) {
         int x0 = Math.floorDiv(x, CELL_WIDTH) * CELL_WIDTH, z0 = Math.floorDiv(z, CELL_WIDTH) * CELL_WIDTH, x1 = x0 + CELL_WIDTH, z1 = z0 + CELL_WIDTH;
         double tx = (x - x0) / (double) CELL_WIDTH, tz = (z - z0) / (double) CELL_WIDTH;
-        int start = Math.max(Math.max(cornerTop(x0, z0), cornerTop(x1, z0)), Math.max(cornerTop(x0, z1), cornerTop(x1, z1)));
         double[] a = corner(x0, z0), b = corner(x1, z0), c = corner(x0, z1), d = corner(x1, z1);
-        for (int cell = Math.min(start, CELLS - 1); cell >= 0; cell--) {
+        for (int cell = CELLS - 1; cell >= 0; cell--) {
             double a0 = corner(a, x0, z0, cell), b0 = corner(b, x1, z0, cell), c0 = corner(c, x0, z1, cell), d0 = corner(d, x1, z1, cell);
             double a1 = corner(a, x0, z0, cell + 1), b1 = corner(b, x1, z0, cell + 1), c1 = corner(c, x0, z1, cell + 1), d1 = corner(d, x1, z1, cell + 1);
             // Interpolating values none of which is above zero gives none above zero: the whole cell is air.

@@ -517,7 +517,10 @@ public abstract class SurfaceGenerator implements CubeGenerator {
 
     @Override public LevelChunkSection generate(int cx, int cy, int cz) { return generate(cx, cy, cz, new ArrayList<>(), new ArrayList<>()); }
 
-    @Override public void attach(ServerLevel level) { vanilla = new VanillaStructures(level, new StructureHost(), seed); }
+    @Override public void attach(ServerLevel level) { if (structures(level)) vanilla = new VanillaStructures(level, new StructureHost(), seed); }
+
+    /** Whether vanilla's structures generate in a level; always, unless a generator says otherwise. */
+    protected boolean structures(ServerLevel level) { return true; }
 
     @Override public LevelChunkSection generate(int cx, int cy, int cz, List<CompoundTag> blockEntities, List<CompoundTag> entities) {
         LevelChunkSection section = terrain(cx, cy, cz, blockEntities, entities);

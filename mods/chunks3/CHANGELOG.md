@@ -13,7 +13,8 @@
   (`-Dchunks3.cubic.smoothLevel`). The idea of filling far levels straight from the seed comes from SeedGen by
   MobiusMeansBusiness; the code is Chunks3's own.
 - New players and players respawning with no bed land on the ground in a cubic overworld, within the spawn radius.
-- Opening a Cubic world on Fabric skips the experimental settings warning.
+- Creating a Cubic world skips the experimental settings warning when nothing else is experimental (both
+  loaders), and so does opening one on Fabric (NeoForge remembers the answer itself).
 - `SurfaceGenerator` subclasses can set a fixed rock datum, the bedrock floor and what fills caves at each height.
 
 ## 0.1.0-alpha.1

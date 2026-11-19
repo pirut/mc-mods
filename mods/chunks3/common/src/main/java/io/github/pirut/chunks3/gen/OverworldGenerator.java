@@ -58,6 +58,10 @@ public final class OverworldGenerator extends SurfaceGenerator {
     }
 
     @Override public String id() { return ID; }
+    /** As in a vanilla world: none when the world was made with "Generate Structures" off. */
+    @Override protected boolean structures(net.minecraft.server.level.ServerLevel level) {
+        return level.getServer().getWorldData().worldGenOptions().generateStructures();
+    }
     @Override public int seaLevel() { return SEA; }
     @Override protected int shoreLevel() { return SEA; }
     @Override protected int datum() { return 64; }

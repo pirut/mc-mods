@@ -52,4 +52,18 @@ class CubicAdoptTest {
         Cubic.adoptLevel(remote, false);
         assertFalse(Cubic.isCubic(remote));
     }
+
+    @Test void leavingADedicatedServerDropsWhatTheClientAdopted() {
+        ResourceKey<Level> remote = key("left_server"), local = key("integrated");
+        Cubic.adoptLevel(remote, true);
+        Cubic.dropClientAdopted();
+        assertFalse(Cubic.isCubic(remote), "the dedicated server's overworld is not cubic once the client has left");
+        // An integrated server's adoption is its own: leaving it as a client does not drop it mid-shutdown.
+        Cubic.adopt(List.of(local));
+        Cubic.adoptLevel(local, true);
+        Cubic.dropClientAdopted();
+        assertTrue(Cubic.isCubic(local));
+        Cubic.adopt(List.of());
+        assertFalse(Cubic.isCubic(local));
+    }
 }

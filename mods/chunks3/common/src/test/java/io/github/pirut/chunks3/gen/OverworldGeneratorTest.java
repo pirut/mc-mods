@@ -32,6 +32,18 @@ class OverworldGeneratorTest {
         assertTrue(high > 100, "some hills or mountains: highest " + high);
     }
 
+    /**
+     * The near ground is the true top of vanilla's terrain, over overhangs and detached ledges too: at this
+     * column of seed 12345 a search from a guess found a ledge at Y 49 under land standing at Y 152.
+     */
+    @Test void nearGroundIsTheTopOverLedges() {
+        OverworldGenerator g = generator();
+        int y = g.surfaceY(1248, 1600);
+        System.out.println("GEN_LEDGE surfaceY(1248, 1600) = " + y + ", water " + g.waterY(1248, 1600));
+        assertEquals(152, y);
+        assertTrue(g.waterY(1248, 1600) < y, "dry land, not sea");
+    }
+
     @Test void farHeightsFollowTheNearGround() {
         OverworldGenerator g = generator();
         for (int level : new int[]{3, OverworldGenerator.SMOOTH_LEVEL}) {
