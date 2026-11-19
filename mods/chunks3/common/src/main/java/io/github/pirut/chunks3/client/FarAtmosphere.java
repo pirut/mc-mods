@@ -16,8 +16,12 @@ final class FarAtmosphere {
      * only with {@code far.smooth} on and {@code far.smoothFrom} past it, and not with
      * {@code -Dchunks3.far.cruiseSmooth=false}.
      */
-    static final boolean CRUISES = !"false".equals(System.getProperty("chunks3.far.cruiseSmooth"))
-            && FarMesher.SMOOTH_FROM > FIRST_SMOOTH && FarMesher.SMOOTH_FROM <= Far.MAX_LEVEL;
+    static boolean cruises() {
+        int from = FarMesher.SMOOTH_FROM;
+        return CRUISE_SMOOTH && from > FIRST_SMOOTH && from <= Far.MAX_LEVEL;
+    }
+
+    private static final boolean CRUISE_SMOOTH = !"false".equals(System.getProperty("chunks3.far.cruiseSmooth"));
 
     private FarAtmosphere() {}
 

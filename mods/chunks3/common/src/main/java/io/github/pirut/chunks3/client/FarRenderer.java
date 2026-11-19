@@ -631,6 +631,8 @@ public final class FarRenderer {
         previewsAsked.defaultReturnValue(Integer.MIN_VALUE / 2);
         // Until the server says it makes them (see #scale), zoomed views stop at level 1.
         FarZoom.finest = Far.MIN_LEVEL;
+        // Smooth far ground in a Cubic world by default (see FarMesher#smoothFor).
+        FarMesher.SMOOTH_FROM = FarMesher.smoothFor(world.client().dimensionTypeRegistration().is(io.github.pirut.chunks3.Cubic.CUBIC_TYPE));
     }
 
     private long diagnosticReceivedColumns, diagnosticReceivedEstimatedBytes;
@@ -873,7 +875,7 @@ public final class FarRenderer {
         double blocksPerSecond = motion.horizontalDistance() * 20.0;
         double height = player.getY() - ground(player.getBlockX(), player.getBlockZ(), player.getY());
         finest = finest(height, blocksPerSecond, finest);
-        if (FarAtmosphere.CRUISES) cruise(height);
+        if (FarAtmosphere.cruises()) cruise(height);
         fadeLength.tick(blocksPerSecond);
         if (ticks % MASK_TICKS == 0) mask();
         for (Column column : staleMasks) if (column.drawnPick == pickSerial && column.due >= 0) due(column, Math.min(column.due, ticks + SETTLE_TICKS));

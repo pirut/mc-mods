@@ -83,9 +83,26 @@ public final class Chunks3Config {
         public Component getTranslatedName() { return Component.translatable(key("farSharpness." + name().toLowerCase(Locale.ROOT))); }
     }
 
+    /**
+     * Smooth far ground (see {@code FarMesher#smoothFor}): from 32-block voxels out the ground is drawn as a smooth
+     * surface rather than stairs of voxels; the four finer levels, which show what players built, keep their blocks.
+     * In Cubic worlds alone by default, on in every cubic dimension, or off. Read as a world's far terrain starts.
+     */
+    public enum FarSmooth {
+        CUBIC_WORLDS(null), ON("true"), OFF("false");
+
+        /** The value of {@code -Dchunks3.far.smooth} it stands for; none for the default. */
+        final String property;
+
+        FarSmooth(String property) { this.property = property; }
+
+        public Component getTranslatedName() { return Component.translatable(key("farSmooth." + name().toLowerCase(Locale.ROOT))); }
+    }
+
     /** The far terrain's reach (see {@link Far#detail()}): 4 is about 37 km, 11 (the default) about 94 km, 48 about 397 km. */
     public static final IntValue FAR_DETAIL = new IntValue("farDetail", Far.DEFAULT_DETAIL, 4, Far.MAX_DETAIL);
     public static final EnumValue<Sharpness> FAR_SHARPNESS = new EnumValue<>("farSharpness", Sharpness.FAST, Sharpness.class);
+    public static final EnumValue<FarSmooth> FAR_SMOOTH = new EnumValue<>("farSmooth", FarSmooth.CUBIC_WORLDS, FarSmooth.class);
     /** A frame rate to hold, or 0 for off: sharpness steps down while the game runs slower (see {@code FarGovernor}). */
     public static final IntValue FAR_TARGET_FPS = new IntValue("farTargetFps", 0, 0, 240);
     /** How many far levels are drawn with block textures; coarser ones use flat colours. Read at start. */
@@ -97,7 +114,7 @@ public final class Chunks3Config {
     private static final Properties COMMAND_LINE = new Properties();
 
     static {
-        for (String key : List.of("chunks3.far.detail", "chunks3.far.textured")) {
+        for (String key : List.of("chunks3.far.detail", "chunks3.far.textured", "chunks3.far.smooth")) {
             String value = System.getProperty(key);
             if (value != null) COMMAND_LINE.setProperty(key, value);
         }
@@ -128,6 +145,7 @@ public final class Chunks3Config {
         FAR_TEXTURED_LEVELS.set(readInt(saved, FAR_TEXTURED_LEVELS, COMMAND_LINE.getProperty("chunks3.far.textured")));
         FAR_TARGET_FPS.set(readInt(saved, FAR_TARGET_FPS, null));
         FAR_SHARPNESS.set(readEnum(saved, FAR_SHARPNESS));
+        FAR_SMOOTH.set(readEnum(saved, FAR_SMOOTH));
         for (EngineToggles.Toggle toggle : EngineToggles.ALL) {
             String value = saved.getProperty(toggle.key());
             EngineToggles.set(toggle, value == null ? toggle.defaultValue() : Boolean.parseBoolean(value.trim()));
@@ -158,6 +176,7 @@ public final class Chunks3Config {
         property("chunks3.far.detail", Integer.toString(FAR_DETAIL.get()));
         if (!COMMAND_LINE.containsKey("chunks3.far.detail")) Far.detail(FAR_DETAIL.get());
         property("chunks3.far.textured", Integer.toString(FAR_TEXTURED_LEVELS.get()));
+        smoothProperty();
         steps = Math.min(steps, mostSharpnessSteps());
         applySharpness();
         for (EngineToggles.Toggle toggle : EngineToggles.ALL) {
@@ -168,6 +187,13 @@ public final class Chunks3Config {
             if (value == toggle.defaultValue()) System.clearProperty(property);
             else System.setProperty(property, Boolean.toString(value));
         }
+    }
+
+    private static void smoothProperty() {
+        if (COMMAND_LINE.containsKey("chunks3.far.smooth")) return;
+        String value = FAR_SMOOTH.get().property;
+        if (value == null) System.clearProperty("chunks3.far.smooth");
+        else System.setProperty("chunks3.far.smooth", value);
     }
 
     private static void property(String key, String value) {
@@ -187,6 +213,8 @@ public final class Chunks3Config {
         lines.add(FAR_DETAIL.key + "=" + FAR_DETAIL.get());
         lines.add("# How close coarser far levels take over: fast, balanced, sharp, sharpest, extreme or ultra. Default fast. Applies at once.");
         lines.add(FAR_SHARPNESS.key + "=" + FAR_SHARPNESS.get().name().toLowerCase(Locale.ROOT));
+        lines.add("# Smooth far ground from 32-block voxels out: cubic_worlds (the default: Cubic worlds alone), on or off. Applies as a world opens.");
+        lines.add(FAR_SMOOTH.key + "=" + FAR_SMOOTH.get().name().toLowerCase(Locale.ROOT));
         lines.add("# A frame rate to hold (0 for off): far sharpness steps down while the game runs slower than this.");
         lines.add(FAR_TARGET_FPS.key + "=" + FAR_TARGET_FPS.get());
         lines.add("# How many far levels are drawn with block textures (0 to " + Far.MAX_LEVEL + "); coarser ones use flat colours. Applies at the next start.");
@@ -227,6 +255,13 @@ public final class Chunks3Config {
         save();
         steps = 0;
         applySharpness();
+    }
+
+    /** Sets smooth far ground from a screen, saved; applies as the next world's far terrain starts. */
+    public static void setSmooth(FarSmooth smooth) {
+        FAR_SMOOTH.set(smooth);
+        save();
+        smoothProperty();
     }
 
     /** Sets the frame rate to hold from a screen, saved. */

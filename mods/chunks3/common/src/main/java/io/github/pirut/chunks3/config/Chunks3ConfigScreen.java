@@ -25,8 +25,8 @@ public final class Chunks3ConfigScreen extends OptionsSubScreen {
 
     @Override protected void addOptions() {
         list.addBig(distance());
-        list.addSmall(sharpness(), targetFps());
-        list.addSmall(texturedLevels());
+        list.addSmall(sharpness(), smooth());
+        list.addSmall(targetFps(), texturedLevels());
         List<OptionInstance<?>> toggles = new ArrayList<>();
         for (EngineToggles.Toggle toggle : EngineToggles.ALL) toggles.add(toggle(toggle));
         list.addSmall(toggles.toArray(OptionInstance<?>[]::new));
@@ -45,6 +45,14 @@ public final class Chunks3ConfigScreen extends OptionsSubScreen {
                 (caption, value) -> CommonComponents.optionNameValue(caption, value.getTranslatedName()),
                 new OptionInstance.Enum<>(Arrays.asList(Chunks3Config.Sharpness.values()), Codec.STRING.xmap(Chunks3Config.Sharpness::valueOf, Enum::name)),
                 Chunks3Config.FAR_SHARPNESS.get(), Chunks3Config::setSharpness);
+    }
+
+    /** Smooth far ground: Cubic worlds alone (the default), every cubic dimension, or none. */
+    static OptionInstance<Chunks3Config.FarSmooth> smooth() {
+        return new OptionInstance<>("chunks3.configuration.farSmooth", value -> Tooltip.create(Component.translatable("chunks3.configuration.farSmooth.tooltip")),
+                (caption, value) -> CommonComponents.optionNameValue(caption, value.getTranslatedName()),
+                new OptionInstance.Enum<>(Arrays.asList(Chunks3Config.FarSmooth.values()), Codec.STRING.xmap(Chunks3Config.FarSmooth::valueOf, Enum::name)),
+                Chunks3Config.FAR_SMOOTH.get(), Chunks3Config::setSmooth);
     }
 
     /** The frame rate to hold, in steps of five: 0 is off. */

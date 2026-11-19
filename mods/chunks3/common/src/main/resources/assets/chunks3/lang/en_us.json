@@ -18,8 +18,8 @@
   "chunks3.configuration.farTexturedLevels": "Textured far levels",
   "chunks3.configuration.farSharpness.tooltip": "How sharp far terrain looks: how close coarser levels take over. Sharper keeps finer detail further out but takes longer to fill in and uses more memory. Fast (the default) fills in quickest. Extreme and Ultra are for very powerful computers: they cost several times as much as Balanced and can drop to single-digit frame rates even on fast ones, Ultra most of all. Changes at once, also while playing. Also on the pause menu in cubic worlds.",
   "chunks3.configuration.farTexturedLevels.tooltip": "How many far levels are drawn with block textures; further ones use flat colors. Default 8, all of them.",
-  "chunks3.configuration.farSmooth": "Experimental: smooth ground",
-  "chunks3.configuration.farSmooth.tooltip": "Draws far ground smooth instead of blocky, trees included. The four finest levels, which show your edits, keep their blocks, and so does a column with near cubes drawn within its height. Restart the game to apply.",
+  "chunks3.configuration.farSmooth": "Smooth far ground",
+  "chunks3.configuration.farSmooth.tooltip": "Draws the far ground smooth from 32-block voxels out, instead of as stairs of voxels; trees included. The four finer levels, which show what players built, keep their blocks. Cubic worlds have it by default; a dimension another mod adds keeps its blocks unless this is On. Applies as a world opens.",
   "chunks3.configuration.farBlockTextures": "Experimental: block textures",
   "chunks3.configuration.farBlockTextures.tooltip": "Far textures keep one block's size at every level instead of half a voxel's, fade to their average color as they shrink to a few pixels, and coarse voxels are lit by their slope. Not tried under a shader pack. Restart the game to apply.",
   "chunks3.configuration.farFade": "Fade between far levels",
@@ -59,5 +59,9 @@
   "chunks3.sodium.texturedLevels": "Textured levels",
   "chunks3.sodium.page": "Chunks3",
   "chunks3.sodium.allSettings": "Chunks3 settings screen",
-  "chunks3.sodium.allSettings.tooltip": "Opens Chunks3's own settings screen, with the same settings as this page."
+  "chunks3.sodium.allSettings.tooltip": "Opens Chunks3's own settings screen, with the same settings as this page.",
+  "chunks3.configuration.farSmooth.cubic_worlds": "Cubic worlds",
+  "chunks3.configuration.farSmooth.on": "On",
+  "chunks3.configuration.farSmooth.off": "Off",
+  "chunks3.sodium.smooth": "Smooth ground"
 }

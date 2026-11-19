@@ -40,6 +40,14 @@ public final class SodiumOptions implements ConfigEntryPoint {
                 .setImpact(OptionImpact.HIGH)
                 .setBinding(Chunks3Config::setSharpness, Chunks3Config.FAR_SHARPNESS::get)
                 .setStorageHandler(Chunks3Config::save);
+        var smooth = builder.createEnumOption(id("far_smooth"), Chunks3Config.FarSmooth.class)
+                .setName(Component.translatable("chunks3.sodium.smooth"))
+                .setTooltip(Component.translatable("chunks3.configuration.farSmooth.tooltip"))
+                .setElementNameProvider(Chunks3Config.FarSmooth::getTranslatedName)
+                .setDefaultValue(Chunks3Config.FAR_SMOOTH.defaultValue())
+                .setImpact(OptionImpact.LOW)
+                .setBinding(Chunks3Config::setSmooth, Chunks3Config.FAR_SMOOTH::get)
+                .setStorageHandler(Chunks3Config::save);
         var target = builder.createIntegerOption(id("far_target_fps"))
                 .setName(Component.translatable("chunks3.sodium.targetFps"))
                 .setTooltip(Component.translatable("chunks3.configuration.farTargetFps.tooltip"))
@@ -72,6 +80,7 @@ public final class SodiumOptions implements ConfigEntryPoint {
                                 .setName(Component.translatable("chunks3.configuration.group.farTerrain"))
                                 .addOption(detail)
                                 .addOption(sharpness)
+                                .addOption(smooth)
                                 .addOption(target)
                                 .addOption(textured), EngineToggles.Group.FAR_TERRAIN))
                         .addOptionGroup(toggles(builder, builder.createOptionGroup()

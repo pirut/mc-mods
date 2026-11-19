@@ -59,7 +59,6 @@ public final class EngineToggles {
 
     /** Every switch, in the order the screens list them. The defaults are the engine's own, as each class reads its property. */
     public static final List<Toggle> ALL = List.of(
-            experimental(Group.FAR_TERRAIN, "far.smooth"),
             experimental(Group.FAR_TERRAIN, "far.blockTextures"),
             on(Group.FAR_TERRAIN, "far.fade"),
             on(Group.FAR_TERRAIN, "far.zoom"),

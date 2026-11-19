@@ -19,10 +19,14 @@
 - **Settings, with a far distance slider.** Mods > Chunks3 > Config on NeoForge, Mod Menu's config button on
   Fabric (Mod Menu optional), and a Chunks3 page in Sodium's Video Settings when Sodium is installed: the far
   terrain's distance (37 to 397 km, default 94 km), its sharpness (Fast, as before, to Ultra), a frame rate to
-  hold, textured levels, and the engine's switches (smooth ground and block textures, experimental and off;
+  hold, smooth far ground, textured levels, and the engine's switches (one-block textures, experimental and off;
   fading between levels; zoom sharpening; cave and shadow culling; shader pack options). The distance and
   sharpness are also on the pause menu in cubic worlds, and apply at once while playing; the switches apply at
   the next start. Saved in `config/chunks3-client.properties`; `-Dchunks3.*` on the command line still wins.
+- **Smooth far ground in Cubic worlds.** From 32-block voxels out a Cubic world's far ground is drawn as a smooth
+  surface, not stairs of voxels; the four finer levels, which show what players built, keep their blocks. The
+  Smooth far ground setting (Cubic worlds, the default; On; Off) also turns it on or off everywhere; a dimension
+  another mod registers keeps its blocks unless it is On.
 - **Zooming in shows the ground's blocks.** A zoomed view (spyglass, zoom mod, narrow field of view) now spends
   its far columns on the spot it looks at first, down to a new far level of single blocks (the near ground's own
   heights, cover, trees and edits), then on the rest of the view: through a spyglass, single blocks 1 km off and

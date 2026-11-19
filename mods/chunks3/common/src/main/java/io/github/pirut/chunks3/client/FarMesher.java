@@ -163,14 +163,23 @@ final class FarMesher {
     static final boolean CACHE_COVERAGE = Boolean.parseBoolean(System.getProperty("chunks3.far.cacheCoverage", "true"));
 
     /**
-     * The first level whose ground is drawn smooth. Off by default, so far terrain stays blocks all
-     * the way out as Minecraft looks; on with {@code -Dchunks3.far.smooth=true}, from the level
-     * past {@link Far#EDIT_LEVELS}, or a later one with {@code -Dchunks3.far.smoothFrom}. The
-     * levels that show a player's edits always keep their blocks.
+     * The first level whose ground is drawn smooth in the world being played, or MAX_VALUE for none: the level
+     * past {@link Far#EDIT_LEVELS}, or a later one with {@code -Dchunks3.far.smoothFrom}, so the levels that
+     * show a player's edits always keep their blocks. Set as each world's far terrain starts (see {@link #smoothFor}).
      */
-    static final int SMOOTH_FROM = Boolean.getBoolean("chunks3.far.smooth")
-            ? Math.clamp(Integer.getInteger("chunks3.far.smoothFrom", Far.EDIT_LEVELS + 1), Far.EDIT_LEVELS + 1, Far.MAX_LEVEL)
-            : Integer.MAX_VALUE;
+    static volatile int SMOOTH_FROM = Integer.MAX_VALUE;
+
+    /**
+     * Smooth ground for a world: {@code -Dchunks3.far.smooth} (the Smooth far ground setting) {@code true} smooths
+     * every cubic dimension's far ground, {@code false} none, and when it is not set (the default) a Cubic world's
+     * alone. Its vanilla hills read as stairs of voxels from 32 blocks out, where a voxel spans more than their
+     * slope; a dimension another mod registers keeps the blocks it has always had unless the setting says so.
+     */
+    static int smoothFor(boolean cubicWorld) {
+        String smooth = System.getProperty("chunks3.far.smooth");
+        boolean on = smooth == null ? cubicWorld : Boolean.parseBoolean(smooth);
+        return on ? Math.clamp(Integer.getInteger("chunks3.far.smoothFrom", Far.EDIT_LEVELS + 1), Far.EDIT_LEVELS + 1, Far.MAX_LEVEL) : Integer.MAX_VALUE;
+    }
     /** Grid points along each side of a column's smooth ground: its two edges and the middles of its 16 voxel columns. */
     static final int POINTS = 18;
     /** The levels whose water is textured; further out it is flat-coloured and merged. */

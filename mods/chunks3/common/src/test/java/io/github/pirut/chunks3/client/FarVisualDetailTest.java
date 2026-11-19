@@ -40,9 +40,21 @@ class FarVisualDetailTest {
     }
 
     @Test void cruiseSmoothDoesNothingWithoutSmoothGround() {
-        // Far.smooth is off in tests, as by default: SMOOTH_FROM is Integer.MAX_VALUE and nothing cruises.
+        // No far terrain has started in tests: SMOOTH_FROM is Integer.MAX_VALUE and nothing cruises.
         assertEquals(Integer.MAX_VALUE, FarMesher.SMOOTH_FROM);
-        assertFalse(FarAtmosphere.CRUISES);
+        assertFalse(FarAtmosphere.cruises());
+    }
+
+    @Test void smoothGroundIsACubicWorldsByDefaultAndKeepsTheEditLevelsBlocks() {
+        if (System.getProperty("chunks3.far.smooth") != null) return;
+        assertEquals(Far.EDIT_LEVELS + 1, FarMesher.smoothFor(true), "a Cubic world's far ground is smooth from 32-block voxels out");
+        assertEquals(Integer.MAX_VALUE, FarMesher.smoothFor(false), "a mod's own dimension keeps its blocks");
+        System.setProperty("chunks3.far.smooth", "true");
+        try { assertEquals(Far.EDIT_LEVELS + 1, FarMesher.smoothFor(false)); }
+        finally { System.clearProperty("chunks3.far.smooth"); }
+        System.setProperty("chunks3.far.smooth", "false");
+        try { assertEquals(Integer.MAX_VALUE, FarMesher.smoothFor(true)); }
+        finally { System.clearProperty("chunks3.far.smooth"); }
     }
 
     @Test void neverCruisesUnderAShaderPack() {
