@@ -7,11 +7,10 @@
   registered one. A Cubic world's overworld is cubic: vanilla's terrain, sea and biomes at vanilla's heights from
   the seed, with the ground going on down past Y -64 to a bedrock floor at Y -4,096
   (`-Dchunks3.cubic.bedrockY`), and the far terrain out to the horizon.
-- Far terrain in a Cubic world reads vanilla's noise only as finely as each far level needs: one height and one
-  biome per far voxel, a short search down from vanilla's own depth estimate instead of a read at every height,
-  heights kept so one sample serves every coarser level, and no 3D noise from 32-block voxels out
-  (`-Dchunks3.cubic.smoothLevel`). The idea of filling far levels straight from the seed comes from SeedGen by
-  MobiusMeansBusiness; the code is Chunks3's own.
+- Cubic worlds show more continuous forests, steadier shores and better-preserved ridges at a distance.
+  Far terrain reuses height samples across neighbouring voxels and levels, with cheaper noise from 32-block
+  voxels out (`-Dchunks3.cubic.smoothLevel`). Filling far levels straight from the seed was inspired by
+  SeedGen by MobiusMeansBusiness.
 - New players and players respawning with no bed land on the ground in a cubic overworld, within the spawn radius.
 - Creating a Cubic world skips the experimental settings warning when nothing else is experimental (both
   loaders), and so does opening one on Fabric (NeoForge remembers the answer itself).
