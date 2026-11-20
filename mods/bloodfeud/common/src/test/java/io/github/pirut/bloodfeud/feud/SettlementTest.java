@@ -2,8 +2,11 @@ package io.github.pirut.bloodfeud.feud;
 
 import org.junit.jupiter.api.Test;
 
+import io.github.pirut.bloodfeud.game.camp.CampBlueprint;
+
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -100,14 +103,24 @@ class SettlementTest {
         assertFalse(p.ruined);
         f.drainNews();
 
-        // Losing a grunt drops count to 1 (< 2 camp threshold) -> Ruined Camp
+        // Hysteresis: losing 1 grunt leaves 1 grunt, which still sustains an intact Camp
         f.gruntKilled(p, 100);
         assertEquals(1, p.grunts);
-        assertTrue(p.ruined, "Camp with < 2 grunts should fall into ruin");
+        assertFalse(p.ruined, "Intact Camp with 1 grunt should not collapse on a single kill");
+
+        // Losing the last grunt drops below the Camp sustains floor -> Ruined Camp
+        f.gruntKilled(p, 120);
+        assertEquals(0, p.grunts);
+        assertTrue(p.ruined, "Camp with 0 grunts should fall into ruin");
         assertEquals("Ruined Camp", p.displayTierTitle(true));
         assertTrue(f.drainNews().stream().anyMatch(n -> n.kind() == News.Kind.SETTLED && n.text().contains("camp has fallen into ruin")));
 
-        // Recruiting back up to 2 grunts restores the camp
+        // Regrowing to 1 grunt stays ruined (no flapping below full Camp threshold of 2)
+        p.grunts = 1;
+        assertFalse(f.updateSettlement(p));
+        assertTrue(p.ruined);
+
+        // Recruiting back up to full threshold (2 grunts) restores the camp
         p.grunts = 2;
         assertTrue(f.updateSettlement(p));
         assertFalse(p.ruined);
@@ -276,5 +289,179 @@ class SettlementTest {
         Brute boss = f.rise("minecraft:zombie", Family.ROTTEN, OW, 0, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
         Pack p = f.form(boss, PLACES, 0, 22);
         assertEquals(16, p.grunts, "Pack grunt cap must respect maxGrunts() when campsEnabled=false");
+    }
+
+    @Test
+    void ruinedPackWithHigherPeakTierDoesNotRetriggerRuin() {
+        Pack p = new Pack(UUID.randomUUID(), Family.ILLAGERS, OW, "Ironford", 14, 0, 0, 0L);
+        p.tier = SettlementTier.TOWN;
+        p.builtTier = SettlementTier.CAMP.level;
+        p.ruined = true;
+        p.builtRuined = true;
+
+        assertEquals(Pack.AutoBuildAction.NONE, p.autoBuildAction(),
+                "Already-ruined built camp with higher peak tier must not loop re-queueing ruin jobs");
+
+        // Still queues ruin if not yet built as ruined
+        p.builtRuined = false;
+        assertEquals(Pack.AutoBuildAction.RUIN, p.autoBuildAction());
+
+        // Unbuilt ruined pack still queues initial ruined build
+        p.builtTier = 0;
+        p.builtRuined = true;
+        assertEquals(Pack.AutoBuildAction.RUIN, p.autoBuildAction());
+
+        // Once recovered, queues repair first, then tier expansion once repaired
+        p.builtTier = SettlementTier.CAMP.level;
+        p.ruined = false;
+        p.builtRuined = true;
+        assertEquals(Pack.AutoBuildAction.REPAIR, p.autoBuildAction());
+
+        p.builtRuined = false;
+        assertEquals(Pack.AutoBuildAction.BUILD, p.autoBuildAction());
+
+        p.builtTier = SettlementTier.TOWN.level;
+        assertEquals(Pack.AutoBuildAction.NONE, p.autoBuildAction());
+    }
+
+    @Test
+    void ruinSettlementMarksBannersDirtyOnKingAndFreedVassals() {
+        Feud f = new Feud(new Random(707));
+        Brute kingBoss = f.rise("minecraft:vindicator", Family.ILLAGERS, OW, 0, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        kingBoss.level = 10;
+        Pack king = f.form(kingBoss, PLACES, 0, 8);
+
+        Brute v1Boss = f.rise("minecraft:vindicator", Family.ILLAGERS, OW, 150, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        Pack v1 = f.form(v1Boss, PLACES, 0, 3);
+        Brute v2Boss = f.rise("minecraft:vindicator", Family.ILLAGERS, OW, -150, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        Pack v2 = f.form(v2Boss, PLACES, 0, 3);
+
+        f.swallow(king, v1);
+        f.swallow(king, v2);
+        king.bannersDirty = false;
+        v1.bannersDirty = false;
+        v2.bannersDirty = false;
+
+        f.ruinSettlement(king, SettlementTier.TOWN, 1000);
+        assertTrue(king.ruined);
+        assertNull(v1.liege);
+        assertNull(v2.liege);
+        assertTrue(king.bannersDirty, "ruinSettlement must mark former King bannersDirty");
+        assertTrue(v1.bannersDirty, "ruinSettlement must mark freed vassal 1 bannersDirty");
+        assertTrue(v2.bannersDirty, "ruinSettlement must mark freed vassal 2 bannersDirty");
+    }
+
+    @Test
+    void disbandingKingCarriesVassalsAndSkippedAreasIntoAbandonedSiteAndMergesMidBuild() {
+        Feud f = new Feud(new Random(808));
+        Brute kingBoss = f.rise("minecraft:vindicator", Family.ILLAGERS, OW, 0, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        kingBoss.level = 10;
+        Pack king = f.form(kingBoss, PLACES, 0, 8);
+        Brute vBoss = f.rise("minecraft:vindicator", Family.ILLAGERS, OW, 100, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        Pack vassal = f.form(vBoss, PLACES, 0, 3);
+        f.swallow(king, vassal);
+
+        king.siteSet = true;
+        king.siteX = 10;
+        king.siteY = 64;
+        king.siteZ = -20;
+        king.siteFacing = 1;
+        king.builtTier = SettlementTier.STRONGHOLD.level;
+        king.builtRuined = false;
+        long col1 = CampBlueprint.colKey(12, -5);
+        king.skippedZones.add("stronghold_forge");
+        king.skippedColumns.add(col1);
+
+        f.killedByPlayer(kingBoss.id, PLAYER, DeathCause.MELEE, true, 500);
+        assertNull(f.pack(king.id));
+        assertEquals(1, f.abandonedSites.size());
+        Feud.AbandonedSite site = f.abandonedSites.get(0);
+        assertEquals(SettlementTier.STRONGHOLD.level, site.builtTier());
+        assertEquals(List.of(vassal.color), site.vassalColors());
+        assertTrue(site.skippedZones().contains("stronghold_forge"));
+        assertTrue(site.skippedColumns().contains(col1));
+
+        // Mid-upgrade disband records the higher target tier and merges newly skipped areas cleanly
+        long col2 = CampBlueprint.colKey(20, 4);
+        f.recordAbandonedSite(new Feud.AbandonedSite(
+                king.id, king.family, king.color, king.dimension,
+                10, 64, -20, 1, SettlementTier.TOWN.level,
+                List.of(vassal.color), Set.of("town_forge"), Set.of(col2)));
+        assertEquals(1, f.abandonedSites.size());
+        Feud.AbandonedSite merged = f.abandonedSites.get(0);
+        assertEquals(SettlementTier.TOWN.level, merged.builtTier());
+        assertEquals(Set.of("stronghold_forge", "town_forge"), merged.skippedZones());
+        assertEquals(Set.of(col1, col2), merged.skippedColumns());
+    }
+
+    @Test
+    void commandSpawnedTownSurvivesSingleGruntKillAndHysteresisAppliesToAllTiers() {
+        // (a) Command-spawned Town gets +4 grunt buffer and survives killing 1 grunt
+        Feud f = new Feud(new Random(909));
+        Brute boss = f.rise("minecraft:zombie", Family.ROTTEN, OW, 0, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        Pack town = f.form(boss, PLACES, 0, 2);
+        f.upgradeSettlement(town, SettlementTier.TOWN, 100);
+        assertTrue(town.grunts >= SettlementTier.TOWN.minGrunts + 4,
+                "upgradeSettlement should grant +4 grunt buffer above minGrunts");
+        f.gruntKilled(town, 150);
+        assertFalse(town.ruined, "Killing 1 grunt in a command-spawned Town must not ruin it");
+
+        // (b) Beating a pack down below its sustains floor DOES ruin it across all 4 tiers,
+        // and (c) regrowing inside the hysteresis band stays ruined until the full threshold restores it
+        assertTrue(SettlementTier.CAMP.sustains(1, 1, 2, false));
+        assertFalse(SettlementTier.CAMP.sustains(1, 0, 10, false));
+
+        assertTrue(SettlementTier.OUTPOST.sustains(2, 4, 8, false));
+        assertFalse(SettlementTier.OUTPOST.sustains(2, 3, 12, false));
+
+        assertTrue(SettlementTier.STRONGHOLD.sustains(3, 9, 18, false));
+        assertFalse(SettlementTier.STRONGHOLD.sustains(3, 8, 24, false));
+
+        assertTrue(SettlementTier.TOWN.sustains(4, 14, 30, false));
+        assertFalse(SettlementTier.TOWN.sustains(4, 13, 37, false));
+        assertTrue(SettlementTier.TOWN.sustains(1, 1, 2, true));
+
+        // Verify full ruin -> hysteresis hold -> recovery cycle on Stronghold & Town
+        Feud f2 = new Feud(new Random(910));
+        Brute sBoss = f2.rise("minecraft:skeleton", Family.BONES, OW, 0, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        Pack strong = f2.form(sBoss, PLACES, 0, 2);
+        f2.upgradeSettlement(strong, SettlementTier.STRONGHOLD, 100);
+        // Trim levels so strength alone does not hold Stronghold
+        for (Brute m : f2.members(strong)) m.level = 1;
+        strong.grunts = 9; // above sustains floor (9), below full threshold (12)
+        assertFalse(f2.updateSettlement(strong));
+        assertFalse(strong.ruined, "Stronghold at sustains floor (9 grunts) stays intact");
+
+        f2.gruntKilled(strong, 200); // drops to 8 grunts -> below sustains floor
+        assertTrue(strong.ruined, "Stronghold below sustains floor must fall into ruin");
+
+        strong.grunts = 10; // back above sustains floor, still below full threshold (12)
+        assertFalse(f2.updateSettlement(strong));
+        assertTrue(strong.ruined, "Ruined Stronghold must not flap back to intact before full threshold");
+
+        strong.grunts = 12; // full threshold reached
+        assertTrue(f2.updateSettlement(strong));
+        assertFalse(strong.ruined, "Regrowing to full threshold restores ruined Stronghold");
+
+        // Town collapse below sustains floor and recovery at full threshold
+        Feud f3 = new Feud(new Random(911));
+        Brute tBoss = f3.rise("minecraft:zombie", Family.ROTTEN, OW, 0, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        Pack tPack = f3.form(tBoss, PLACES, 0, 2);
+        f3.upgradeSettlement(tPack, SettlementTier.TOWN, 100);
+        for (Brute m : f3.members(tPack)) m.level = 1;
+        tPack.grunts = 14;
+        assertFalse(f3.updateSettlement(tPack));
+        assertFalse(tPack.ruined, "Town at sustains floor (14 grunts) stays intact");
+
+        f3.gruntKilled(tPack, 200); // drops to 13 -> below sustains floor
+        assertTrue(tPack.ruined, "Town below sustains floor must fall into ruin");
+
+        tPack.grunts = 16; // inside hysteresis band (14..17)
+        assertFalse(f3.updateSettlement(tPack));
+        assertTrue(tPack.ruined, "Ruined Town must not flap back to intact below full threshold");
+
+        tPack.grunts = 18; // full Town threshold (5 living, 18 grunts)
+        assertTrue(f3.updateSettlement(tPack));
+        assertFalse(tPack.ruined, "Regrowing to full threshold restores ruined Town");
     }
 }

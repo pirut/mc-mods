@@ -345,15 +345,19 @@ public final class CampBlueprint {
         Plan intact = plan(packId, family, packColor, vassalColors, facing, 0, to);
         Plan builtIntact = (built == to) ? intact : plan(packId, family, packColor, vassalColors, facing, 0, built);
         long seed = ruinSeed(packId, family);
-        Map<Long, Placement> ruinedMap = computeRuinedMap(builtIntact, family, seed, true);
+        Map<Long, Placement> ruinedPreserve = computeRuinedMap(builtIntact, family, seed, true);
+        Map<Long, Placement> ruinedFresh = computeRuinedMap(builtIntact, family, seed, false);
         Map<Long, Placement> intactMap = indexNonFoundation(intact);
 
         List<Placement> all = new ArrayList<>(intact.placements.size() + 64);
         all.addAll(intact.placements);
-        for (Map.Entry<Long, Placement> e : ruinedMap.entrySet()) {
-            Placement rp = e.getValue();
-            if (rp.material != Material.AIR && !intactMap.containsKey(e.getKey())) {
-                all.add(new Placement(rp.rx, rp.ry, rp.rz, Material.AIR, Facing.NORTH, 0, PASS_FOUNDATION, rp.zone));
+        Set<Long> clearedKeys = new HashSet<>();
+        for (Map<Long, Placement> ruinedMap : List.of(ruinedPreserve, ruinedFresh)) {
+            for (Map.Entry<Long, Placement> e : ruinedMap.entrySet()) {
+                Placement rp = e.getValue();
+                if (rp.material != Material.AIR && !intactMap.containsKey(e.getKey()) && clearedKeys.add(e.getKey())) {
+                    all.add(new Placement(rp.rx, rp.ry, rp.rz, Material.AIR, Facing.NORTH, 0, PASS_FOUNDATION, rp.zone));
+                }
             }
         }
         all.sort(Comparator.comparingInt(Placement::pass)
@@ -390,12 +394,12 @@ public final class CampBlueprint {
             int r = roll100(seed, x, y, z, 1);
             int r2 = roll100(seed, x, y, z, 2);
 
-            Material out = switch (m) {
+            Material out = (preserveContainers && m.isContainer(family)) ? m : switch (m) {
                 case AIR, GROUND, FOUNDATION_COLUMN -> m;
                 case PATH, FLOOR -> r < 30 ? Material.RUIN_FLOOR : m;
                 case CAMPFIRE -> Material.CAMPFIRE_UNLIT;
                 case CHEST_CAMP, CHEST_OUTPOST, CHEST_STRONGHOLD, CHEST_TOWN, BARREL ->
-                        preserveContainers ? m : (r < 40 ? Material.AIR : m);
+                        r < 40 ? Material.AIR : m;
                 case THRONE, WORK_PROP_A, WORK_PROP_B, FAMILY_PROP_B ->
                         r < 35 ? Material.AIR : m;
                 case TORCH, WALL_TORCH, LANTERN, HANGING_LANTERN, FAMILY_LIGHT ->
@@ -540,15 +544,73 @@ public final class CampBlueprint {
         return spots;
     }
 
+    /** Packs a relative (rx, rz) column coordinate into a 64-bit key for skipped-column tracking. */
+    public static long colKey(int rx, int rz) {
+        return (((long) rx) << 32) | (rz & 0xFFFFFFFFL);
+    }
+
+    /** True if a placement in {@code zone} at relative {@code (rx, rz)} falls inside a previously skipped zone or column. */
+    public static boolean isSkipped(String zone, int rx, int rz, Set<String> skippedZones, Set<Long> skippedColumns) {
+        if (skippedZones != null && !skippedZones.isEmpty() && zone != null && skippedZones.contains(zone)) {
+            return true;
+        }
+        if (skippedColumns != null && !skippedColumns.isEmpty() && skippedColumns.contains(colKey(rx, rz))) {
+            return true;
+        }
+        return false;
+    }
+
+    /** Returns a copy of {@code plan} excluding placements and zones that belong to {@code skippedZones} or {@code skippedColumns}. */
+    public static Plan withoutSkipped(Plan plan, Set<String> skippedZones, Set<Long> skippedColumns) {
+        boolean hasZones = skippedZones != null && !skippedZones.isEmpty();
+        boolean hasCols = skippedColumns != null && !skippedColumns.isEmpty();
+        if (!hasZones && !hasCols) return plan;
+
+        List<Placement> kept = new ArrayList<>(plan.placements.size());
+        for (Placement p : plan.placements) {
+            if (!isSkipped(p.zone, p.rx, p.rz, skippedZones, skippedColumns)) {
+                kept.add(p);
+            }
+        }
+        Map<String, Box> keptZones = new LinkedHashMap<>();
+        for (Map.Entry<String, Box> e : plan.zones.entrySet()) {
+            if (!hasZones || !skippedZones.contains(e.getKey())) {
+                keptZones.put(e.getKey(), e.getValue());
+            }
+        }
+        return new Plan(List.copyOf(kept), Map.copyOf(keptZones), plan.bossSpot, plan.guardSpots,
+                plan.patrolSpots, plan.fromTier, plan.toTier, plan.facing);
+    }
+
     /** Relative positions placed (non-air) by tiers {@code 1..upToTier}, used to distinguish settlement blocks from player builds. */
     public static Set<Spot> ownedPositions(UUID packId, Family family, int packColor,
                                            List<Integer> vassalColors, int facing, int upToTier) {
+        return ownedPositions(packId, family, packColor, vassalColors, facing, upToTier, Set.of(), Set.of());
+    }
+
+    /**
+     * Relative positions placed (non-air) by tiers {@code 1..upToTier}, excluding any placements in
+     * {@code skippedZones} or {@code skippedColumns}. For Towns, also covers all vassal-banner post columns
+     * ({@code y = -1..2}) so unused or recently-freed vassal slots never self-block repair.
+     */
+    public static Set<Spot> ownedPositions(UUID packId, Family family, int packColor,
+                                           List<Integer> vassalColors, int facing, int upToTier,
+                                           Set<String> skippedZones, Set<Long> skippedColumns) {
         if (upToTier <= 0) return Set.of();
         Plan built = plan(packId, family, packColor, vassalColors, facing, 0, upToTier);
         Set<Spot> owned = new HashSet<>(built.placements.size());
         for (Placement p : built.placements) {
-            if (p.material != Material.AIR) {
+            if (p.material != Material.AIR && !isSkipped(p.zone, p.rx, p.rz, skippedZones, skippedColumns)) {
                 owned.add(new Spot(p.rx, p.ry, p.rz));
+            }
+        }
+        if (upToTier >= SettlementTier.TOWN.level
+                && (skippedZones == null || !skippedZones.contains("town_kings_hall"))) {
+            for (Spot s : vassalBannerSpots(facing)) {
+                if (skippedColumns != null && skippedColumns.contains(colKey(s.rx, s.rz))) continue;
+                for (int y = -1; y <= 2; y++) {
+                    owned.add(new Spot(s.rx, y, s.rz));
+                }
             }
         }
         return owned;
@@ -557,12 +619,29 @@ public final class CampBlueprint {
     /** Relative positions placed by either intact or ruined tiers {@code 1..upToTier}, used when repairing ruins. */
     public static Set<Spot> ownedRuinedPositions(UUID packId, Family family, int packColor,
                                                  List<Integer> vassalColors, int facing, int upToTier) {
+        return ownedRuinedPositions(packId, family, packColor, vassalColors, facing, upToTier, Set.of(), Set.of());
+    }
+
+    /**
+     * Relative positions placed by intact or ruined tiers {@code 1..upToTier} (unioning both fresh-ruin and
+     * container-preserving in-place ruin maps), excluding {@code skippedZones} and {@code skippedColumns}.
+     */
+    public static Set<Spot> ownedRuinedPositions(UUID packId, Family family, int packColor,
+                                                 List<Integer> vassalColors, int facing, int upToTier,
+                                                 Set<String> skippedZones, Set<Long> skippedColumns) {
         if (upToTier <= 0) return Set.of();
-        Set<Spot> owned = new HashSet<>(ownedPositions(packId, family, packColor, vassalColors, facing, upToTier));
-        Plan ruined = ruinPlan(packId, family, packColor, vassalColors, facing, upToTier);
-        for (Placement p : ruined.placements) {
-            if (p.material != Material.AIR) {
-                owned.add(new Spot(p.rx, p.ry, p.rz));
+        Set<Spot> owned = new HashSet<>(ownedPositions(packId, family, packColor, vassalColors, facing, upToTier,
+                skippedZones, skippedColumns));
+        int to = Math.max(1, Math.min(SettlementTier.TOWN.level, upToTier));
+        Plan intact = plan(packId, family, packColor, vassalColors, facing, 0, to);
+        long seed = ruinSeed(packId, family);
+        for (Map<Long, Placement> ruinedMap : List.of(
+                computeRuinedMap(intact, family, seed, true),
+                computeRuinedMap(intact, family, seed, false))) {
+            for (Placement p : ruinedMap.values()) {
+                if (p.material != Material.AIR && !isSkipped(p.zone, p.rx, p.rz, skippedZones, skippedColumns)) {
+                    owned.add(new Spot(p.rx, p.ry, p.rz));
+                }
             }
         }
         return owned;
@@ -571,11 +650,18 @@ public final class CampBlueprint {
     /** Relative positions of containers (chests, barrels, family container props) placed by tiers {@code 1..upToTier}. */
     public static Set<Spot> containerPositions(UUID packId, Family family, int packColor,
                                                List<Integer> vassalColors, int facing, int upToTier) {
+        return containerPositions(packId, family, packColor, vassalColors, facing, upToTier, Set.of(), Set.of());
+    }
+
+    /** Relative positions of containers placed by tiers {@code 1..upToTier}, excluding {@code skippedZones} and {@code skippedColumns}. */
+    public static Set<Spot> containerPositions(UUID packId, Family family, int packColor,
+                                               List<Integer> vassalColors, int facing, int upToTier,
+                                               Set<String> skippedZones, Set<Long> skippedColumns) {
         if (upToTier <= 0) return Set.of();
         Plan built = plan(packId, family, packColor, vassalColors, facing, 0, upToTier);
         Set<Spot> containers = new HashSet<>();
         for (Placement p : built.placements) {
-            if (p.material.isContainer(family)) {
+            if (p.material.isContainer(family) && !isSkipped(p.zone, p.rx, p.rz, skippedZones, skippedColumns)) {
                 containers.add(new Spot(p.rx, p.ry, p.rz));
             }
         }
@@ -1749,8 +1835,8 @@ public final class CampBlueprint {
         b.set(x1 - 1, 0, cz - 1, Material.CAMPFIRE);
         b.set(x1 - 2, 1, cz - 1, Material.IRON_BARS);
         for (int y = 2; y <= 7; y++) b.set(x1 - 1, y, cz - 1, Material.WALL_ACCENT);
-        b.set(x1 - 1, 0, cz + 2, Material.WORK_PROP_A);
-        b.set(x1 - 1, 0, cz + 3, Material.WORK_PROP_B);
+        b.set(x1 - 1, 0, cz + 1, Material.WORK_PROP_A);
+        b.set(x1 - 1, 0, cz + 2, Material.WORK_PROP_B);
         b.set(x1 - 1, 0, z0 + 1, Material.CHEST_OUTPOST, Facing.WEST);
         b.set(x1 - 1, 0, z1 - 1, Material.BARREL);
         b.set(x0 + 2, 3, cz, Material.HANGING_LANTERN);

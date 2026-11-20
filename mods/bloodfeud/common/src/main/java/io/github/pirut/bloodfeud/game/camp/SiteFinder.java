@@ -24,6 +24,7 @@ import net.minecraft.world.level.block.EnderChestBlock;
 import net.minecraft.world.level.block.HopperBlock;
 import net.minecraft.world.level.block.JukeboxBlock;
 import net.minecraft.world.level.block.LecternBlock;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -424,7 +425,7 @@ public final class SiteFinder {
 
     /** Strict allowlist of natural terrain/foliage and replaceable blocks safe for automatic builds to clear. */
     public static boolean isNaturalOrReplaceable(BlockState state) {
-        if (state.isAir() || !state.getFluidState().isEmpty() || state.canBeReplaced()) {
+        if (state.isAir() || state.getBlock() instanceof LiquidBlock || state.canBeReplaced()) {
             return true;
         }
         if (state.is(BlockTags.DIRT)

@@ -55,11 +55,44 @@ public final class Feud {
     private final Random random;
     /** Built settlement left behind by a disbanded pack, waiting to be crumbled into ruins in the world. */
     public record AbandonedSite(UUID packId, Family family, int color, String dimension,
-                                int siteX, int siteY, int siteZ, int siteFacing, int builtTier) {
+                                int siteX, int siteY, int siteZ, int siteFacing, int builtTier,
+                                List<Integer> vassalColors, Set<String> skippedZones, Set<Long> skippedColumns) {
+        public AbandonedSite {
+            vassalColors = vassalColors == null ? List.of() : List.copyOf(vassalColors);
+            skippedZones = skippedZones == null ? Set.of() : Set.copyOf(skippedZones);
+            skippedColumns = skippedColumns == null ? Set.of() : Set.copyOf(skippedColumns);
+        }
     }
 
     public static final int MAX_ABANDONED_SITES = 64;
     public final List<AbandonedSite> abandonedSites = new ArrayList<>();
+
+    /**
+     * Records or updates an abandoned built settlement waiting for automatic ruination.
+     * If an entry for the same pack already exists (e.g. from disbanding mid-upgrade), merges the higher tier,
+     * vassal banner colors, and skipped-zone sets.
+     */
+    public void recordAbandonedSite(AbandonedSite site) {
+        if (site == null || site.builtTier() <= 0) return;
+        for (int i = 0; i < abandonedSites.size(); i++) {
+            AbandonedSite cur = abandonedSites.get(i);
+            if (cur.packId().equals(site.packId())) {
+                int mergedTier = Math.max(cur.builtTier(), site.builtTier());
+                List<Integer> mergedVassals = !site.vassalColors().isEmpty() ? site.vassalColors() : cur.vassalColors();
+                Set<String> mergedZones = new HashSet<>(cur.skippedZones());
+                mergedZones.addAll(site.skippedZones());
+                Set<Long> mergedCols = new HashSet<>(cur.skippedColumns());
+                mergedCols.addAll(site.skippedColumns());
+                abandonedSites.set(i, new AbandonedSite(
+                        cur.packId(), cur.family(), cur.color(), cur.dimension(),
+                        cur.siteX(), cur.siteY(), cur.siteZ(), cur.siteFacing(), mergedTier,
+                        mergedVassals, mergedZones, mergedCols));
+                return;
+            }
+        }
+        abandonedSites.add(site);
+        while (abandonedSites.size() > MAX_ABANDONED_SITES) abandonedSites.remove(0);
+    }
 
     private final List<News> news = new ArrayList<>();
 
@@ -489,22 +522,25 @@ public final class Feud {
     public boolean updateSettlement(Pack p) {
         if (!campsEnabled || p == null) return false;
         if (p.tier == null || p.tier == SettlementTier.NONE) p.tier = SettlementTier.CAMP;
-        SettlementTier sustained = SettlementTier.forPack(members(p).size(), p.grunts, strength(p), !vassals(p).isEmpty());
+        int living = members(p).size();
+        double str = strength(p);
+        boolean king = !vassals(p).isEmpty();
+        SettlementTier sustained = SettlementTier.forPack(living, p.grunts, str, king);
         if (sustained.level > p.tier.level) {
             p.tier = sustained;
             p.ruined = false;
             tellAt(p, News.Kind.SETTLED, settlementNews(p, sustained));
             return true;
         }
-        if (sustained.level < p.tier.level) {
-            if (!p.ruined) {
+        if (!p.ruined) {
+            if (!p.tier.sustains(living, p.grunts, str, king)) {
                 p.ruined = true;
                 tellAt(p, News.Kind.SETTLED, ruinedNews(p, p.tier));
                 return true;
             }
             return false;
         }
-        if (p.ruined) {
+        if (sustained.level >= p.tier.level) {
             p.ruined = false;
             tellAt(p, News.Kind.SETTLED, rebuiltNews(p, p.tier));
             return true;
@@ -525,7 +561,7 @@ public final class Feud {
         if (raised) p.tier = target;
         p.ruined = false;
         int needBrutes = Math.min(MAX_MEMBERS, Math.max(1, p.tier.minBrutes));
-        int needGrunts = Math.min(MAX_GRUNTS, p.tier.minGrunts);
+        int needGrunts = Math.min(maxGrunts(), p.tier.minGrunts + 4);
         Brute boss = brute(p.boss);
         String type = boss != null ? boss.entityType : p.family.defaultType;
         while (members(p).size() < needBrutes) {
@@ -558,10 +594,20 @@ public final class Feud {
             target = (p.tier == null || p.tier == SettlementTier.NONE) ? SettlementTier.CAMP : p.tier;
         }
         if (p.tier == null || target.level > p.tier.level) p.tier = target;
-        for (Pack v : vassals(p)) v.liege = null;
+        List<Pack> detached = vassals(p);
+        if (!detached.isEmpty()) {
+            for (Pack v : detached) {
+                v.liege = null;
+                v.bannersDirty = true;
+            }
+            p.bannersDirty = true;
+        }
         p.grunts = p.tier == SettlementTier.CAMP ? 0 : Math.min(p.grunts, Math.max(1, p.tier.minGrunts / 4));
         // If high-level Brutes would still sustain the tier via raw strength, zero grunts so it stays ruined
-        if (SettlementTier.forPack(members(p).size(), p.grunts, strength(p), false).level >= p.tier.level) {
+        int living = members(p).size();
+        double str = strength(p);
+        if (p.tier.sustains(living, p.grunts, str, false)
+                || SettlementTier.forPack(living, p.grunts, str, false).level >= p.tier.level) {
             p.grunts = 0;
         }
         boolean newlyRuined = !p.ruined;
@@ -719,8 +765,10 @@ public final class Feud {
     /** The Boss is gone: the strongest Brute takes over, or the pack breaks up. A King's packs go their own way. */
     private void succession(Pack p, long now) {
         List<Pack> vassals = vassals(p);
+        List<Integer> prevVassalColors = new ArrayList<>(vassals.size());
         if (!vassals.isEmpty()) {
             for (Pack v : vassals) {
+                prevVassalColors.add(v.color);
                 v.liege = null;
                 v.bannersDirty = true;
             }
@@ -742,14 +790,20 @@ public final class Feud {
         if (old != null && !old.alive && !old.finalDeath) {
             return; // the pack waits a while for its Boss to come back
         }
-        disband(p, true);
+        disband(p, true, prevVassalColors);
     }
 
     private void disband(Pack p, boolean announce) {
+        List<Integer> vassalColors = new ArrayList<>();
+        for (Pack v : vassals(p)) vassalColors.add(v.color);
+        disband(p, announce, vassalColors);
+    }
+
+    private void disband(Pack p, boolean announce, List<Integer> vassalColors) {
         if (campsEnabled && p.siteSet && p.builtTier > 0 && !p.builtRuined) {
-            abandonedSites.add(new AbandonedSite(p.id, p.family, p.color, p.dimension,
-                    p.siteX, p.siteY, p.siteZ, p.siteFacing, p.builtTier));
-            while (abandonedSites.size() > MAX_ABANDONED_SITES) abandonedSites.remove(0);
+            recordAbandonedSite(new AbandonedSite(p.id, p.family, p.color, p.dimension,
+                    p.siteX, p.siteY, p.siteZ, p.siteFacing, p.builtTier,
+                    vassalColors, p.skippedZones, p.skippedColumns));
         }
         packs.remove(p.id);
         if (p.liege != null) {

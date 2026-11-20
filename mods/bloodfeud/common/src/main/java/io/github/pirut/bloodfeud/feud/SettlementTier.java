@@ -72,4 +72,23 @@ public enum SettlementTier {
         if (grunts >= 2) return CAMP;
         return NONE;
     }
+
+    /**
+     * Lower hysteresis floor for keeping an intact settlement of this tier from falling into ruin.
+     * Reaching or rebuilding a tier still requires the full {@link #forPack} threshold, preventing
+     * single-kill collapses and night-to-night ruin/repair oscillation.
+     */
+    public boolean sustains(int livingMembers, int grunts, double strength, boolean king) {
+        if (this == NONE) return true;
+        if (livingMembers <= 0) return false;
+        if (king) return true;
+        if (grunts <= 0) return false;
+        return switch (this) {
+            case NONE -> true;
+            case CAMP -> grunts >= 1;
+            case OUTPOST -> (livingMembers >= 2 && grunts >= 4) || strength >= 13;
+            case STRONGHOLD -> (livingMembers >= 3 && grunts >= 9) || strength >= 25;
+            case TOWN -> (livingMembers >= 4 && grunts >= 14) || strength >= 38;
+        };
+    }
 }

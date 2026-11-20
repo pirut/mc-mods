@@ -71,6 +71,20 @@ public final class FeudData extends SavedData {
             st.putInt("siteZ", s.siteZ());
             st.putInt("siteFacing", s.siteFacing());
             st.putInt("builtTier", s.builtTier());
+            if (!s.vassalColors().isEmpty()) {
+                int[] vc = new int[s.vassalColors().size()];
+                for (int i = 0; i < vc.length; i++) vc[i] = s.vassalColors().get(i);
+                st.putIntArray("vassalColors", vc);
+            }
+            if (!s.skippedZones().isEmpty()) {
+                st.put("skippedZones", strings(new ArrayList<>(s.skippedZones())));
+            }
+            if (!s.skippedColumns().isEmpty()) {
+                long[] cols = new long[s.skippedColumns().size()];
+                int idx = 0;
+                for (Long c : s.skippedColumns()) cols[idx++] = c;
+                st.putLongArray("skippedColumns", cols);
+            }
             abandoned.add(st);
         }
         tag.put("abandonedSites", abandoned);
@@ -162,6 +176,16 @@ public final class FeudData extends SavedData {
             t.putInt("siteFacing", p.siteFacing);
         }
         if (p.bannersDirty) t.putBoolean("bannersDirty", true);
+        if (p.buildStarted) t.putBoolean("buildStarted", true);
+        if (!p.skippedZones.isEmpty()) {
+            t.put("skippedZones", strings(new ArrayList<>(p.skippedZones)));
+        }
+        if (!p.skippedColumns.isEmpty()) {
+            long[] cols = new long[p.skippedColumns.size()];
+            int idx = 0;
+            for (Long c : p.skippedColumns) cols[idx++] = c;
+            t.putLongArray("skippedColumns", cols);
+        }
         ListTag met = new ListTag();
         for (UUID u : p.met) met.add(StringTag.valueOf(u.toString()));
         t.put("met", met);
@@ -268,6 +292,9 @@ public final class FeudData extends SavedData {
                         p.siteFacing = Math.floorMod(t.getInt("siteFacing"), 4);
                     }
                     p.bannersDirty = t.getBoolean("bannersDirty");
+                    p.buildStarted = t.getBoolean("buildStarted");
+                    for (Tag s : t.getList("skippedZones", Tag.TAG_STRING)) p.skippedZones.add(s.getAsString());
+                    for (long c : t.getLongArray("skippedColumns")) p.skippedColumns.add(c);
                 } else {
                     p.builtTier = 0;
                     p.siteSet = false;
@@ -293,10 +320,16 @@ public final class FeudData extends SavedData {
                 Family fam = Family.byKey(st.getString("family"));
                 if (fam == null || !st.hasUUID("id")) continue;
                 int bt = Math.max(1, Math.min(SettlementTier.TOWN.level, st.getInt("builtTier")));
+                List<Integer> vc = new ArrayList<>();
+                for (int c : st.getIntArray("vassalColors")) vc.add(c);
+                java.util.Set<String> sz = new java.util.HashSet<>();
+                for (Tag s : st.getList("skippedZones", Tag.TAG_STRING)) sz.add(s.getAsString());
+                java.util.Set<Long> sc = new java.util.HashSet<>();
+                for (long c : st.getLongArray("skippedColumns")) sc.add(c);
                 f.abandonedSites.add(new Feud.AbandonedSite(
                         st.getUUID("id"), fam, st.getInt("color"), st.getString("dimension"),
                         st.getInt("siteX"), st.getInt("siteY"), st.getInt("siteZ"),
-                        Math.floorMod(st.getInt("siteFacing"), 4), bt));
+                        Math.floorMod(st.getInt("siteFacing"), 4), bt, vc, sz, sc));
             } catch (RuntimeException e) {
                 BloodFeud.LOG.warn("Skipped an abandoned site that couldn't be read: {}", e.toString());
             }

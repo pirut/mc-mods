@@ -52,16 +52,22 @@ public final class CampBuilder {
     public record QueueResult(boolean queued, List<String> skippedZones, int skippedRingColumns) {
     }
 
+    /** Delegates to {@link Pack#autoBuildAction()} for automatic build/ruin/repair selection. */
+    static Pack.AutoBuildAction autoActionFor(Pack pack) {
+        return pack == null ? Pack.AutoBuildAction.NONE : pack.autoBuildAction();
+    }
+
     private enum Mode { BUILD, RUIN, REPAIR, ABANDONED_RUIN }
 
     private record FilterResult(List<CampBlueprint.Placement> ops, Set<String> blockedZones,
-                                List<String> skippedZones, int skippedRingColumns) {
+                                Set<Long> blockedRingCols, List<String> skippedZones, int skippedRingColumns) {
     }
 
     private static final class BuildJob {
         final UUID packId;
         final ResourceKey<Level> dimension;
         final BlockPos origin;
+        final int siteFacing;
         final Family family;
         final int packColor;
         final String packTitle;
@@ -69,22 +75,28 @@ public final class CampBuilder {
         final int toTier;
         final Mode mode;
         final boolean automatic;
+        final boolean protectPlayerBlocks;
         final List<CampBlueprint.Placement> ops;
         final Set<CampBlueprint.Spot> ownedPositions;
         final Set<CampBlueprint.Spot> ownedContainers;
+        final List<Integer> vassalColors;
+        final Set<String> skippedZones;
+        final Set<Long> skippedColumns;
         final long seed;
         final Runnable onComplete;
         int index;
         long lastProgressTick;
         boolean stalled;
 
-        BuildJob(UUID packId, ResourceKey<Level> dimension, BlockPos origin, Family family, int packColor,
-                 String packTitle, int fromTier, int toTier, Mode mode, boolean automatic,
+        BuildJob(UUID packId, ResourceKey<Level> dimension, BlockPos origin, int siteFacing, Family family, int packColor,
+                 String packTitle, int fromTier, int toTier, Mode mode, boolean automatic, boolean protectPlayerBlocks,
                  List<CampBlueprint.Placement> ops, Set<CampBlueprint.Spot> ownedPositions,
-                 Set<CampBlueprint.Spot> ownedContainers, long startTick, Runnable onComplete) {
+                 Set<CampBlueprint.Spot> ownedContainers, List<Integer> vassalColors,
+                 Set<String> skippedZones, Set<Long> skippedColumns, long startTick, Runnable onComplete) {
             this.packId = packId;
             this.dimension = dimension;
             this.origin = origin;
+            this.siteFacing = siteFacing;
             this.family = family;
             this.packColor = packColor;
             this.packTitle = packTitle;
@@ -92,9 +104,13 @@ public final class CampBuilder {
             this.toTier = toTier;
             this.mode = mode;
             this.automatic = automatic;
+            this.protectPlayerBlocks = protectPlayerBlocks;
             this.ops = ops;
             this.ownedPositions = ownedPositions;
             this.ownedContainers = ownedContainers;
+            this.vassalColors = vassalColors == null ? List.of() : List.copyOf(vassalColors);
+            this.skippedZones = skippedZones == null ? Set.of() : Set.copyOf(skippedZones);
+            this.skippedColumns = skippedColumns == null ? Set.of() : Set.copyOf(skippedColumns);
             this.seed = packId.getMostSignificantBits() ^ packId.getLeastSignificantBits();
             this.lastProgressTick = startTick;
             this.onComplete = onComplete;
@@ -149,20 +165,19 @@ public final class CampBuilder {
         for (Pack pack : feud.packs.values()) {
             if (autoCount >= MAX_CONCURRENT_AUTO) break;
             if (jobs.containsKey(pack.id)) continue;
-            SettlementTier target = pack.tier == null ? SettlementTier.CAMP : pack.tier;
-            if (target == SettlementTier.NONE) continue;
-
-            boolean needsTierBuild = pack.builtTier < target.level;
-            boolean needsRuin = pack.ruined && !pack.builtRuined;
-            boolean needsRepair = !pack.ruined && pack.builtRuined && pack.builtTier > 0;
-            if (!needsTierBuild && !needsRuin && !needsRepair) continue;
+            Pack.AutoBuildAction action = autoActionFor(pack);
+            if (action == Pack.AutoBuildAction.NONE) continue;
             if (pack.siteRetryAt > gameTime) continue;
 
+            SettlementTier target = pack.tier == null ? SettlementTier.CAMP : pack.tier;
             if (!playerNearby(server, pack.dimension, pack.campX(), pack.campZ())) continue;
             ServerLevel level = resolveLevel(server, pack.dimension);
             if (level == null) continue;
 
-            int radius = SettlementTier.byLevel(Math.max(pack.builtTier, target.level)).radius;
+            int checkTier = (action == Pack.AutoBuildAction.RUIN && pack.builtTier > 0)
+                    ? pack.builtTier
+                    : Math.max(pack.builtTier, target.level);
+            int radius = SettlementTier.byLevel(checkTier).radius;
             if (!pack.siteSet) {
                 SiteFinder.Site site = SiteFinder.findAutoSite(level, pack, target);
                 if (site == null) {
@@ -174,6 +189,9 @@ public final class CampBuilder {
                 pack.siteY = site.origin().getY();
                 pack.siteZ = site.origin().getZ();
                 pack.siteFacing = site.facing();
+                pack.buildStarted = false;
+                pack.skippedZones.clear();
+                pack.skippedColumns.clear();
                 data.changed();
             } else {
                 if (!SiteFinder.isFootprintLoaded(level, pack.siteX, pack.siteZ, radius)) {
@@ -182,29 +200,49 @@ public final class CampBuilder {
                 // Re-validate resumed initial builds (siteSet == true && builtTier == 0) before placing blocks
                 if (pack.builtTier == 0) {
                     BlockPos origin = new BlockPos(pack.siteX, pack.siteY, pack.siteZ);
-                    if (SiteFinder.hasPlayerBuild(level, origin, radius, Set.of(), Set.of())) {
-                        pack.siteSet = false;
+                    Set<CampBlueprint.Spot> resumeOwned = Set.of();
+                    Set<CampBlueprint.Spot> resumeContainers = Set.of();
+                    if (pack.buildStarted) {
+                        int displayColor = feud.top(pack).color;
+                        List<Integer> vassals = vassalColors(feud, pack);
+                        resumeOwned = pack.ruined
+                                ? CampBlueprint.ownedRuinedPositions(pack.id, pack.family, displayColor, vassals,
+                                        pack.siteFacing, target.level, pack.skippedZones, pack.skippedColumns)
+                                : CampBlueprint.ownedPositions(pack.id, pack.family, displayColor, vassals,
+                                        pack.siteFacing, target.level, pack.skippedZones, pack.skippedColumns);
+                        resumeContainers = CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassals,
+                                pack.siteFacing, target.level, pack.skippedZones, pack.skippedColumns);
+                    }
+                    if (SiteFinder.hasPlayerBuild(level, origin, radius, resumeOwned, resumeContainers)) {
                         pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
-                        data.changed();
+                        if (!pack.buildStarted) {
+                            pack.siteSet = false;
+                            pack.skippedZones.clear();
+                            pack.skippedColumns.clear();
+                            data.changed();
+                        }
                         continue;
                     }
                 }
             }
 
-            QueueResult res;
-            if (pack.ruined) {
-                res = queueRuin(level, feud, pack, pack.builtTier > 0 ? pack.builtTier : target.level, true, gameTime, null);
-            } else if (pack.builtRuined && pack.builtTier > 0) {
-                res = queueRepair(level, feud, pack, Math.max(pack.builtTier, target.level), true, gameTime, null);
-            } else {
-                res = queueBuild(level, feud, pack, pack.builtTier, target.level, true, gameTime, null);
-            }
+            QueueResult res = switch (action) {
+                case RUIN -> queueRuin(level, feud, pack, pack.builtTier > 0 ? pack.builtTier : target.level, true, gameTime, null);
+                case REPAIR -> queueRepair(level, feud, pack, Math.max(pack.builtTier, target.level), true, gameTime, null);
+                case BUILD -> queueBuild(level, feud, pack, pack.builtTier, target.level, true, gameTime, null);
+                case NONE -> new QueueResult(false, List.of(), 0);
+            };
             if (res.queued()) {
                 autoCount++;
+                if (!res.skippedZones().isEmpty() || res.skippedRingColumns() > 0) {
+                    data.changed();
+                }
             } else {
                 pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
-                if (pack.builtTier == 0) {
+                if (pack.builtTier == 0 && !pack.buildStarted) {
                     pack.siteSet = false;
+                    pack.skippedZones.clear();
+                    pack.skippedColumns.clear();
                     data.changed();
                 }
             }
@@ -221,15 +259,26 @@ public final class CampBuilder {
             if (!SiteFinder.isFootprintLoaded(level, site.siteX(), site.siteZ(), built.radius)) continue;
 
             CampBlueprint.Plan diff = CampBlueprint.ruinDiffPlan(site.packId(), site.family(), site.color(),
-                    List.of(), site.siteFacing(), site.builtTier());
+                    site.vassalColors(), site.siteFacing(), site.builtTier());
+            diff = CampBlueprint.withoutSkipped(diff, site.skippedZones(), site.skippedColumns());
             Set<CampBlueprint.Spot> ownedPositions = CampBlueprint.ownedPositions(
-                    site.packId(), site.family(), site.color(), List.of(), site.siteFacing(), site.builtTier());
+                    site.packId(), site.family(), site.color(), site.vassalColors(), site.siteFacing(),
+                    site.builtTier(), site.skippedZones(), site.skippedColumns());
             Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(
-                    site.packId(), site.family(), site.color(), List.of(), site.siteFacing(), site.builtTier());
+                    site.packId(), site.family(), site.color(), site.vassalColors(), site.siteFacing(),
+                    site.builtTier(), site.skippedZones(), site.skippedColumns());
             BlockPos origin = new BlockPos(site.siteX(), site.siteY(), site.siteZ());
-            BuildJob job = new BuildJob(site.packId(), level.dimension(), origin, site.family(), site.color(),
-                    "", site.builtTier(), site.builtTier(), Mode.ABANDONED_RUIN, true, diff.placements(),
-                    ownedPositions, ownedContainers, gameTime, null);
+            FilterResult filtered = filterPlan(level, origin, diff, null, ownedPositions, ownedContainers);
+            if (filtered.ops().isEmpty()) {
+                if (feud.abandonedSites.removeIf(s -> s.packId().equals(site.packId()))) {
+                    data.changed();
+                }
+                continue;
+            }
+            BuildJob job = new BuildJob(site.packId(), level.dimension(), origin, site.siteFacing(),
+                    site.family(), site.color(), "", site.builtTier(), site.builtTier(),
+                    Mode.ABANDONED_RUIN, true, true, filtered.ops(), ownedPositions, ownedContainers,
+                    site.vassalColors(), site.skippedZones(), site.skippedColumns(), gameTime, null);
             jobs.put(site.packId(), job);
             autoCount++;
         }
@@ -258,15 +307,20 @@ public final class CampBuilder {
         List<Integer> vassalColors = vassalColors(feud, pack);
         CampBlueprint.Plan plan = CampBlueprint.plan(pack.id, pack.family, displayColor, vassalColors,
                 pack.siteFacing, from, to);
+        plan = CampBlueprint.withoutSkipped(plan, pack.skippedZones, pack.skippedColumns);
 
+        int ownedTier = (from == 0 && pack.buildStarted) ? to : from;
         Set<CampBlueprint.Spot> ownedPositions = CampBlueprint.ownedPositions(
-                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, from);
+                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, ownedTier,
+                pack.skippedZones, pack.skippedColumns);
         Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(
-                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, from);
+                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, ownedTier,
+                pack.skippedZones, pack.skippedColumns);
 
-        FilterResult filtered = (automatic || from > 0)
-                ? filterPlan(level, origin, plan, from, ownedPositions, ownedContainers)
-                : new FilterResult(plan.placements(), Set.of(), List.of(), 0);
+        boolean shouldProtect = automatic || from > 0 || pack.buildStarted;
+        FilterResult filtered = shouldProtect
+                ? filterPlan(level, origin, plan, from > 0 ? Set.of() : null, ownedPositions, ownedContainers)
+                : new FilterResult(plan.placements(), Set.of(), Set.of(), List.of(), 0);
 
         if (automatic && from == 0 && filtered.blockedZones().contains("camp_core")) {
             return new QueueResult(false, filtered.skippedZones(), filtered.skippedRingColumns());
@@ -275,8 +329,12 @@ public final class CampBuilder {
             return new QueueResult(false, filtered.skippedZones(), filtered.skippedRingColumns());
         }
 
-        BuildJob job = new BuildJob(pack.id, level.dimension(), origin, pack.family, displayColor,
-                pack.title(), from, to, Mode.BUILD, automatic, filtered.ops(), ownedPositions, ownedContainers,
+        pack.skippedZones.addAll(filtered.blockedZones());
+        pack.skippedColumns.addAll(filtered.blockedRingCols());
+
+        BuildJob job = new BuildJob(pack.id, level.dimension(), origin, pack.siteFacing, pack.family, displayColor,
+                pack.title(), from, to, Mode.BUILD, automatic, shouldProtect, filtered.ops(),
+                ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
         jobs.put(pack.id, job);
         return new QueueResult(true, filtered.skippedZones(), filtered.skippedRingColumns());
@@ -299,34 +357,51 @@ public final class CampBuilder {
         CampBlueprint.Plan plan = inPlace
                 ? CampBlueprint.ruinDiffPlan(pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, pack.builtTier)
                 : CampBlueprint.ruinPlan(pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, to);
+        if (inPlace || pack.buildStarted) {
+            plan = CampBlueprint.withoutSkipped(plan, pack.skippedZones, pack.skippedColumns);
+        }
         int finalTier = inPlace ? pack.builtTier : to;
 
         Set<CampBlueprint.Spot> ownedPositions = inPlace
-                ? CampBlueprint.ownedPositions(pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, pack.builtTier)
-                : Set.of();
+                ? CampBlueprint.ownedPositions(pack.id, pack.family, displayColor, vassalColors,
+                        pack.siteFacing, pack.builtTier, pack.skippedZones, pack.skippedColumns)
+                : (pack.buildStarted
+                        ? CampBlueprint.ownedRuinedPositions(pack.id, pack.family, displayColor, vassalColors,
+                                pack.siteFacing, to, pack.skippedZones, pack.skippedColumns)
+                        : Set.of());
         Set<CampBlueprint.Spot> ownedContainers = inPlace
-                ? CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, pack.builtTier)
-                : Set.of();
+                ? CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassalColors,
+                        pack.siteFacing, pack.builtTier, pack.skippedZones, pack.skippedColumns)
+                : (pack.buildStarted
+                        ? CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassalColors,
+                                pack.siteFacing, to, pack.skippedZones, pack.skippedColumns)
+                        : Set.of());
 
         List<CampBlueprint.Placement> ops = plan.placements();
         List<String> skippedZones = List.of();
         int skippedRingColumns = 0;
-        if (!inPlace && automatic) {
-            FilterResult filtered = filterPlan(level, origin, plan, 0, ownedPositions, ownedContainers);
-            if (filtered.blockedZones().contains("camp_core") || filtered.ops().isEmpty()) {
+        boolean shouldProtect = inPlace || automatic || pack.buildStarted;
+        if (shouldProtect) {
+            FilterResult filtered = filterPlan(level, origin, plan, null, ownedPositions, ownedContainers);
+            if ((!inPlace && automatic && filtered.blockedZones().contains("camp_core")) || filtered.ops().isEmpty()) {
                 return new QueueResult(false, filtered.skippedZones(), filtered.skippedRingColumns());
             }
             ops = filtered.ops();
             skippedZones = filtered.skippedZones();
             skippedRingColumns = filtered.skippedRingColumns();
+            if (!inPlace) {
+                pack.skippedZones.addAll(filtered.blockedZones());
+                pack.skippedColumns.addAll(filtered.blockedRingCols());
+            }
         }
         if (ops.isEmpty()) {
             return new QueueResult(false, skippedZones, skippedRingColumns);
         }
 
-        BuildJob job = new BuildJob(pack.id, level.dimension(), origin, pack.family, displayColor,
-                pack.title(), pack.builtTier, finalTier, Mode.RUIN, automatic, ops,
-                ownedPositions, ownedContainers, gameTime, onComplete);
+        BuildJob job = new BuildJob(pack.id, level.dimension(), origin, pack.siteFacing, pack.family, displayColor,
+                pack.title(), pack.builtTier, finalTier, Mode.RUIN, automatic, shouldProtect, ops,
+                ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
+                gameTime, onComplete);
         jobs.put(pack.id, job);
         return new QueueResult(true, skippedZones, skippedRingColumns);
     }
@@ -344,27 +419,55 @@ public final class CampBuilder {
         List<Integer> vassalColors = vassalColors(feud, pack);
         CampBlueprint.Plan plan = CampBlueprint.repairPlan(pack.id, pack.family, displayColor, vassalColors,
                 pack.siteFacing, built, to);
+        plan = CampBlueprint.withoutSkipped(plan, pack.skippedZones, pack.skippedColumns);
 
-        Set<CampBlueprint.Spot> ownedPositions = new HashSet<>(CampBlueprint.ownedPositions(
-                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, built));
-        ownedPositions.addAll(CampBlueprint.ownedRuinedPositions(
-                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, built));
+        Set<CampBlueprint.Spot> ownedPositions = CampBlueprint.ownedRuinedPositions(
+                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, built,
+                pack.skippedZones, pack.skippedColumns);
         Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(
-                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, built);
+                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, built,
+                pack.skippedZones, pack.skippedColumns);
 
-        FilterResult filtered = filterPlan(level, origin, plan, built, ownedPositions, ownedContainers);
+        Set<String> existingZones = (to > built)
+                ? CampBlueprint.plan(pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, 0, built).zones().keySet()
+                : null;
+        FilterResult filtered = filterPlan(level, origin, plan, existingZones, ownedPositions, ownedContainers);
         if (filtered.ops().isEmpty()) {
             return new QueueResult(false, filtered.skippedZones(), filtered.skippedRingColumns());
         }
 
-        BuildJob job = new BuildJob(pack.id, level.dimension(), origin, pack.family, displayColor,
-                pack.title(), built, to, Mode.REPAIR, automatic, filtered.ops(), ownedPositions, ownedContainers,
+        if (to > built && existingZones != null) {
+            for (String z : filtered.blockedZones()) {
+                if (!existingZones.contains(z)) pack.skippedZones.add(z);
+            }
+            if (!filtered.blockedRingCols().isEmpty()) {
+                Set<Long> newRingCols = new HashSet<>();
+                for (CampBlueprint.Placement p : plan.placements()) {
+                    if (CampBlueprint.isRingZone(p.zone()) && !existingZones.contains(p.zone())) {
+                        newRingCols.add(colKey(p.rx(), p.rz()));
+                    }
+                }
+                for (Long col : filtered.blockedRingCols()) {
+                    if (newRingCols.contains(col)) pack.skippedColumns.add(col);
+                }
+            }
+        }
+
+        BuildJob job = new BuildJob(pack.id, level.dimension(), origin, pack.siteFacing, pack.family, displayColor,
+                pack.title(), built, to, Mode.REPAIR, automatic, true, filtered.ops(),
+                ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
         jobs.put(pack.id, job);
         return new QueueResult(true, filtered.skippedZones(), filtered.skippedRingColumns());
     }
 
-    private static FilterResult filterPlan(ServerLevel level, BlockPos origin, CampBlueprint.Plan plan, int from,
+    /**
+     * Filters player-blocked zones/ring columns (and optionally abyss-hanging new upgrade zones) out of {@code plan}.
+     * When {@code abyssExcludeZones} is non-null, any non-ring zone not in {@code abyssExcludeZones} is also
+     * rejected if it sits over lava or lacks solid ground within {@link #MAX_FOUNDATION_DEPTH}.
+     */
+    private static FilterResult filterPlan(ServerLevel level, BlockPos origin, CampBlueprint.Plan plan,
+                                           Set<String> abyssExcludeZones,
                                            Set<CampBlueprint.Spot> ownedPositions,
                                            Set<CampBlueprint.Spot> ownedContainers) {
         List<CampBlueprint.Placement> ops = plan.placements();
@@ -379,7 +482,8 @@ public final class CampBuilder {
             if (SiteFinder.isZoneBlockedByPlayer(level, origin, box, ownedPositions, ownedContainers)) {
                 blockedZones.add(zone);
                 skippedZones.add(zone);
-            } else if (from > 0 && SiteFinder.isZoneOverAbyss(level, origin, box, MAX_FOUNDATION_DEPTH)) {
+            } else if (abyssExcludeZones != null && !abyssExcludeZones.contains(zone)
+                    && SiteFinder.isZoneOverAbyss(level, origin, box, MAX_FOUNDATION_DEPTH)) {
                 blockedZones.add(zone);
                 skippedZones.add(zone + " (ravine/fluid)");
             }
@@ -433,7 +537,7 @@ public final class CampBuilder {
             }
             ops = filtered;
         }
-        return new FilterResult(ops, blockedZones, List.copyOf(skippedZones), skippedRingColumns);
+        return new FilterResult(ops, blockedZones, blockedRingCols, List.copyOf(skippedZones), skippedRingColumns);
     }
 
     /** Executes up to ~250 block operations per tick across queued build/ruin/repair jobs. */
@@ -447,6 +551,25 @@ public final class CampBuilder {
             if (job.automatic && !BloodFeud.config().buildCamps) {
                 it.remove();
                 continue;
+            }
+            Pack pack = null;
+            if (job.mode != Mode.ABANDONED_RUIN) {
+                pack = data.feud.pack(job.packId);
+                if (pack == null) {
+                    it.remove();
+                    if (job.index > 0 && job.mode != Mode.RUIN) {
+                        int coverTier = Math.max(job.fromTier, job.toTier);
+                        if (coverTier > 0) {
+                            data.feud.recordAbandonedSite(new Feud.AbandonedSite(
+                                    job.packId, job.family, job.packColor, job.dimension.location().toString(),
+                                    job.origin.getX(), job.origin.getY(), job.origin.getZ(),
+                                    job.siteFacing, coverTier,
+                                    job.vassalColors, job.skippedZones, job.skippedColumns));
+                            data.changed();
+                        }
+                    }
+                    continue;
+                }
             }
             ServerLevel level = server.getLevel(job.dimension);
             if (level == null) {
@@ -470,11 +593,18 @@ public final class CampBuilder {
             }
             if (opsDone > 0) {
                 job.lastProgressTick = gameTime;
+                if (pack != null && pack.builtTier == 0 && !pack.buildStarted) {
+                    pack.buildStarted = true;
+                    data.changed();
+                }
             }
             job.stalled = stalled;
             if (stalled) {
                 if (job.automatic && gameTime - job.lastProgressTick >= STALL_TIMEOUT_TICKS) {
                     it.remove();
+                    if (pack != null && pack.builtTier == 0) {
+                        pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
+                    }
                 }
                 continue;
             }
@@ -485,16 +615,16 @@ public final class CampBuilder {
                     if (data.feud.abandonedSites.removeIf(s -> s.packId().equals(job.packId))) {
                         data.changed();
                     }
-                } else {
-                    Pack pack = data.feud.pack(job.packId);
-                    if (pack != null) {
-                        pack.builtTier = Math.max(pack.builtTier, job.toTier);
-                        pack.builtRuined = (job.mode == Mode.RUIN);
-                        data.changed();
-                        if (job.onComplete != null) {
-                            if (completedCallbacks == null) completedCallbacks = new ArrayList<>();
-                            completedCallbacks.add(job.onComplete);
-                        }
+                } else if (pack != null) {
+                    pack.builtTier = Math.max(pack.builtTier, job.toTier);
+                    pack.builtRuined = (job.mode == Mode.RUIN);
+                    if (pack.builtTier > 0) {
+                        pack.buildStarted = false;
+                    }
+                    data.changed();
+                    if (job.onComplete != null) {
+                        if (completedCallbacks == null) completedCallbacks = new ArrayList<>();
+                        completedCallbacks.add(job.onComplete);
                     }
                 }
             }
@@ -521,7 +651,7 @@ public final class CampBuilder {
                 if (SiteFinder.isIndestructibleBlock(existing) || SiteFinder.isNonEmptyContainer(level, cur, existing)) {
                     break;
                 }
-                if (job.automatic && SiteFinder.isPlayerBlockAt(level, job.origin, cur, job.ownedPositions, job.ownedContainers)) {
+                if (job.protectPlayerBlocks && SiteFinder.isPlayerBlockAt(level, job.origin, cur, job.ownedPositions, job.ownedContainers)) {
                     break;
                 }
                 level.setBlock(cur, fill, Block.UPDATE_CLIENTS);
@@ -534,7 +664,7 @@ public final class CampBuilder {
         if (SiteFinder.isIndestructibleBlock(existing)) return;
         // NEVER overwrite any non-empty container (even on manual operator builds)
         if (SiteFinder.isNonEmptyContainer(level, pos, existing)) return;
-        if (job.automatic && SiteFinder.isPlayerBlockAt(level, job.origin, pos, job.ownedPositions, job.ownedContainers)) {
+        if (job.protectPlayerBlocks && SiteFinder.isPlayerBlockAt(level, job.origin, pos, job.ownedPositions, job.ownedContainers)) {
             return;
         }
 
@@ -599,6 +729,9 @@ public final class CampBuilder {
         BlockPos origin = new BlockPos(pack.siteX, pack.siteY, pack.siteZ);
 
         for (CampBlueprint.Placement op : banners) {
+            if (CampBlueprint.isSkipped(op.zone(), op.rx(), op.rz(), pack.skippedZones, pack.skippedColumns)) {
+                continue;
+            }
             BlockPos pos = origin.offset(op.rx(), op.ry(), op.rz());
             if (!level.hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) continue;
             BlockState existing = level.getBlockState(pos);
@@ -619,15 +752,32 @@ public final class CampBuilder {
             level.setBlock(pos, palette.resolve(op, displayColor), Block.UPDATE_ALL);
         }
 
-        // Clear stale vassal banners beyond current vassals.size() so freed/dead vassals don't linger
+        // Clear stale vassal banners (and matching FENCE/PILLAR posts) beyond current vassals.size()
         if (built == SettlementTier.TOWN) {
             List<CampBlueprint.Spot> allVassalSpots = CampBlueprint.vassalBannerSpots(pack.siteFacing);
             for (int i = vassals.size(); i < allVassalSpots.size(); i++) {
                 CampBlueprint.Spot s = allVassalSpots.get(i);
+                if (CampBlueprint.isSkipped("town_kings_hall", s.rx(), s.rz(), pack.skippedZones, pack.skippedColumns)) {
+                    continue;
+                }
                 BlockPos pos = origin.offset(s.rx(), s.ry(), s.rz());
                 if (!level.hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) continue;
+                boolean clearedBanner = false;
                 if (level.getBlockState(pos).getBlock() instanceof BannerBlock) {
                     level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+                    clearedBanner = true;
+                }
+                BlockPos below = pos.below();
+                BlockPos base = below.below();
+                boolean fenceMatches = level.getBlockState(below).is(palette.fence);
+                boolean pillarMatches = level.getBlockState(base).is(palette.pillar);
+                if (clearedBanner || (level.getBlockState(pos).isAir() && (fenceMatches || pillarMatches))) {
+                    if (fenceMatches) {
+                        level.setBlock(below, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+                    }
+                    if (pillarMatches && (fenceMatches || level.getBlockState(below).isAir())) {
+                        level.setBlock(base, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+                    }
                 }
             }
         }
@@ -635,7 +785,7 @@ public final class CampBuilder {
     }
 
     private static long colKey(int rx, int rz) {
-        return (((long) rx) << 32) | (rz & 0xFFFFFFFFL);
+        return CampBlueprint.colKey(rx, rz);
     }
 
     private static List<Integer> vassalColors(Feud feud, Pack pack) {

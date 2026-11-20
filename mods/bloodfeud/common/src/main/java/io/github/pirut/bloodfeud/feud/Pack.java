@@ -42,6 +42,12 @@ public final class Pack {
     public int siteSearchOffset;
     /** True when the pack's faction banners changed (swallowed, freed, king death) and need world re-bannering. */
     public boolean bannersDirty;
+    /** True once a tier-0 build/ruin job has placed at least one block at the site; cleared when builtTier > 0 or site resets. */
+    public boolean buildStarted;
+    /** Blueprint zones skipped during build/upgrade (player-blocked or abyss), excluded from ownership and future ruin/repair. */
+    public final Set<String> skippedZones = new HashSet<>();
+    /** Ring-zone relative columns (CampBlueprint.colKey(rx, rz)) skipped during build/upgrade, excluded from ownership and future ruin/repair. */
+    public final Set<Long> skippedColumns = new HashSet<>();
     /** Players who have seen it. */
     public final Set<UUID> met = new HashSet<>();
 
@@ -85,6 +91,25 @@ public final class Pack {
     public SettlementTier displayTier(boolean campsEnabled) {
         if (campsEnabled) return tier == null ? SettlementTier.CAMP : tier;
         return builtTier > 0 ? SettlementTier.byLevel(builtTier) : SettlementTier.NONE;
+    }
+
+    /** Automatic world-build action needed for this pack based on logical tier/ruin state vs built state. */
+    public enum AutoBuildAction { NONE, BUILD, RUIN, REPAIR }
+
+    /**
+     * Pure decision helper used by {@code CampBuilder.checkAutoBuilds} to pick the next automatic job.
+     * Never requests tier expansion while ruined, and never re-queues ruination once the built site is already ruined.
+     */
+    public AutoBuildAction autoBuildAction() {
+        SettlementTier target = tier == null ? SettlementTier.CAMP : tier;
+        if (target == SettlementTier.NONE) return AutoBuildAction.NONE;
+        boolean needsTierBuild = !ruined && builtTier < target.level;
+        boolean needsRuin = ruined && (builtTier == 0 || !builtRuined);
+        boolean needsRepair = !ruined && builtRuined && builtTier > 0;
+        if (needsRuin) return AutoBuildAction.RUIN;
+        if (needsRepair) return AutoBuildAction.REPAIR;
+        if (needsTierBuild) return AutoBuildAction.BUILD;
+        return AutoBuildAction.NONE;
     }
 
     /** Human-readable settlement label (e.g. "Town", "Ruined Town", "Ruined Camp"), or empty when omitted. */

@@ -451,12 +451,15 @@ public final class Live {
     /** Immediately re-banners any loaded built settlement marked dirty; unloaded ones retry via CampBuilder. */
     private void flushDirtyBanners() {
         Feud f = data.feud;
+        boolean dirtied = false;
         for (Pack pk : f.packs.values()) {
             if (!pk.bannersDirty || !pk.siteSet || pk.builtTier <= 0 || campBuilder.isBuilding(pk.id)) continue;
             if (campBuilder.rebanner(level(pk.dimension), f, pk)) {
                 pk.bannersDirty = false;
+                dirtied = true;
             }
         }
+        if (dirtied) data.changed();
     }
 
     /**
@@ -1452,7 +1455,12 @@ public final class Live {
                 ? campBuilder.queueRepair(level, f, pack, target.level, false, gameTime(), done)
                 : campBuilder.queueBuild(level, f, pack, currentBuilt, target.level, false, gameTime(), done);
         if (!qr.queued()) {
-            if (assignedSite) nearest.siteSet = false;
+            if (assignedSite) {
+                nearest.siteSet = false;
+                nearest.buildStarted = false;
+                nearest.skippedZones.clear();
+                nearest.skippedColumns.clear();
+            }
             return new UpgradeResult(false, "Cannot upgrade " + Feud.cap(pack.title())
                     + ": expansion area is blocked by player builds or terrain.", pack, target,
                     qr.skippedZones(), qr.skippedRingColumns());
@@ -1500,19 +1508,27 @@ public final class Live {
 
         UUID playerId = player.getUUID();
         Pack pack = nearest;
+        pack.met.add(playerId);
+        f.ruinSettlement(pack, target, now());
+        f.drainNews();
         CampBuilder.QueueResult qr = campBuilder.queueRuin(level, f, pack, target.level, false, gameTime(), () -> {
+            flushDirtyBanners();
             if (onDone != null) onDone.accept(pack);
         });
+        flushDirtyBanners();
         if (!qr.queued()) {
-            if (assignedSite) nearest.siteSet = false;
+            if (assignedSite) {
+                nearest.siteSet = false;
+                nearest.buildStarted = false;
+                nearest.skippedZones.clear();
+                nearest.skippedColumns.clear();
+            }
+            data.changed();
             return new UpgradeResult(false, "Cannot ruin " + Feud.cap(pack.title())
                     + ": area is blocked or nothing to ruin.", pack, target,
                     qr.skippedZones(), qr.skippedRingColumns());
         }
 
-        pack.met.add(playerId);
-        f.ruinSettlement(pack, target, now());
-        f.drainNews();
         data.changed();
         return new UpgradeResult(true, "", pack, target, qr.skippedZones(), qr.skippedRingColumns());
     }

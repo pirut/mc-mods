@@ -426,6 +426,148 @@ class CampBlueprintTest {
         assertFalse(CampBlueprint.isRingZone("camp_core"));
     }
 
+    @Test
+    void ownedRuinedPositionsCoversAllRuinDiffAndRuinPlanPlacementsAcrossAllTiersAndFamilies() {
+        UUID packId = new UUID(0x12345678L, 0x9ABCDEF0L);
+        SettlementTier[] tiers = {
+                SettlementTier.CAMP, SettlementTier.OUTPOST, SettlementTier.STRONGHOLD, SettlementTier.TOWN
+        };
+        for (Family family : Family.values()) {
+            int facing = family.ordinal() % 4;
+            List<Integer> vassals = List.of(1, 2, 3);
+            for (SettlementTier tier : tiers) {
+                Set<CampBlueprint.Spot> owned = CampBlueprint.ownedRuinedPositions(
+                        packId, family, 14, vassals, facing, tier.level);
+                CampBlueprint.Plan diff = CampBlueprint.ruinDiffPlan(
+                        packId, family, 14, vassals, facing, tier.level);
+                CampBlueprint.Plan fresh = CampBlueprint.ruinPlan(
+                        packId, family, 14, vassals, facing, tier.level);
+
+                for (CampBlueprint.Placement p : diff.placements()) {
+                    if (p.material() == CampBlueprint.Material.AIR) continue;
+                    CampBlueprint.Spot spot = new CampBlueprint.Spot(p.rx(), p.ry(), p.rz());
+                    assertTrue(owned.contains(spot),
+                            family + " " + tier + " ownedRuinedPositions missing ruinDiff placement " + p);
+                }
+                for (CampBlueprint.Placement p : fresh.placements()) {
+                    if (p.material() == CampBlueprint.Material.AIR) continue;
+                    CampBlueprint.Spot spot = new CampBlueprint.Spot(p.rx(), p.ry(), p.rz());
+                    assertTrue(owned.contains(spot),
+                            family + " " + tier + " ownedRuinedPositions missing ruinPlan placement " + p);
+                }
+            }
+        }
+    }
+
+    @Test
+    void ruinDiffPreservesFamilyContainerWorkProps() {
+        SettlementTier[] tiers = {
+                SettlementTier.CAMP, SettlementTier.OUTPOST, SettlementTier.STRONGHOLD, SettlementTier.TOWN
+        };
+        for (Family family : new Family[]{Family.SPIDERS, Family.WITCHES}) {
+            for (int seedIdx = 0; seedIdx < 5; seedIdx++) {
+                UUID packId = new UUID(1000L + seedIdx, 2000L + family.ordinal());
+                for (SettlementTier tier : tiers) {
+                    Set<CampBlueprint.Spot> containers = CampBlueprint.containerPositions(
+                            packId, family, 10, List.of(), seedIdx % 4, tier.level);
+                    assertFalse(containers.isEmpty());
+                    CampBlueprint.Plan diff = CampBlueprint.ruinDiffPlan(
+                            packId, family, 10, List.of(), seedIdx % 4, tier.level);
+                    for (CampBlueprint.Placement p : diff.placements()) {
+                        CampBlueprint.Spot spot = new CampBlueprint.Spot(p.rx(), p.ry(), p.rz());
+                        assertFalse(containers.contains(spot),
+                                family + " " + tier + " ruinDiff modified container spot " + p);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void townOwnedPositionsCoverAllVassalBannerColumnsEvenWithNoVassals() {
+        UUID packId = new UUID(777, 888);
+        for (int facing = 0; facing < 4; facing++) {
+            Set<CampBlueprint.Spot> owned = CampBlueprint.ownedPositions(
+                    packId, Family.ILLAGERS, 14, List.of(), facing, SettlementTier.TOWN.level);
+            List<CampBlueprint.Spot> spots = CampBlueprint.vassalBannerSpots(facing);
+            assertEquals(6, spots.size());
+            for (CampBlueprint.Spot s : spots) {
+                for (int y = -1; y <= 2; y++) {
+                    assertTrue(owned.contains(new CampBlueprint.Spot(s.rx(), y, s.rz())),
+                            "Town ownedPositions (no vassals, facing=" + facing + ") missing vassal column spot ("
+                                    + s.rx() + "," + y + "," + s.rz() + ")");
+                }
+            }
+
+            // Skipping town_kings_hall excludes vassal banner spots from ownership
+            Set<CampBlueprint.Spot> skippedHall = CampBlueprint.ownedPositions(
+                    packId, Family.ILLAGERS, 14, List.of(), facing, SettlementTier.TOWN.level,
+                    Set.of("town_kings_hall"), Set.of());
+            for (CampBlueprint.Spot s : spots) {
+                assertFalse(skippedHall.contains(new CampBlueprint.Spot(s.rx(), 2, s.rz())),
+                        "Skipped town_kings_hall must not claim vassal banner spots");
+            }
+        }
+    }
+
+    @Test
+    void skippedZonesAndColumnsExcludedFromOwnershipAndFilteredPlans() {
+        UUID packId = new UUID(314, 159);
+        CampBlueprint.Plan town = CampBlueprint.plan(packId, Family.ROTTEN, 14, List.of(1), 0, 0, SettlementTier.TOWN.level);
+        CampBlueprint.Placement sampleRing = town.placements().stream()
+                .filter(p -> "outpost_palisade".equals(p.zone()) && p.material() != CampBlueprint.Material.AIR)
+                .findFirst().orElseThrow();
+        long skippedCol = CampBlueprint.colKey(sampleRing.rx(), sampleRing.rz());
+        Set<String> skippedZones = Set.of("town_forge");
+        Set<Long> skippedCols = Set.of(skippedCol);
+
+        Set<CampBlueprint.Spot> owned = CampBlueprint.ownedPositions(
+                packId, Family.ROTTEN, 14, List.of(1), 0, SettlementTier.TOWN.level, skippedZones, skippedCols);
+        Set<CampBlueprint.Spot> ownedRuined = CampBlueprint.ownedRuinedPositions(
+                packId, Family.ROTTEN, 14, List.of(1), 0, SettlementTier.TOWN.level, skippedZones, skippedCols);
+        Set<CampBlueprint.Spot> containers = CampBlueprint.containerPositions(
+                packId, Family.ROTTEN, 14, List.of(1), 0, SettlementTier.TOWN.level, skippedZones, skippedCols);
+
+        for (CampBlueprint.Placement p : town.placements()) {
+            boolean shouldSkip = "town_forge".equals(p.zone())
+                    || CampBlueprint.colKey(p.rx(), p.rz()) == skippedCol;
+            if (!shouldSkip || p.material() == CampBlueprint.Material.AIR) continue;
+            CampBlueprint.Spot s = new CampBlueprint.Spot(p.rx(), p.ry(), p.rz());
+            assertFalse(owned.contains(s), "Skipped placement must not be in ownedPositions: " + p);
+            assertFalse(ownedRuined.contains(s), "Skipped placement must not be in ownedRuinedPositions: " + p);
+            assertFalse(containers.contains(s), "Skipped placement must not be in containerPositions: " + p);
+        }
+
+        CampBlueprint.Plan filteredDiff = CampBlueprint.withoutSkipped(
+                CampBlueprint.ruinDiffPlan(packId, Family.ROTTEN, 14, List.of(1), 0, SettlementTier.TOWN.level),
+                skippedZones, skippedCols);
+        assertFalse(filteredDiff.zones().containsKey("town_forge"));
+        assertTrue(filteredDiff.placements().stream().noneMatch(p ->
+                "town_forge".equals(p.zone()) || CampBlueprint.colKey(p.rx(), p.rz()) == skippedCol));
+
+        CampBlueprint.Plan filteredRepair = CampBlueprint.withoutSkipped(
+                CampBlueprint.repairPlan(packId, Family.ROTTEN, 14, List.of(1), 0, SettlementTier.TOWN.level, SettlementTier.TOWN.level),
+                skippedZones, skippedCols);
+        assertFalse(filteredRepair.zones().containsKey("town_forge"));
+        assertTrue(filteredRepair.placements().stream().noneMatch(p ->
+                "town_forge".equals(p.zone()) || CampBlueprint.colKey(p.rx(), p.rz()) == skippedCol));
+    }
+
+    @Test
+    void townForgeFurnitureHasNoOverlappingCoordinates() {
+        UUID packId = new UUID(42, 99);
+        CampBlueprint.Plan town = CampBlueprint.plan(packId, Family.WITCHES, 10, List.of(), 0, 0, SettlementTier.TOWN.level);
+        List<CampBlueprint.Placement> forgeOps = town.placements().stream()
+                .filter(p -> "town_forge".equals(p.zone()))
+                .toList();
+        assertTrue(forgeOps.stream().anyMatch(p -> p.material() == CampBlueprint.Material.CAMPFIRE));
+        assertTrue(forgeOps.stream().anyMatch(p -> p.material() == CampBlueprint.Material.WORK_PROP_A));
+        assertTrue(forgeOps.stream().anyMatch(p -> p.material() == CampBlueprint.Material.WORK_PROP_B),
+                "town_forge WORK_PROP_B must not be overwritten by BARREL");
+        assertTrue(forgeOps.stream().anyMatch(p -> p.material() == CampBlueprint.Material.CHEST_OUTPOST));
+        assertTrue(forgeOps.stream().anyMatch(p -> p.material() == CampBlueprint.Material.BARREL));
+    }
+
     private static boolean boxesOverlapXZ(int ax0, int ax1, int az0, int az1, int bx0, int bx1, int bz0, int bz1) {
         return ax0 <= bx1 && ax1 >= bx0 && az0 <= bz1 && az1 >= bz0;
     }
