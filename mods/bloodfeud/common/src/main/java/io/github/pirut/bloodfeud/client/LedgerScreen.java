@@ -188,7 +188,8 @@ final class LedgerScreen extends Screen {
         if (tab == 1) {
             for (PackV p : packs()) {
                 BruteV boss = view.brutes.get(p.boss);
-                String sub = (boss != null ? boss.name + " · " : "") + where(p.dim, p.x, p.z);
+                String tierTag = p.tierTitle.isEmpty() ? "" : p.tierTitle + " · ";
+                String sub = tierTag + (boss != null ? boss.name + " · " : "") + where(p.dim, p.x, p.z);
                 out.add(new Entry(p.id, banner(p.color), p.name, p.liege.isEmpty() && p.vassals > 0 ? KING : INK, sub, FADED));
             }
         } else {
@@ -355,7 +356,8 @@ final class LedgerScreen extends Screen {
             for (PackV p : strong.subList(0, Math.min(4, strong.size()))) {
                 BruteV boss = view.brutes.get(p.boss);
                 b.iconRow(banner(p.color), p.name, p.liege.isEmpty() && p.vassals > 0 ? KING : LINK, "pack:" + p.id,
-                        (boss != null ? (p.vassals > 0 ? "King " : "Boss ") + boss.name + " · " : "")
+                        (p.tierTitle.isEmpty() ? "" : p.tierTitle + " · ")
+                                + (boss != null ? (p.vassals > 0 ? "King " : "Boss ") + boss.name + " · " : "")
                                 + plural(p.members.size(), "Brute") + ", " + plural(p.grunts, "grunt") + " · " + where(p.dim, p.x, p.z), FADED);
                 b.bar("strength", (float) (p.strength / Math.max(0.01, top)), 0xFFB2121F, 20);
                 b.gap(3);
@@ -397,7 +399,7 @@ final class LedgerScreen extends Screen {
         DocBuilder b = new DocBuilder(width, 44, 40);
         boolean king = p.liege.isEmpty() && p.vassals > 0;
         b.bold(p.name, king ? KING : INK);
-        b.text(p.familyTitle + " · formed day " + p.formed, FADED);
+        b.text(p.familyTitle + (p.tierTitle.isEmpty() ? "" : " · " + p.tierTitle) + " · formed day " + p.formed, FADED);
         b.text("Home: " + p.place + ", " + where(p.dim, p.x, p.z) + " (" + p.x + ", " + p.z + ")", INK);
         if (!p.liege.isEmpty()) {
             PackV top = view.packs.get(p.liege);
@@ -690,16 +692,33 @@ final class LedgerScreen extends Screen {
         for (PackV p : order) {
             if (!p.dim.equals(view.meDim)) continue;
             int sx = sx(p.x, cx), sy = sy(p.z, cy);
-            sprite(g, new MapBanner(BlockPos.ZERO, DyeColor.byId(p.color), Optional.empty()).getDecoration(), sx, sy, 0, 14);
-            int nw = font.width(p.name);
+            boolean isTown = "town".equals(p.tier);
+            boolean isStronghold = "stronghold".equals(p.tier);
+            if (isTown) {
+                // Fortified golden double wall outline for intact towns, cracked ash-gray outline for ruined towns
+                g.fill(sx - 10, sy - 10, sx + 10, sy + 10, p.ruined ? 0xAA6A6662 : 0xCCD9A441);
+                g.fill(sx - 8, sy - 8, sx + 8, sy + 8, p.ruined ? 0xAA3A3634 : 0xCC2B1A12);
+                g.fill(sx - 7, sy - 7, sx + 7, sy + 7, 0x60EDE2C8);
+            } else if (isStronghold) {
+                // Stone wall frame for strongholds (dimmed when ruined)
+                g.fill(sx - 9, sy - 9, sx + 9, sy + 9, p.ruined ? 0x806A6662 : 0xB04A4440);
+                g.fill(sx - 7, sy - 7, sx + 7, sy + 7, 0x60EDE2C8);
+            } else if (p.ruined && !p.tierTitle.isEmpty()) {
+                // Subtle ash border for ruined camps and outposts
+                g.fill(sx - 8, sy - 8, sx + 8, sy + 8, 0x706A6662);
+                g.fill(sx - 7, sy - 7, sx + 7, sy + 7, 0x50EDE2C8);
+            }
+            sprite(g, new MapBanner(BlockPos.ZERO, DyeColor.byId(p.color), Optional.empty()).getDecoration(), sx, sy, 0, isTown ? 16 : 14);
+            String mapLabel = (isTown && !p.ruined) ? "★ " + p.name : p.name;
+            int nw = font.width(mapLabel);
             boolean crowded = false;
             for (int[] l : labels) {
                 if (Math.abs(l[0] - sx) < (l[2] + nw) / 2 + 4 && Math.abs(l[1] - sy) < 14) crowded = true;
             }
             if (!crowded) {
                 labels.add(new int[]{sx, sy, nw});
-                g.fill(sx - nw / 2 - 2, sy + 8, sx + nw / 2 + 2, sy + 18, 0xB0EDE2C8);
-                g.drawString(font, p.name, sx - nw / 2, sy + 9, p.liege.isEmpty() && p.vassals > 0 ? KING : INK, false);
+                g.fill(sx - nw / 2 - 2, sy + 9, sx + nw / 2 + 2, sy + 19, 0xB0EDE2C8);
+                g.drawString(font, mapLabel, sx - nw / 2, sy + 10, p.liege.isEmpty() && p.vassals > 0 ? KING : INK, false);
             }
             BruteV boss = view.brutes.get(p.boss);
             Marker m = new Marker();
@@ -707,7 +726,8 @@ final class LedgerScreen extends Screen {
             m.sx = sx;
             m.sy = sy;
             m.tip = new ArrayList<>();
-            m.tip.add(Component.literal(p.name).withStyle(s -> s.withBold(true).withColor(DyeColor.byId(p.color).getTextColor())));
+            m.tip.add(Component.literal(p.name + (p.tierTitle.isEmpty() ? "" : " (" + p.tierTitle + ")"))
+                    .withStyle(s -> s.withBold(true).withColor(DyeColor.byId(p.color).getTextColor())));
             m.tip.add(Component.literal(p.familyTitle + ", home at " + p.place).withStyle(s -> s.withColor(0xAAAAAA)));
             if (boss != null) m.tip.add(Component.literal((p.vassals > 0 ? "King " : "Boss ") + boss.full + ", Lv " + boss.level));
             m.tip.add(Component.literal(plural(p.members.size(), "Brute") + ", " + plural(p.grunts, "grunt")));

@@ -9,6 +9,7 @@ import io.github.pirut.bloodfeud.feud.Memory;
 import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.Relation;
 import io.github.pirut.bloodfeud.feud.Scar;
+import io.github.pirut.bloodfeud.feud.SettlementTier;
 import io.github.pirut.bloodfeud.feud.Trait;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -58,6 +59,35 @@ public final class FeudData extends SavedData {
         ListTag packs = new ListTag();
         for (Pack p : feud.packs.values()) packs.add(savePack(p));
         tag.put("packs", packs);
+        ListTag abandoned = new ListTag();
+        for (Feud.AbandonedSite s : feud.abandonedSites) {
+            CompoundTag st = new CompoundTag();
+            st.putUUID("id", s.packId());
+            st.putString("family", s.family().key());
+            st.putInt("color", s.color());
+            st.putString("dimension", s.dimension());
+            st.putInt("siteX", s.siteX());
+            st.putInt("siteY", s.siteY());
+            st.putInt("siteZ", s.siteZ());
+            st.putInt("siteFacing", s.siteFacing());
+            st.putInt("builtTier", s.builtTier());
+            if (!s.vassalColors().isEmpty()) {
+                int[] vc = new int[s.vassalColors().size()];
+                for (int i = 0; i < vc.length; i++) vc[i] = s.vassalColors().get(i);
+                st.putIntArray("vassalColors", vc);
+            }
+            if (!s.skippedZones().isEmpty()) {
+                st.put("skippedZones", strings(new ArrayList<>(s.skippedZones())));
+            }
+            if (!s.skippedColumns().isEmpty()) {
+                long[] cols = new long[s.skippedColumns().size()];
+                int idx = 0;
+                for (Long c : s.skippedColumns()) cols[idx++] = c;
+                st.putLongArray("skippedColumns", cols);
+            }
+            abandoned.add(st);
+        }
+        tag.put("abandonedSites", abandoned);
         ListTag given = new ListTag();
         for (UUID u : ledgerGiven) given.add(StringTag.valueOf(u.toString()));
         tag.put("ledgerGiven", given);
@@ -134,6 +164,28 @@ public final class FeudData extends SavedData {
         t.putLong("formedAt", p.formedAt);
         t.putLong("lastAwake", p.lastAwake);
         t.putInt("playerKills", p.playerKills);
+        t.putString("tier", (p.tier == null ? SettlementTier.CAMP : p.tier).key);
+        t.putInt("builtTier", p.builtTier);
+        t.putBoolean("ruined", p.ruined);
+        t.putBoolean("builtRuined", p.builtRuined);
+        t.putBoolean("siteSet", p.siteSet);
+        if (p.siteSet) {
+            t.putInt("siteX", p.siteX);
+            t.putInt("siteY", p.siteY);
+            t.putInt("siteZ", p.siteZ);
+            t.putInt("siteFacing", p.siteFacing);
+        }
+        if (p.bannersDirty) t.putBoolean("bannersDirty", true);
+        if (p.buildStarted) t.putBoolean("buildStarted", true);
+        if (!p.skippedZones.isEmpty()) {
+            t.put("skippedZones", strings(new ArrayList<>(p.skippedZones)));
+        }
+        if (!p.skippedColumns.isEmpty()) {
+            long[] cols = new long[p.skippedColumns.size()];
+            int idx = 0;
+            for (Long c : p.skippedColumns) cols[idx++] = c;
+            t.putLongArray("skippedColumns", cols);
+        }
         ListTag met = new ListTag();
         for (UUID u : p.met) met.add(StringTag.valueOf(u.toString()));
         t.put("met", met);
@@ -212,6 +264,8 @@ public final class FeudData extends SavedData {
                 BloodFeud.LOG.warn("Skipped a Brute that couldn't be read: {}", e.toString());
             }
         }
+        f.campsEnabled = BloodFeud.config().buildCamps;
+        List<Pack> legacyPacks = new ArrayList<>();
         for (Tag raw : tag.getList("packs", Tag.TAG_COMPOUND)) {
             try {
                 CompoundTag t = (CompoundTag) raw;
@@ -224,6 +278,28 @@ public final class FeudData extends SavedData {
                 p.grunts = t.getInt("grunts");
                 p.lastAwake = t.getLong("lastAwake");
                 p.playerKills = t.getInt("playerKills");
+                if (t.contains("tier")) {
+                    SettlementTier parsed = SettlementTier.byKey(t.getString("tier"));
+                    p.tier = parsed != null ? parsed : SettlementTier.CAMP;
+                    p.builtTier = Math.max(0, Math.min(SettlementTier.TOWN.level, t.getInt("builtTier")));
+                    p.ruined = t.getBoolean("ruined");
+                    p.builtRuined = t.getBoolean("builtRuined");
+                    p.siteSet = t.getBoolean("siteSet");
+                    if (p.siteSet) {
+                        p.siteX = t.getInt("siteX");
+                        p.siteY = t.getInt("siteY");
+                        p.siteZ = t.getInt("siteZ");
+                        p.siteFacing = Math.floorMod(t.getInt("siteFacing"), 4);
+                    }
+                    p.bannersDirty = t.getBoolean("bannersDirty");
+                    p.buildStarted = t.getBoolean("buildStarted");
+                    for (Tag s : t.getList("skippedZones", Tag.TAG_STRING)) p.skippedZones.add(s.getAsString());
+                    for (long c : t.getLongArray("skippedColumns")) p.skippedColumns.add(c);
+                } else {
+                    p.builtTier = 0;
+                    p.siteSet = false;
+                    legacyPacks.add(p);
+                }
                 for (Tag s : t.getList("met", Tag.TAG_STRING)) p.met.add(UUID.fromString(s.getAsString()));
                 for (Tag c : t.getList("chronicle", Tag.TAG_COMPOUND)) {
                     p.remember(((CompoundTag) c).getLong("t"), ((CompoundTag) c).getString("s"));
@@ -231,6 +307,31 @@ public final class FeudData extends SavedData {
                 f.packs.put(p.id, p);
             } catch (RuntimeException e) {
                 BloodFeud.LOG.warn("Skipped a pack that couldn't be read: {}", e.toString());
+            }
+        }
+        for (Pack p : legacyPacks) {
+            SettlementTier sustained = SettlementTier.forPack(f.members(p).size(), p.grunts, f.strength(p), !f.vassals(p).isEmpty());
+            p.tier = sustained == SettlementTier.NONE ? SettlementTier.CAMP : sustained;
+            p.ruined = sustained == SettlementTier.NONE;
+        }
+        for (Tag raw : tag.getList("abandonedSites", Tag.TAG_COMPOUND)) {
+            try {
+                CompoundTag st = (CompoundTag) raw;
+                Family fam = Family.byKey(st.getString("family"));
+                if (fam == null || !st.hasUUID("id")) continue;
+                int bt = Math.max(1, Math.min(SettlementTier.TOWN.level, st.getInt("builtTier")));
+                List<Integer> vc = new ArrayList<>();
+                for (int c : st.getIntArray("vassalColors")) vc.add(c);
+                java.util.Set<String> sz = new java.util.HashSet<>();
+                for (Tag s : st.getList("skippedZones", Tag.TAG_STRING)) sz.add(s.getAsString());
+                java.util.Set<Long> sc = new java.util.HashSet<>();
+                for (long c : st.getLongArray("skippedColumns")) sc.add(c);
+                f.abandonedSites.add(new Feud.AbandonedSite(
+                        st.getUUID("id"), fam, st.getInt("color"), st.getString("dimension"),
+                        st.getInt("siteX"), st.getInt("siteY"), st.getInt("siteZ"),
+                        Math.floorMod(st.getInt("siteFacing"), 4), bt, vc, sz, sc));
+            } catch (RuntimeException e) {
+                BloodFeud.LOG.warn("Skipped an abandoned site that couldn't be read: {}", e.toString());
             }
         }
         return d;
