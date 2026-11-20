@@ -72,12 +72,12 @@ public final class Computers {
             for (var level : server.getAllLevels()) {
                 var centers = new ArrayList<BlockPos>();
                 for (var player : level.players()) centers.add(player.blockPosition());
-                if (level == server.overworld()) centers.add(level.getSharedSpawnPos());
+                if (level == server.overworld()) centers.add(McNames.spawn(level));
                 for (var center : centers) {
                     int cx = center.getX() >> 4, cz = center.getZ() >> 4, r = 8;
                     for (int x = cx - r; x <= cx + r; x++) {
                         for (int z = cz - r; z <= cz + r; z++) {
-                            if (!seen.add(level.dimension().location() + "/" + x + "/" + z)) continue;
+                            if (!seen.add(McNames.dimension(level) + "/" + x + "/" + z)) continue;
                             var chunk = level.getChunkSource().getChunkNow(x, z);
                             if (chunk == null) continue;
                             for (var be : chunk.getBlockEntities().values()) {
@@ -172,7 +172,7 @@ public final class Computers {
             out.addProperty("family", computer.getFamily().name().toLowerCase());
             out.addProperty("on", computer.isOn());
             out.addProperty("agent_ready", computer.isOn() && Jobs.isReady(computer.getID()));
-            out.addProperty("dimension", computer.getLevel().dimension().location().toString());
+            out.addProperty("dimension", McNames.dimension(computer.getLevel()));
             var pos = computer.getPosition();
             out.addProperty("x", pos.getX());
             out.addProperty("y", pos.getY());
@@ -187,7 +187,7 @@ public final class Computers {
             if (detail) {
                 var nearest = nearestPlayer(computer);
                 if (nearest != null) {
-                    out.addProperty("nearest_player", nearest.getGameProfile().getName());
+                    out.addProperty("nearest_player", McNames.name(nearest));
                     out.addProperty("nearest_player_distance", Math.round(Math.sqrt(nearest.blockPosition().distSqr(pos))));
                 }
                 var state = computer.getTerminalState().create();

@@ -126,7 +126,7 @@ public final class Relay {
         var server = CCAgent.server();
         if (!serverEnabled() || !CCAgent.platform().hasRelay(player)) return;
         // The singleplayer host already has the local MCP server.
-        if (server.isSingleplayerOwner(player.getGameProfile())) return;
+        if (McNames.isHost(server, player)) return;
         send(player, obj("type", "hello", "version", CCAgent.version()));
     }
 
@@ -136,7 +136,7 @@ public final class Relay {
             if (chat.player.equals(player.getUUID())) {
                 CHATS.remove(chat.id);
                 chat.computer.queueEvent("ccagent_chat", chat.id, "error", LuaStrings.toLua(
-                    player.getGameProfile().getName() + " left the server, and the agent ran on their PC"));
+                    McNames.name(player) + " left the server, and the agent ran on their PC"));
                 chat.computer.queueEvent("ccagent_chat", chat.id, "done", "");
             }
         }
@@ -158,7 +158,7 @@ public final class Relay {
             try {
                 serverTui(player, message);
             } catch (RuntimeException e) {
-                CCAgent.LOG.warn("Relay TUI message from {} failed", player.getGameProfile().getName(), e);
+                CCAgent.LOG.warn("Relay TUI message from {} failed", McNames.name(player), e);
             }
             return;
         }
@@ -166,7 +166,7 @@ public final class Relay {
             try {
                 serverHandle(player, message);
             } catch (RuntimeException e) {
-                CCAgent.LOG.warn("Relay message from {} failed", player.getGameProfile().getName(), e);
+                CCAgent.LOG.warn("Relay message from {} failed", McNames.name(player), e);
             }
         });
     }
@@ -181,7 +181,7 @@ public final class Relay {
             var config = CCAgent.config();
             if (!serverEnabled()) {
                 result = McpServer.toolResult("this server has CC: Agent's relay turned off (relay=false)", true);
-            } else if (config.relayOpsOnly && !player.hasPermissions(2)) {
+            } else if (config.relayOpsOnly && !McNames.isOp(player)) {
                 result = McpServer.toolResult("on this server only operators can use CC: Agent", true);
             } else if (name.equals("__list")) {
                 result = obj("tools", CCAgent.tools().tools());
@@ -189,7 +189,7 @@ public final class Relay {
                 result = McpServer.toolResult("slow down: this server allows " + config.relayCallsPerMinute
                     + " tool calls a minute per player (relayCallsPerMinute)", true);
             } else {
-                var access = new Access(player, player.hasPermissions(2), config.relayRange);
+                var access = new Access(player, McNames.isOp(player), config.relayRange);
                 result = Access.with(access, () -> CCAgent.tools().call(name, args));
             }
             send(player, obj("type", "result", "id", id, "result", result));
@@ -323,12 +323,12 @@ public final class Relay {
     private static void checkLaunch(ServerPlayer player) {
         var config = CCAgent.config();
         if (!serverEnabled()) throw new ToolException("this server has CC: Agent's relay turned off (relay=false)");
-        if (config.relayOpsOnly && !player.hasPermissions(2)) throw new ToolException("on this server only operators can use CC: Agent");
+        if (config.relayOpsOnly && !McNames.isOp(player)) throw new ToolException("on this server only operators can use CC: Agent");
         if (!CCAgent.platform().hasRelay(player)) {
             throw new ToolException("install CC: Agent in your own game too: the agent runs on your PC, not the server");
         }
         var serverComputer = interactingComputer(player);
-        if (serverComputer != null && serverComputer.getFamily() == ComputerFamily.COMMAND && !player.hasPermissions(2)) {
+        if (serverComputer != null && serverComputer.getFamily() == ComputerFamily.COMMAND && !McNames.isOp(player)) {
             throw new ToolException("only operators can use agents on command computers");
         }
     }

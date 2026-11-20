@@ -3,11 +3,12 @@ package io.bugcourier.client;
 import io.bugcourier.core.CrashReports;
 import io.bugcourier.core.IssueBody;
 import io.bugcourier.core.Report;
+import io.bugcourier.client.gui.BaseScreen;
+import io.bugcourier.client.gui.Canvas;
+import io.bugcourier.client.version.Mc;
 import java.util.List;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
-import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -15,7 +16,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /** Step one: which mod, a title and what happened. Step two is the preview. */
-public final class ReportScreen extends Screen {
+public final class ReportScreen extends BaseScreen {
     private static final int MAX_WIDTH = 320;
     private int formWidth = MAX_WIDTH;
     private int goesToY;
@@ -61,9 +62,8 @@ public final class ReportScreen extends Screen {
             return;
         }
         int y = compact ? 6 : 24;
-        addRenderableWidget(CycleButton.<ReportTarget>builder(t -> Component.literal(t.name()))
-                .withValues(targets).withInitialValue(target)
-                .create(left, y, formWidth, 20, Component.translatable("bugcourier.screen.mod"), (b, t) -> target = t));
+        addRenderableWidget(Mc.cycleButton(t -> Component.literal(t.name()), targets, target, left, y, formWidth, 20,
+                Component.translatable("bugcourier.screen.mod"), t -> target = t));
         goesToY = y + 24;
         y += 36;
         titleBox = new EditBox(font, left, y, formWidth, 20, Component.translatable("bugcourier.screen.issue_title"));
@@ -79,7 +79,7 @@ public final class ReportScreen extends Screen {
         int checkboxY = buttonY - 24;
         // The edit box draws its character count under itself, so leave it 10 pixels.
         int boxHeight = Math.max(20, Math.min(110, checkboxY - 12 - y));
-        descriptionBox = new MultiLineEditBox(font, left, y, formWidth, boxHeight, Component.translatable("bugcourier.screen.description.hint"),
+        descriptionBox = Mc.multiLineEditBox(font, left, y, formWidth, boxHeight, Component.translatable("bugcourier.screen.description.hint"),
                 Component.translatable("bugcourier.screen.description"));
         descriptionBox.setCharacterLimit(6000);
         descriptionBox.setValue(description);
@@ -108,19 +108,18 @@ public final class ReportScreen extends Screen {
 
     private void preview() {
         Report report = Collectors.build(target, title, description, crashText, includePlayer);
-        minecraft.setScreen(new PreviewScreen(this, target, report));
+        Mc.setScreen(new PreviewScreen(this, target, report));
     }
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        super.render(g, mouseX, mouseY, partialTick);
-        if (!compact) g.drawCenteredString(font, getTitle(), width / 2, 8, 0xFFFFFF);
+    protected void draw(Canvas c) {
+        if (!compact) c.centered(font, getTitle(), width / 2, 8, Canvas.WHITE);
         if (target == null) {
-            g.drawCenteredString(font, Component.translatable("bugcourier.screen.no_mods"), width / 2, height / 2 - 4, 0xAAAAAA);
+            c.centered(font, Component.translatable("bugcourier.screen.no_mods"), width / 2, height / 2 - 4, Canvas.LIGHT_GREY);
             return;
         }
         Component goesTo = Component.translatable("bugcourier.screen.goes_to", target.tracker().displayName());
-        g.drawString(font, font.substrByWidth(goesTo, formWidth).getString(), (width - formWidth) / 2, goesToY, 0xA0A0A0);
+        c.text(font, Component.literal(font.substrByWidth(goesTo, formWidth).getString()), (width - formWidth) / 2, goesToY, Canvas.GREY);
     }
 
     Screen parentScreen() {
@@ -129,6 +128,6 @@ public final class ReportScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        Mc.setScreen(parent);
     }
 }

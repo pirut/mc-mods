@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- **Now on every main Minecraft version from 1.21.1 to 26.3**, on NeoForge and Fabric: 1.21.1, 1.21.4, 1.21.5,
+  1.21.8, 1.21.10 (the Fabric jar also takes 1.21.9), 1.21.11, 26.1.2 (the Fabric jar also takes 26.1 and
+  26.1.1), 26.2 and 26.3. Each version has its own jar.
+- From 1.21.9 on, the "Open Bug Courier" key is under Miscellaneous in the controls, since Minecraft now needs
+  key categories registered.
+- The GPU line in reports names the graphics backend and driver, as newer Minecraft versions report them.
+
 ## 0.1.0
 
 First full release, for Minecraft 1.21.1 on NeoForge 21.1.256 or later and on Fabric (with Fabric API).

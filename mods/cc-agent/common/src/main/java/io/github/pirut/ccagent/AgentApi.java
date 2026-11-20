@@ -79,7 +79,7 @@ public final class AgentApi implements ILuaAPI {
         if (server == null || config == null) throw new ToolException("no world is open");
         var player = Relay.interactingPlayer(system.getID());
         // Someone else's game: their own PC runs the agent.
-        if (player != null && !server.isSingleplayerOwner(player.getGameProfile())) {
+        if (player != null && !McNames.isHost(server, player)) {
             return Relay.launch(player, system, agent, prompt, session, width, options);
         }
         if (server.isDedicatedServer()) {
@@ -112,7 +112,7 @@ public final class AgentApi implements ILuaAPI {
             rows = Math.max(5, rows);
             var player = Relay.interactingPlayer(system.getID());
             // Someone else's game: their own PC runs the agent.
-            if (player != null && !server.isSingleplayerOwner(player.getGameProfile())) {
+            if (player != null && !McNames.isHost(server, player)) {
                 return new Object[]{Relay.launchTui(player, system, agent, cols, rows, monitor.orElse(null))};
             }
             if (server.isDedicatedServer()) {

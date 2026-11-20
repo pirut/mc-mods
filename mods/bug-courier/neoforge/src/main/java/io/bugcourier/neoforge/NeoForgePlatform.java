@@ -6,14 +6,14 @@ import java.util.List;
 import java.util.Set;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.ModList;
-import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforgespi.language.IModInfo;
 
 public final class NeoForgePlatform implements Platform {
     // Bugs in the game or the loader itself belong upstream, not in a player report from a modpack.
     private static final Set<String> NOT_REPORTABLE = Set.of("minecraft", "neoforge");
+    /** Set by the mod's constructor. */
+    static volatile Dist dist = Dist.CLIENT;
 
     @Override
     public List<ModEntry> allMods() {
@@ -43,11 +43,12 @@ public final class NeoForgePlatform implements Platform {
 
     @Override
     public String loaderVersion() {
-        return FMLLoader.versionInfo().neoForgeVersion();
+        // FMLLoader.versionInfo() is gone in newer NeoForge; its own mod entry has the version on every version.
+        return mod("neoforge").map(ModEntry::version).orElse("?");
     }
 
     @Override
     public boolean isClient() {
-        return FMLEnvironment.dist == Dist.CLIENT;
+        return dist == Dist.CLIENT;
     }
 }
