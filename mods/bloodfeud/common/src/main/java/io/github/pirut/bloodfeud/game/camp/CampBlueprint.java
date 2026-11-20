@@ -549,12 +549,12 @@ public final class CampBlueprint {
         return (((long) rx) << 32) | (rz & 0xFFFFFFFFL);
     }
 
-    /** True if a placement in {@code zone} at relative {@code (rx, rz)} falls inside a previously skipped zone or column. */
+    /** True if a placement in {@code zone} at relative {@code (rx, rz)} falls inside a previously skipped zone or ring column. */
     public static boolean isSkipped(String zone, int rx, int rz, Set<String> skippedZones, Set<Long> skippedColumns) {
         if (skippedZones != null && !skippedZones.isEmpty() && zone != null && skippedZones.contains(zone)) {
             return true;
         }
-        if (skippedColumns != null && !skippedColumns.isEmpty() && skippedColumns.contains(colKey(rx, rz))) {
+        if (isRingZone(zone) && skippedColumns != null && !skippedColumns.isEmpty() && skippedColumns.contains(colKey(rx, rz))) {
             return true;
         }
         return false;
@@ -607,7 +607,6 @@ public final class CampBlueprint {
         if (upToTier >= SettlementTier.TOWN.level
                 && (skippedZones == null || !skippedZones.contains("town_kings_hall"))) {
             for (Spot s : vassalBannerSpots(facing)) {
-                if (skippedColumns != null && skippedColumns.contains(colKey(s.rx, s.rz))) continue;
                 for (int y = -1; y <= 2; y++) {
                     owned.add(new Spot(s.rx, y, s.rz));
                 }

@@ -530,7 +530,7 @@ class CampBlueprintTest {
 
         for (CampBlueprint.Placement p : town.placements()) {
             boolean shouldSkip = "town_forge".equals(p.zone())
-                    || CampBlueprint.colKey(p.rx(), p.rz()) == skippedCol;
+                    || (CampBlueprint.isRingZone(p.zone()) && CampBlueprint.colKey(p.rx(), p.rz()) == skippedCol);
             if (!shouldSkip || p.material() == CampBlueprint.Material.AIR) continue;
             CampBlueprint.Spot s = new CampBlueprint.Spot(p.rx(), p.ry(), p.rz());
             assertFalse(owned.contains(s), "Skipped placement must not be in ownedPositions: " + p);
@@ -543,14 +543,69 @@ class CampBlueprintTest {
                 skippedZones, skippedCols);
         assertFalse(filteredDiff.zones().containsKey("town_forge"));
         assertTrue(filteredDiff.placements().stream().noneMatch(p ->
-                "town_forge".equals(p.zone()) || CampBlueprint.colKey(p.rx(), p.rz()) == skippedCol));
+                "town_forge".equals(p.zone())
+                        || (CampBlueprint.isRingZone(p.zone()) && CampBlueprint.colKey(p.rx(), p.rz()) == skippedCol)));
 
         CampBlueprint.Plan filteredRepair = CampBlueprint.withoutSkipped(
                 CampBlueprint.repairPlan(packId, Family.ROTTEN, 14, List.of(1), 0, SettlementTier.TOWN.level, SettlementTier.TOWN.level),
                 skippedZones, skippedCols);
         assertFalse(filteredRepair.zones().containsKey("town_forge"));
         assertTrue(filteredRepair.placements().stream().noneMatch(p ->
-                "town_forge".equals(p.zone()) || CampBlueprint.colKey(p.rx(), p.rz()) == skippedCol));
+                "town_forge".equals(p.zone())
+                        || (CampBlueprint.isRingZone(p.zone()) && CampBlueprint.colKey(p.rx(), p.rz()) == skippedCol)));
+    }
+
+    @Test
+    void skippedColumnsOnlyApplyToRingZonesAndPreserveNonRingOwnership() {
+        UUID packId = new UUID(271, 828);
+        CampBlueprint.Plan outpost = CampBlueprint.plan(packId, Family.ILLAGERS, 14, List.of(), 0, 0, SettlementTier.OUTPOST.level);
+
+        // Find a column that contains both a ring zone (outpost_paths) and a non-ring zone (camp_core)
+        Set<Long> ringCols = outpost.placements().stream()
+                .filter(p -> CampBlueprint.isRingZone(p.zone()) && p.material() != CampBlueprint.Material.AIR)
+                .map(p -> CampBlueprint.colKey(p.rx(), p.rz()))
+                .collect(java.util.stream.Collectors.toSet());
+        CampBlueprint.Placement overlappingCore = outpost.placements().stream()
+                .filter(p -> "camp_core".equals(p.zone())
+                        && p.material() != CampBlueprint.Material.AIR
+                        && ringCols.contains(CampBlueprint.colKey(p.rx(), p.rz())))
+                .findFirst().orElseThrow();
+
+        long overlapCol = CampBlueprint.colKey(overlappingCore.rx(), overlappingCore.rz());
+        Set<Long> skippedCols = Set.of(overlapCol);
+
+        assertFalse(CampBlueprint.isSkipped("camp_core", overlappingCore.rx(), overlappingCore.rz(), Set.of(), skippedCols),
+                "skippedColumns must not mark non-ring camp_core placements as skipped");
+        assertTrue(CampBlueprint.isSkipped("outpost_paths", overlappingCore.rx(), overlappingCore.rz(), Set.of(), skippedCols),
+                "skippedColumns must still mark ring zone placements as skipped");
+
+        Set<CampBlueprint.Spot> owned = CampBlueprint.ownedPositions(
+                packId, Family.ILLAGERS, 14, List.of(), 0, SettlementTier.OUTPOST.level, Set.of(), skippedCols);
+        Set<CampBlueprint.Spot> ownedRuined = CampBlueprint.ownedRuinedPositions(
+                packId, Family.ILLAGERS, 14, List.of(), 0, SettlementTier.OUTPOST.level, Set.of(), skippedCols);
+        CampBlueprint.Spot coreSpot = new CampBlueprint.Spot(overlappingCore.rx(), overlappingCore.ry(), overlappingCore.rz());
+        assertTrue(owned.contains(coreSpot),
+                "Skipping an overlapping ring column must not strip camp_core ownership from ownedPositions");
+        assertTrue(ownedRuined.contains(coreSpot),
+                "Skipping an overlapping ring column must not strip camp_core ownership from ownedRuinedPositions");
+
+        CampBlueprint.Plan filtered = CampBlueprint.withoutSkipped(outpost, Set.of(), skippedCols);
+        assertTrue(filtered.placements().stream().anyMatch(p ->
+                        "camp_core".equals(p.zone()) && CampBlueprint.colKey(p.rx(), p.rz()) == overlapCol),
+                "withoutSkipped must retain non-ring camp_core placements in a skipped ring column");
+        assertTrue(filtered.placements().stream().noneMatch(p ->
+                        CampBlueprint.isRingZone(p.zone()) && CampBlueprint.colKey(p.rx(), p.rz()) == overlapCol),
+                "withoutSkipped must exclude ring-zone placements in a skipped ring column");
+
+        // Town vassal banner spots belong to non-ring town_kings_hall, so skippedColumns must not strip their ownership
+        CampBlueprint.Spot vassalSpot = CampBlueprint.vassalBannerSpots(0).get(0);
+        Set<Long> skippedVassalCol = Set.of(CampBlueprint.colKey(vassalSpot.rx(), vassalSpot.rz()));
+        Set<CampBlueprint.Spot> townOwned = CampBlueprint.ownedPositions(
+                packId, Family.ILLAGERS, 14, List.of(), 0, SettlementTier.TOWN.level, Set.of(), skippedVassalCol);
+        for (int y = -1; y <= 2; y++) {
+            assertTrue(townOwned.contains(new CampBlueprint.Spot(vassalSpot.rx(), y, vassalSpot.rz())),
+                    "skippedColumns must not strip non-ring town_kings_hall vassal banner ownership at y=" + y);
+        }
     }
 
     @Test

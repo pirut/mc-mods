@@ -197,30 +197,17 @@ public final class CampBuilder {
                 if (!SiteFinder.isFootprintLoaded(level, pack.siteX, pack.siteZ, radius)) {
                     continue;
                 }
-                // Re-validate resumed initial builds (siteSet == true && builtTier == 0) before placing blocks
-                if (pack.builtTier == 0) {
+                // Re-validate reserved initial sites (siteSet && !buildStarted && builtTier == 0) before placing blocks;
+                // once buildStarted is true, skip the coarse full-radius scan (which would flag skipped-zone player blocks
+                // or downward foundation fills) and let queueBuild/queueRuin run per-zone filterPlan with ownership directly.
+                if (pack.builtTier == 0 && !pack.buildStarted) {
                     BlockPos origin = new BlockPos(pack.siteX, pack.siteY, pack.siteZ);
-                    Set<CampBlueprint.Spot> resumeOwned = Set.of();
-                    Set<CampBlueprint.Spot> resumeContainers = Set.of();
-                    if (pack.buildStarted) {
-                        int displayColor = feud.top(pack).color;
-                        List<Integer> vassals = vassalColors(feud, pack);
-                        resumeOwned = pack.ruined
-                                ? CampBlueprint.ownedRuinedPositions(pack.id, pack.family, displayColor, vassals,
-                                        pack.siteFacing, target.level, pack.skippedZones, pack.skippedColumns)
-                                : CampBlueprint.ownedPositions(pack.id, pack.family, displayColor, vassals,
-                                        pack.siteFacing, target.level, pack.skippedZones, pack.skippedColumns);
-                        resumeContainers = CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassals,
-                                pack.siteFacing, target.level, pack.skippedZones, pack.skippedColumns);
-                    }
-                    if (SiteFinder.hasPlayerBuild(level, origin, radius, resumeOwned, resumeContainers)) {
+                    if (SiteFinder.hasPlayerBuild(level, origin, radius, Set.of(), Set.of())) {
                         pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
-                        if (!pack.buildStarted) {
-                            pack.siteSet = false;
-                            pack.skippedZones.clear();
-                            pack.skippedColumns.clear();
-                            data.changed();
-                        }
+                        pack.siteSet = false;
+                        pack.skippedZones.clear();
+                        pack.skippedColumns.clear();
+                        data.changed();
                         continue;
                     }
                 }
@@ -346,13 +333,22 @@ public final class CampBuilder {
      */
     public QueueResult queueRuin(ServerLevel level, Feud feud, Pack pack, int targetTier,
                                  boolean automatic, long gameTime, Runnable onComplete) {
+        return queueRuin(level, feud, pack, targetTier, vassalColors(feud, pack), automatic, gameTime, onComplete);
+    }
+
+    /**
+     * Queues either an in-place ruination diff or a fresh ruined settlement build using an explicit
+     * {@code vassalColors} list (e.g. {@code List.of()} when pre-validating before detaching vassals).
+     */
+    public QueueResult queueRuin(ServerLevel level, Feud feud, Pack pack, int targetTier,
+                                 List<Integer> vassalColors, boolean automatic, long gameTime, Runnable onComplete) {
         if (!pack.siteSet) {
             return new QueueResult(false, List.of(), 0);
         }
         int to = Math.max(1, Math.min(SettlementTier.TOWN.level, targetTier));
         BlockPos origin = new BlockPos(pack.siteX, pack.siteY, pack.siteZ);
         int displayColor = feud.top(pack).color;
-        List<Integer> vassalColors = vassalColors(feud, pack);
+        vassalColors = vassalColors == null ? List.of() : List.copyOf(vassalColors);
         boolean inPlace = pack.builtTier > 0 && to <= pack.builtTier;
         CampBlueprint.Plan plan = inPlace
                 ? CampBlueprint.ruinDiffPlan(pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, pack.builtTier)

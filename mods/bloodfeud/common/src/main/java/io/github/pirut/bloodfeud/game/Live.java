@@ -1508,14 +1508,10 @@ public final class Live {
 
         UUID playerId = player.getUUID();
         Pack pack = nearest;
-        pack.met.add(playerId);
-        f.ruinSettlement(pack, target, now());
-        f.drainNews();
-        CampBuilder.QueueResult qr = campBuilder.queueRuin(level, f, pack, target.level, false, gameTime(), () -> {
+        CampBuilder.QueueResult qr = campBuilder.queueRuin(level, f, pack, target.level, List.of(), false, gameTime(), () -> {
             flushDirtyBanners();
             if (onDone != null) onDone.accept(pack);
         });
-        flushDirtyBanners();
         if (!qr.queued()) {
             if (assignedSite) {
                 nearest.siteSet = false;
@@ -1523,12 +1519,15 @@ public final class Live {
                 nearest.skippedZones.clear();
                 nearest.skippedColumns.clear();
             }
-            data.changed();
             return new UpgradeResult(false, "Cannot ruin " + Feud.cap(pack.title())
                     + ": area is blocked or nothing to ruin.", pack, target,
                     qr.skippedZones(), qr.skippedRingColumns());
         }
 
+        pack.met.add(playerId);
+        f.ruinSettlement(pack, target, now());
+        f.drainNews();
+        flushDirtyBanners();
         data.changed();
         return new UpgradeResult(true, "", pack, target, qr.skippedZones(), qr.skippedRingColumns());
     }
