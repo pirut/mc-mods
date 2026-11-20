@@ -38,6 +38,10 @@ public final class Pack {
     public int siteFacing;
     /** Server game-time tick before which automatic site search will not retry. */
     public long siteRetryAt;
+    /** Cursor into the spiral site-search candidate list so capped attempts make progress across retries. */
+    public int siteSearchOffset;
+    /** True when the pack's faction banners changed (swallowed, freed, king death) and need world re-bannering. */
+    public boolean bannersDirty;
     /** Players who have seen it. */
     public final Set<UUID> met = new HashSet<>();
 

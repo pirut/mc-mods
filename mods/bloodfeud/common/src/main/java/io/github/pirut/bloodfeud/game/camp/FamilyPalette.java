@@ -94,7 +94,8 @@ public final class FamilyPalette {
         this.ruinWeb = ruinWeb;
     }
 
-    private static final FamilyPalette ROTTEN = new FamilyPalette(
+    private static final class Palettes {
+        static final FamilyPalette ROTTEN = new FamilyPalette(
             Blocks.MOSSY_COBBLESTONE, Blocks.COARSE_DIRT, Blocks.PACKED_MUD, Blocks.SPRUCE_PLANKS,
             Blocks.OAK_LOG, Blocks.SPRUCE_LOG, Blocks.OAK_PLANKS, Blocks.MOSSY_COBBLESTONE, Blocks.COBBLESTONE,
             Blocks.SPRUCE_SLAB, Blocks.SPRUCE_STAIRS, Blocks.OAK_FENCE,
@@ -105,7 +106,7 @@ public final class FamilyPalette {
             Blocks.MOSS_CARPET, Blocks.COBWEB
     );
 
-    private static final FamilyPalette BONES = new FamilyPalette(
+        static final FamilyPalette BONES = new FamilyPalette(
             Blocks.COBBLED_DEEPSLATE, Blocks.GRAVEL, Blocks.TUFF, Blocks.POLISHED_DEEPSLATE,
             Blocks.BONE_BLOCK, Blocks.BONE_BLOCK, Blocks.DARK_OAK_PLANKS, Blocks.STONE_BRICKS, Blocks.COBBLED_DEEPSLATE,
             Blocks.COBBLED_DEEPSLATE_SLAB, Blocks.DEEPSLATE_BRICK_STAIRS, Blocks.DARK_OAK_FENCE,
@@ -116,7 +117,7 @@ public final class FamilyPalette {
             Blocks.COBWEB, Blocks.COBWEB
     );
 
-    private static final FamilyPalette ILLAGERS = new FamilyPalette(
+        static final FamilyPalette ILLAGERS = new FamilyPalette(
             Blocks.COBBLESTONE, Blocks.GRAVEL, Blocks.DIRT_PATH, Blocks.DARK_OAK_PLANKS,
             Blocks.DARK_OAK_LOG, Blocks.DARK_OAK_LOG, Blocks.DARK_OAK_PLANKS, Blocks.COBBLESTONE, Blocks.STONE_BRICKS,
             Blocks.DARK_OAK_SLAB, Blocks.DARK_OAK_STAIRS, Blocks.DARK_OAK_FENCE,
@@ -127,7 +128,7 @@ public final class FamilyPalette {
             Blocks.MOSS_CARPET, Blocks.COBWEB
     );
 
-    private static final FamilyPalette NETHER = new FamilyPalette(
+        static final FamilyPalette NETHER = new FamilyPalette(
             Blocks.BLACKSTONE, Blocks.BLACKSTONE, Blocks.BASALT, Blocks.POLISHED_BLACKSTONE_BRICKS,
             Blocks.BASALT, Blocks.POLISHED_BASALT, Blocks.CRIMSON_PLANKS, Blocks.POLISHED_BLACKSTONE_BRICKS, Blocks.GILDED_BLACKSTONE,
             Blocks.POLISHED_BLACKSTONE_BRICK_SLAB, Blocks.POLISHED_BLACKSTONE_BRICK_STAIRS, Blocks.CRIMSON_FENCE,
@@ -138,7 +139,7 @@ public final class FamilyPalette {
             Blocks.BLACKSTONE_SLAB, Blocks.CHAIN
     );
 
-    private static final FamilyPalette SPIDERS = new FamilyPalette(
+        static final FamilyPalette SPIDERS = new FamilyPalette(
             Blocks.MOSSY_COBBLESTONE, Blocks.PODZOL, Blocks.PACKED_MUD, Blocks.DARK_OAK_PLANKS,
             Blocks.DARK_OAK_LOG, Blocks.SPRUCE_LOG, Blocks.SPRUCE_PLANKS, Blocks.MOSSY_COBBLESTONE, Blocks.DARK_OAK_PLANKS,
             Blocks.DARK_OAK_SLAB, Blocks.DARK_OAK_STAIRS, Blocks.DARK_OAK_FENCE,
@@ -149,25 +150,27 @@ public final class FamilyPalette {
             Blocks.COBWEB, Blocks.COBWEB
     );
 
-    private static final FamilyPalette WITCHES = new FamilyPalette(
+        static final FamilyPalette WITCHES = new FamilyPalette(
             Blocks.MOSSY_COBBLESTONE, Blocks.PODZOL, Blocks.MUD_BRICKS, Blocks.SPRUCE_PLANKS,
             Blocks.SPRUCE_LOG, Blocks.SPRUCE_LOG, Blocks.SPRUCE_PLANKS, Blocks.MUD_BRICKS, Blocks.MOSSY_COBBLESTONE,
             Blocks.SPRUCE_SLAB, Blocks.SPRUCE_STAIRS, Blocks.SPRUCE_FENCE,
             Blocks.CAMPFIRE, Blocks.LANTERN, Blocks.TORCH, Blocks.WALL_TORCH,
-            Blocks.CAULDRON, Blocks.RED_MUSHROOM, Blocks.BROWN_MUSHROOM, Blocks.LANTERN,
+            Blocks.CAULDRON, Blocks.POTTED_RED_MUSHROOM, Blocks.POTTED_BROWN_MUSHROOM, Blocks.LANTERN,
             Blocks.CAULDRON, Blocks.BREWING_STAND, Blocks.SPRUCE_STAIRS,
             Blocks.MUD, Blocks.MOSSY_COBBLESTONE, Blocks.PACKED_MUD, Blocks.MUD_BRICK_SLAB,
             Blocks.MOSS_CARPET, Blocks.COBWEB
     );
 
+    }
+
     public static FamilyPalette of(Family family) {
         return switch (family) {
-            case ROTTEN -> ROTTEN;
-            case BONES -> BONES;
-            case ILLAGERS -> ILLAGERS;
-            case NETHER -> NETHER;
-            case SPIDERS -> SPIDERS;
-            case WITCHES -> WITCHES;
+            case ROTTEN -> Palettes.ROTTEN;
+            case BONES -> Palettes.BONES;
+            case ILLAGERS -> Palettes.ILLAGERS;
+            case NETHER -> Palettes.NETHER;
+            case SPIDERS -> Palettes.SPIDERS;
+            case WITCHES -> Palettes.WITCHES;
         };
     }
 
@@ -181,7 +184,8 @@ public final class FamilyPalette {
             case GROUND -> ground.defaultBlockState();
             case PATH -> path.defaultBlockState();
             case FLOOR -> floor.defaultBlockState();
-            case LOG -> logState(log, op.facing());
+            case LOG -> logState(log, logAxis(CampBlueprint.Material.LOG, op.facing()));
+            case LOG_BEAM -> logState(log, logAxis(CampBlueprint.Material.LOG_BEAM, op.facing()));
             case PILLAR -> pillar.defaultBlockState();
             case PLANKS -> planks.defaultBlockState();
             case WALL -> wall.defaultBlockState();
@@ -227,11 +231,17 @@ public final class FamilyPalette {
         };
     }
 
-    private static BlockState logState(Block block, CampBlueprint.Facing facing) {
+    /** Maps {@link CampBlueprint#logAxis} to Minecraft's {@link Direction.Axis}. */
+    public static Direction.Axis logAxis(CampBlueprint.Material mat, CampBlueprint.Facing facing) {
+        return switch (CampBlueprint.logAxis(mat, facing)) {
+            case X -> Direction.Axis.X;
+            case Z -> Direction.Axis.Z;
+            case Y -> Direction.Axis.Y;
+        };
+    }
+
+    private static BlockState logState(Block block, Direction.Axis axis) {
         if (block.defaultBlockState().hasProperty(RotatedPillarBlock.AXIS)) {
-            Direction.Axis axis = (facing == CampBlueprint.Facing.EAST || facing == CampBlueprint.Facing.WEST)
-                    ? Direction.Axis.X
-                    : (facing == CampBlueprint.Facing.SOUTH ? Direction.Axis.Z : Direction.Axis.Y);
             return block.defaultBlockState().setValue(RotatedPillarBlock.AXIS, axis);
         }
         return block.defaultBlockState();

@@ -8,7 +8,9 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -51,6 +53,18 @@ public final class CampBlueprint {
         }
     }
 
+    public enum Axis {
+        X, Y, Z
+    }
+
+    /** Vertical {@code LOG} posts always stay {@link Axis#Y}; {@code LOG_BEAM} rotates horizontally. */
+    public static Axis logAxis(Material mat, Facing facing) {
+        if (mat == Material.LOG_BEAM) {
+            return (facing == Facing.EAST || facing == Facing.WEST) ? Axis.X : Axis.Z;
+        }
+        return Axis.Y;
+    }
+
     public enum Material {
         AIR(PASS_FOUNDATION),
         FOUNDATION_COLUMN(PASS_FOUNDATION),
@@ -60,6 +74,7 @@ public final class CampBlueprint {
         RUIN_FLOOR(PASS_FOUNDATION),
 
         LOG(PASS_STRUCTURE),
+        LOG_BEAM(PASS_STRUCTURE),
         PILLAR(PASS_STRUCTURE),
         PLANKS(PASS_STRUCTURE),
         WALL(PASS_STRUCTURE),
@@ -69,6 +84,7 @@ public final class CampBlueprint {
         STAIR_TOP(PASS_STRUCTURE),
         FENCE(PASS_STRUCTURE),
         IRON_BARS(PASS_STRUCTURE),
+        CHAIN(PASS_STRUCTURE),
         WOOL_PRIMARY(PASS_STRUCTURE),
         WOOL_ACCENT(PASS_STRUCTURE),
         FAMILY_PROP_A(PASS_STRUCTURE),
@@ -99,7 +115,6 @@ public final class CampBlueprint {
         VASSAL_BANNER(PASS_DECOR),
         CARPET(PASS_DECOR),
         FAMILY_CANOPY(PASS_DECOR),
-        CHAIN(PASS_DECOR),
         RUIN_OVERGROWTH(PASS_DECOR),
         RUIN_WEB(PASS_DECOR);
 
@@ -115,6 +130,11 @@ public final class CampBlueprint {
 
         public boolean isBanner() {
             return this == BANNER_STANDING || this == BANNER_WALL || this == VASSAL_BANNER;
+        }
+
+        public boolean isContainer(Family family) {
+            return isChest() || this == BARREL
+                    || (this == WORK_PROP_B && (family == Family.SPIDERS || family == Family.WITCHES));
         }
 
         public boolean isRuinMaterial() {
@@ -198,16 +218,16 @@ public final class CampBlueprint {
             );
             case STRONGHOLD -> new Anchors(
                     rotSpot(f, 0, 1, -11),
-                    List.of(rotSpot(f, -3, 0, 18), rotSpot(f, 3, 0, 18), rotSpot(f, -18, 6, 18), rotSpot(f, 18, 6, 18),
+                    List.of(rotSpot(f, -2, 0, 17), rotSpot(f, 2, 0, 17), rotSpot(f, -18, 6, 18), rotSpot(f, 18, 6, 18),
                             rotSpot(f, -11, 0, 0), rotSpot(f, 11, 0, 0)),
                     List.of(rotSpot(f, 0, 0, 14), rotSpot(f, -8, 0, 14), rotSpot(f, 8, 0, 14), rotSpot(f, 0, 0, 0),
                             rotSpot(f, 0, 0, 22))
             );
             case TOWN, NONE -> new Anchors(
-                    rotSpot(f, 0, 2, -12),
-                    List.of(rotSpot(f, -3, 0, 27), rotSpot(f, 3, 0, 27), rotSpot(f, 0, 0, -26), rotSpot(f, -26, 0, 0),
+                    rotSpot(f, 0, 2, -13),
+                    List.of(rotSpot(f, -2, 0, 26), rotSpot(f, 2, 0, 26), rotSpot(f, 0, 0, -26), rotSpot(f, -26, 0, 0),
                             rotSpot(f, 26, 0, 0), rotSpot(f, 21, 0, -16), rotSpot(f, -21, 0, -16)),
-                    List.of(rotSpot(f, 0, 0, 8), rotSpot(f, -14, 0, 0), rotSpot(f, 14, 0, 0), rotSpot(f, -18, 0, 20),
+                    List.of(rotSpot(f, 0, 0, 8), rotSpot(f, -14, 0, 0), rotSpot(f, 14, 0, 0), rotSpot(f, -18, 0, 22),
                             rotSpot(f, 18, 0, 10), rotSpot(f, 0, 0, 31))
             );
         };
@@ -386,7 +406,7 @@ public final class CampBlueprint {
                         r < 55 ? Material.AIR : m;
                 case LADDER, CHAIN, FAMILY_CANOPY ->
                         r < 45 ? Material.AIR : m;
-                case LOG, PILLAR, PLANKS, WALL, WALL_ACCENT, SLAB, STAIR, STAIR_TOP, FENCE, IRON_BARS, FAMILY_PROP_A -> {
+                case LOG, LOG_BEAM, PILLAR, PLANKS, WALL, WALL_ACCENT, SLAB, STAIR, STAIR_TOP, FENCE, IRON_BARS, FAMILY_PROP_A -> {
                     int collapsePct = y <= 0 ? 10 : (y == 1 ? 22 : (y <= 3 ? 45 : 68));
                     int weatherPct = y <= 0 ? 48 : (y == 1 ? 45 : (y <= 3 ? 35 : 22));
                     if (r < collapsePct) {
@@ -417,7 +437,7 @@ public final class CampBlueprint {
             boolean changed = false;
             for (Map.Entry<Long, Placement> e : ruined.entrySet()) {
                 Placement p = e.getValue();
-                if (p.ry < 1 || p.material.pass != PASS_STRUCTURE || p.material == Material.AIR) continue;
+                if (p.ry < 1 || p.material.pass != PASS_STRUCTURE || p.material == Material.AIR || p.material == Material.CHAIN) continue;
                 if (isSolidSupport(ruined.get(Builder.key(p.rx, p.ry - 1, p.rz)))) continue;
                 int horiz = 0;
                 if (isSolidSupport(ruined.get(Builder.key(p.rx + 1, p.ry, p.rz)))) horiz++;
@@ -433,22 +453,27 @@ public final class CampBlueprint {
             if (!changed) break;
         }
 
-        // Remove any surviving decor whose supporting block collapsed
-        for (Map.Entry<Long, Placement> e : ruined.entrySet()) {
-            Placement p = e.getValue();
-            if (p.material.pass != PASS_DECOR || p.material == Material.AIR) continue;
-            boolean supported = switch (p.material) {
-                case WALL_TORCH, BANNER_WALL, LADDER ->
-                        isSolidSupport(ruined.get(Builder.key(p.rx - p.facing.dx, p.ry, p.rz - p.facing.dz)));
-                case HANGING_LANTERN, CHAIN -> {
-                    Placement above = ruined.get(Builder.key(p.rx, p.ry + 1, p.rz));
-                    yield isSolidSupport(above) || (above != null && above.material == Material.CHAIN);
+        // Remove any surviving hanging chains or decor whose supporting block collapsed (fixpoint for multi-block chains)
+        for (int iter = 0; iter < 8; iter++) {
+            boolean changed = false;
+            for (Map.Entry<Long, Placement> e : ruined.entrySet()) {
+                Placement p = e.getValue();
+                if ((p.material.pass != PASS_DECOR && p.material != Material.CHAIN) || p.material == Material.AIR) continue;
+                boolean supported = switch (p.material) {
+                    case WALL_TORCH, BANNER_WALL, LADDER ->
+                            isSolidSupport(ruined.get(Builder.key(p.rx - p.facing.dx, p.ry, p.rz - p.facing.dz)));
+                    case HANGING_LANTERN, CHAIN -> {
+                        Placement above = ruined.get(Builder.key(p.rx, p.ry + 1, p.rz));
+                        yield isSolidSupport(above) || (above != null && above.material == Material.CHAIN);
+                    }
+                    default -> isSolidSupport(ruined.get(Builder.key(p.rx, p.ry - 1, p.rz)));
+                };
+                if (!supported) {
+                    e.setValue(new Placement(p.rx, p.ry, p.rz, Material.AIR, p.facing, 0, PASS_FOUNDATION, p.zone));
+                    changed = true;
                 }
-                default -> isSolidSupport(ruined.get(Builder.key(p.rx, p.ry - 1, p.rz)));
-            };
-            if (!supported) {
-                e.setValue(new Placement(p.rx, p.ry, p.rz, Material.AIR, p.facing, 0, PASS_FOUNDATION, p.zone));
             }
+            if (!changed) break;
         }
 
         // Rubble slabs, ground overgrowth, and corner cobwebs/chains
@@ -490,7 +515,7 @@ public final class CampBlueprint {
     private static boolean isSolidSupport(Placement p) {
         if (p == null) return false;
         Material m = p.material;
-        return m != Material.AIR && m.pass != PASS_DECOR && m != Material.CAMPFIRE && m != Material.CAMPFIRE_UNLIT;
+        return m != Material.AIR && m.pass != PASS_DECOR && m != Material.CHAIN && m != Material.CAMPFIRE && m != Material.CAMPFIRE_UNLIT;
     }
 
     private static int roll100(long seed, int x, int y, int z, int salt) {
@@ -500,6 +525,85 @@ public final class CampBlueprint {
         h = (h ^ (h >>> 27)) * 0x94D049BB133111EBL;
         h ^= (h >>> 31);
         return (int) (Math.floorMod(h, 100L));
+    }
+
+    /** Unrotated forecourt coordinates where Tier 4 Town flies vassal pack banners (clear of Tier 1-3 structures). */
+    private static final int[][] VASSAL_SPOTS = {
+            {-3, -3}, {3, -3}, {-3, -1}, {3, -1}, {-3, 1}, {3, 1}
+    };
+
+    /** Returns all rotated vassal-banner block positions (y = 2) for a Town, including unused slots for cleanup. */
+    public static List<Spot> vassalBannerSpots(int facing) {
+        int f = Math.floorMod(facing, 4);
+        List<Spot> spots = new ArrayList<>(VASSAL_SPOTS.length);
+        for (int[] v : VASSAL_SPOTS) spots.add(rotSpot(f, v[0], 2, v[1]));
+        return spots;
+    }
+
+    /** Relative positions placed (non-air) by tiers {@code 1..upToTier}, used to distinguish settlement blocks from player builds. */
+    public static Set<Spot> ownedPositions(UUID packId, Family family, int packColor,
+                                           List<Integer> vassalColors, int facing, int upToTier) {
+        if (upToTier <= 0) return Set.of();
+        Plan built = plan(packId, family, packColor, vassalColors, facing, 0, upToTier);
+        Set<Spot> owned = new HashSet<>(built.placements.size());
+        for (Placement p : built.placements) {
+            if (p.material != Material.AIR) {
+                owned.add(new Spot(p.rx, p.ry, p.rz));
+            }
+        }
+        return owned;
+    }
+
+    /** Relative positions placed by either intact or ruined tiers {@code 1..upToTier}, used when repairing ruins. */
+    public static Set<Spot> ownedRuinedPositions(UUID packId, Family family, int packColor,
+                                                 List<Integer> vassalColors, int facing, int upToTier) {
+        if (upToTier <= 0) return Set.of();
+        Set<Spot> owned = new HashSet<>(ownedPositions(packId, family, packColor, vassalColors, facing, upToTier));
+        Plan ruined = ruinPlan(packId, family, packColor, vassalColors, facing, upToTier);
+        for (Placement p : ruined.placements) {
+            if (p.material != Material.AIR) {
+                owned.add(new Spot(p.rx, p.ry, p.rz));
+            }
+        }
+        return owned;
+    }
+
+    /** Relative positions of containers (chests, barrels, family container props) placed by tiers {@code 1..upToTier}. */
+    public static Set<Spot> containerPositions(UUID packId, Family family, int packColor,
+                                               List<Integer> vassalColors, int facing, int upToTier) {
+        if (upToTier <= 0) return Set.of();
+        Plan built = plan(packId, family, packColor, vassalColors, facing, 0, upToTier);
+        Set<Spot> containers = new HashSet<>();
+        for (Placement p : built.placements) {
+            if (p.material.isContainer(family)) {
+                containers.add(new Spot(p.rx, p.ry, p.rz));
+            }
+        }
+        return containers;
+    }
+
+    public static final int FOOTPRINT_MARGIN = 3;
+
+    /** Returns {@code [minCx, minCz, maxCx, maxCz]} covering all chunks touched by {@code [minX..maxX] x [minZ..maxZ]}. */
+    public static int[] chunkBounds(int minX, int minZ, int maxX, int maxZ) {
+        return new int[]{minX >> 4, minZ >> 4, maxX >> 4, maxZ >> 4};
+    }
+
+    /** Returns {@code [minCx, minCz, maxCx, maxCz]} covering a settlement footprint around (cx, cz) plus safety margin. */
+    public static int[] footprintChunkBounds(int cx, int cz, int radius) {
+        int r = Math.max(1, radius + FOOTPRINT_MARGIN);
+        return chunkBounds(cx - r, cz - r, cx + r, cz + r);
+    }
+
+    /** True for large perimeter/street ring zones that should be filtered per-column rather than dropped wholesale. */
+    public static boolean isRingZone(String zone) {
+        if (zone == null) return false;
+        return switch (zone) {
+            case "outpost_paths", "outpost_palisade",
+                 "stronghold_streets", "stronghold_wall",
+                 "town_streets", "town_wall" -> true;
+            default -> false;
+        };
     }
 
     private static Spot rotSpot(int facing, int x, int y, int z) {
@@ -537,9 +641,9 @@ public final class CampBlueprint {
         }
         b.set(0, 0, 0, Material.CAMPFIRE);
         // Log seats around campfire
-        b.set(-2, 0, 0, Material.LOG, Facing.NORTH);
-        b.set(2, 0, 0, Material.LOG, Facing.NORTH);
-        b.set(0, 0, 2, Material.LOG, Facing.EAST);
+        b.set(-2, 0, 0, Material.LOG_BEAM, Facing.NORTH);
+        b.set(2, 0, 0, Material.LOG_BEAM, Facing.NORTH);
+        b.set(0, 0, 2, Material.LOG_BEAM, Facing.EAST);
         b.set(-2, 0, 1, Material.SLAB);
         b.set(2, 0, 1, Material.SLAB);
 
@@ -668,7 +772,7 @@ public final class CampBlueprint {
         for (int x = -1; x <= 1; x++) {
             b.clearColumn(x, 12, 0, 3);
             b.set(x, -1, 12, Material.PATH);
-            b.set(x, 4, 12, Material.LOG, Facing.EAST);
+            b.set(x, 4, 12, Material.LOG_BEAM, Facing.EAST);
         }
         for (int sx : new int[]{-2, 2}) {
             for (int y = 0; y <= 4; y++) b.set(sx, y, 12, Material.PILLAR);
@@ -732,8 +836,8 @@ public final class CampBlueprint {
                     } else if (z == cz + 2 && x == cx && y <= 1) {
                         // South entrance doorway
                         b.set(x, y, z, Material.AIR);
-                    } else if ((y == 2 && (x == cx || z == cz)) || (y == 5 && (x == cx || z == cz))) {
-                        // Arrow slits
+                    } else if ((y == 2 && ((x == cx && z != cz - 2) || z == cz)) || (y == 5 && (x == cx || z == cz))) {
+                        // Arrow slits (keep north wall solid behind the interior ladder at y=2)
                         b.set(x, y, z, Material.AIR);
                     } else {
                         b.set(x, y, z, y == 5 ? Material.WALL_ACCENT : Material.WALL);
@@ -946,7 +1050,7 @@ public final class CampBlueprint {
             for (int d = -1; d <= 1; d++) {
                 b.clearColumn(s, d, 0, 3);
                 b.set(s, -1, d, Material.PATH);
-                b.set(s, 4, d, Material.LOG, Facing.NORTH);
+                b.set(s, 4, d, Material.LOG_BEAM, Facing.NORTH);
             }
         }
         for (int d = -1; d <= 1; d++) {
@@ -1042,7 +1146,9 @@ public final class CampBlueprint {
         b.set(ladX, 5, cz, Material.AIR);
         Facing ladFace = cx < 0 ? Facing.EAST : Facing.WEST;
         for (int y = 0; y <= 5; y++) b.set(ladX, y, cz, Material.LADDER, ladFace);
-        b.set(cx, 7, cz + (cz > 0 ? 2 : -2), Material.BANNER_STANDING, cz > 0 ? Facing.SOUTH : Facing.NORTH, b.packColor);
+        int bannerZ = cz + (cz > 0 ? 2 : -2);
+        b.set(cx, 6, bannerZ, Material.WALL_ACCENT);
+        b.set(cx, 7, bannerZ, Material.BANNER_STANDING, cz > 0 ? Facing.SOUTH : Facing.NORTH, b.packColor);
     }
 
     private static void buildGatehouse(Builder b, int cx, int cz, Facing outFace, int height) {
@@ -1302,13 +1408,15 @@ public final class CampBlueprint {
             b.set(19, -1, d, Material.PATH);
             b.set(19, 4, d, Material.WALL_ACCENT);
         }
-        // Avenue lamp posts & pack banners
-        for (int p : new int[]{-24, -15, 15, 24}) {
+        // Avenue lamp posts & pack banners (outer avenues + open South inner plaza; clear of Barracks, Forge & King's Hall)
+        for (int p : new int[]{-24, 24}) {
             placeLampPost(b, -3, p, Facing.EAST);
             placeLampPost(b, 3, p, Facing.WEST);
             placeLampPost(b, p, -3, Facing.SOUTH);
             placeLampPost(b, p, 3, Facing.NORTH);
         }
+        placeLampPost(b, -3, 15, Facing.EAST);
+        placeLampPost(b, 3, 15, Facing.WEST);
 
         // 2. Outer Town Wall at max(|x|,|z|) == 28 + 4 corner bastions + 4 Town Gatehouses
         b.zone("town_wall");
@@ -1335,30 +1443,30 @@ public final class CampBlueprint {
         b.zone("town_square");
         buildTownMonument(b, 0, 5);
 
-        // 5. Outer Town Districts (each its own zone for per-building player-build protection)
+        // 5. Outer Town Districts (each cleanly outside Stronghold [-20..20] and Town corner towers [+-25..+-29])
         b.zone("town_tavern");
-        buildTavern(b, -26, -17, -26, -18);
+        buildTavern(b, -15, -6, -27, -22);
 
         b.zone("town_jail");
-        buildTownJail(b, 17, 26, -26, -18);
+        buildTownJail(b, 6, 15, -27, -21);
 
         b.zone("town_forge");
-        buildTownForge(b, 21, 26, 6, 15);
+        buildTownForge(b, 22, 26, 7, 15);
 
         b.zone("town_market");
         buildMarketStalls(b);
 
         b.zone("town_house_1");
-        buildGangHouse(b, -26, -21, -14, -7, Facing.EAST);
+        buildGangHouse(b, -26, -22, -14, -7, Facing.EAST);
 
         b.zone("town_house_2");
-        buildGangHouse(b, -26, -21, 7, 14, Facing.EAST);
+        buildGangHouse(b, -26, -22, 7, 14, Facing.EAST);
 
         b.zone("town_house_3");
-        buildGangHouse(b, 21, 26, -14, -7, Facing.WEST);
+        buildGangHouse(b, 22, 26, -14, -7, Facing.WEST);
 
         b.zone("town_house_4");
-        buildGangHouse(b, 12, 19, 21, 26, Facing.NORTH);
+        buildGangHouse(b, 9, 15, 22, 26, Facing.NORTH);
     }
 
     private static void placeLampPost(Builder b, int x, int z, Facing arm) {
@@ -1475,11 +1583,10 @@ public final class CampBlueprint {
         b.set(-3, 4, z1 + 1, Material.BANNER_WALL, Facing.SOUTH, b.packColor);
         b.set(3, 4, z1 + 1, Material.BANNER_WALL, Facing.SOUTH, b.packColor);
 
-        // Vassal Pack Banners flown in the forecourt alongside the King's banner
-        int[][] vassalSpots = {{-4, -3}, {4, -3}, {-4, -1}, {4, -1}, {-6, -4}, {6, -4}};
-        for (int i = 0; i < Math.min(b.vassalColors.size(), vassalSpots.length); i++) {
-            int vx = vassalSpots[i][0];
-            int vz = vassalSpots[i][1];
+        // Vassal Pack Banners flown along the open forecourt promenade (clear of Tier 1 tents)
+        for (int i = 0; i < Math.min(b.vassalColors.size(), VASSAL_SPOTS.length); i++) {
+            int vx = VASSAL_SPOTS[i][0];
+            int vz = VASSAL_SPOTS[i][1];
             int vColor = b.vassalColors.get(i);
             b.foundation(vx, vz);
             b.set(vx, -1, vz, Material.WALL_ACCENT);
@@ -1555,20 +1662,20 @@ public final class CampBlueprint {
                 }
             }
         }
-        // Bar counter & stacked barrels at back
-        for (int x = x0 + 2; x <= x1 - 2; x++) {
-            b.set(x, 0, z0 + 2, Material.PLANKS);
-            b.set(x, 0, z0 + 1, Material.BARREL);
-            if ((x & 1) == 0) b.set(x, 1, z0 + 1, Material.BARREL);
+        // Bar counter & stacked barrels along the West wall
+        for (int z = z0 + 1; z <= z1 - 1; z++) {
+            b.set(x0 + 1, 0, z, Material.BARREL);
+            if ((z & 1) == 0) b.set(x0 + 1, 1, z, Material.BARREL);
+            b.set(x0 + 2, 0, z, Material.PLANKS);
         }
-        // Long mess tables & benches
-        for (int tx : new int[]{x0 + 2, x1 - 2}) {
-            b.set(tx, 0, z1 - 3, Material.FENCE);
-            b.set(tx, 1, z1 - 3, Material.SLAB);
-            b.set(tx, 0, z1 - 2, Material.STAIR, Facing.NORTH);
+        // Mess tables & benches on the East side
+        for (int tx : new int[]{x1 - 3, x1 - 1}) {
+            b.set(tx, 0, z0 + 2, Material.FENCE);
+            b.set(tx, 1, z0 + 2, Material.SLAB);
+            b.set(tx, 0, z0 + 3, Material.STAIR, Facing.NORTH);
         }
-        b.set(x0 + 2, 1, z0 + 2, Material.LANTERN);
-        b.set(x1 - 2, 1, z0 + 2, Material.LANTERN);
+        b.set(x0 + 2, 1, z0 + 1, Material.LANTERN);
+        b.set(x0 + 2, 1, z1 - 1, Material.LANTERN);
         b.set(midX - 2, 2, z1 + 1, Material.BANNER_WALL, Facing.SOUTH, b.packColor);
         b.set(midX + 2, 2, z1 + 1, Material.WALL_TORCH, Facing.SOUTH);
     }
@@ -1651,7 +1758,7 @@ public final class CampBlueprint {
     }
 
     private static void buildMarketStalls(Builder b) {
-        int[] starts = {-25, -20, -15};
+        int[] starts = {-22, -17, -12};
         for (int s = 0; s < starts.length; s++) {
             int x0 = starts[s], x1 = x0 + 3, z0 = 21, z1 = 25;
             for (int x = x0; x <= x1; x++) {

@@ -161,6 +161,7 @@ public final class FeudData extends SavedData {
             t.putInt("siteZ", p.siteZ);
             t.putInt("siteFacing", p.siteFacing);
         }
+        if (p.bannersDirty) t.putBoolean("bannersDirty", true);
         ListTag met = new ListTag();
         for (UUID u : p.met) met.add(StringTag.valueOf(u.toString()));
         t.put("met", met);
@@ -266,6 +267,7 @@ public final class FeudData extends SavedData {
                         p.siteZ = t.getInt("siteZ");
                         p.siteFacing = Math.floorMod(t.getInt("siteFacing"), 4);
                     }
+                    p.bannersDirty = t.getBoolean("bannersDirty");
                 } else {
                     p.builtTier = 0;
                     p.siteSet = false;

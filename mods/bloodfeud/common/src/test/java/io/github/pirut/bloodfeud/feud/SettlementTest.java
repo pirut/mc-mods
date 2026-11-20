@@ -234,4 +234,47 @@ class SettlementTest {
         p.builtRuined = true;
         assertEquals("Ruined Outpost", p.displayTierTitle(false));
     }
+
+    @Test
+    void bannersDirtyMarkedOnSwallowAndKingDeathSplit() {
+        Feud f = new Feud(new Random(505));
+        Brute kingBoss = f.rise("minecraft:vindicator", Family.ILLAGERS, OW, 0, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        kingBoss.level = 10;
+        Pack king = f.form(kingBoss, PLACES, 0, 5);
+
+        Brute vassalBoss = f.rise("minecraft:vindicator", Family.ILLAGERS, OW, 200, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        Pack vassal = f.form(vassalBoss, PLACES, 0, 2);
+
+        assertFalse(king.bannersDirty);
+        assertFalse(vassal.bannersDirty);
+
+        f.swallow(king, vassal);
+        assertTrue(king.bannersDirty, "King pack must be marked bannersDirty after swallowing a vassal");
+        assertTrue(vassal.bannersDirty, "Swallowed pack must be marked bannersDirty to switch to King's color");
+
+        // Simulate rebannering completed, then kill the King -> SPLIT must mark both dirty again
+        king.bannersDirty = false;
+        vassal.bannersDirty = false;
+        f.drainNews();
+
+        f.killedByPlayer(kingBoss.id, PLAYER, DeathCause.MELEE, true, 1000);
+        assertNull(vassal.liege, "Vassal must be freed when its King dies");
+        assertTrue(king.bannersDirty, "King pack must be marked bannersDirty on SPLIT to clear stale vassal banners");
+        assertTrue(vassal.bannersDirty, "Freed vassal must be marked bannersDirty on SPLIT to restore its own banner color");
+        assertTrue(f.drainNews().stream().anyMatch(n -> n.kind() == News.Kind.SPLIT));
+    }
+
+    @Test
+    void maxGruntsRestoresClassicCapWhenCampsDisabled() {
+        Feud f = new Feud(new Random(606));
+        assertEquals(Feud.MAX_GRUNTS, f.maxGrunts());
+        assertEquals(24, f.maxGrunts());
+
+        f.campsEnabled = false;
+        assertEquals(16, f.maxGrunts(), "Disabling camps must restore classic 16-grunt cap");
+
+        Brute boss = f.rise("minecraft:zombie", Family.ROTTEN, OW, 0, 0, PLAYER, Memory.Kind.SAW_KILLS, null, null, 0);
+        Pack p = f.form(boss, PLACES, 0, 22);
+        assertEquals(16, p.grunts, "Pack grunt cap must respect maxGrunts() when campsEnabled=false");
+    }
 }

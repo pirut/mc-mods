@@ -32,6 +32,7 @@ public final class Feud {
     /** A pack that wakes up after sleeping plays out at most this many of the nights it missed. */
     public static final int CATCH_UP_NIGHTS = 5;
     public static final int MAX_GRUNTS = 24;
+    public static final int CLASSIC_MAX_GRUNTS = 16;
     public static final int MAX_MEMBERS = 5;
     /** A Brute that has come back this many times stays dead next time. */
     public static final int MAX_RETURNS = 3;
@@ -43,6 +44,11 @@ public final class Feud {
     public long lastNight;
     /** When false, packs do not automatically advance settlement tiers or emit camp news. */
     public boolean campsEnabled = true;
+
+    /** Maximum grunts per pack: 24 with settlements enabled, classic 16 when disabled. */
+    public int maxGrunts() {
+        return campsEnabled ? MAX_GRUNTS : CLASSIC_MAX_GRUNTS;
+    }
     public int maxPacks = 64;
     public int maxBrutes = 256;
 
@@ -238,7 +244,7 @@ public final class Feud {
         Pack p = packOf(b);
         if (p != null) {
             p.playerKills++;
-            p.grunts = Math.min(MAX_GRUNTS, p.grunts + 2);
+            p.grunts = Math.min(maxGrunts(), p.grunts + 2);
         }
     }
 
@@ -451,7 +457,7 @@ public final class Feud {
         Pack p = new Pack(new UUID(random.nextLong(), random.nextLong()), boss.family, boss.dimension, place, color,
                 boss.x, boss.z, now);
         p.boss = boss.id;
-        p.grunts = Math.min(MAX_GRUNTS, grunts);
+        p.grunts = Math.min(maxGrunts(), grunts);
         p.tier = SettlementTier.CAMP;
         boss.pack = p.id;
         for (Map.Entry<UUID, Relation> e : boss.relations.entrySet()) if (e.getValue().met) p.met.add(e.getKey());
@@ -460,7 +466,7 @@ public final class Feud {
     }
 
     private void grow(Pack p, long now) {
-        p.grunts = Math.min(MAX_GRUNTS, p.grunts + 1 + random.nextInt(2));
+        p.grunts = Math.min(maxGrunts(), p.grunts + 1 + random.nextInt(2));
         if (p.grunts >= 4 && members(p).size() < MAX_MEMBERS && random.nextDouble() < 0.15) {
             Brute boss = brute(p.boss);
             String type = boss != null ? boss.entityType : p.family.defaultType;
@@ -673,8 +679,15 @@ public final class Feud {
         Pack king = top(winner);
         if (king == top(loser)) return;
         boolean crowned = vassals(king).isEmpty();
-        for (Pack v : vassals(loser)) v.liege = king.id;
+        Pack oldLiege = loser.liege == null ? null : pack(loser.liege);
+        if (oldLiege != null && oldLiege != king) oldLiege.bannersDirty = true;
+        for (Pack v : vassals(loser)) {
+            v.liege = king.id;
+            v.bannersDirty = true;
+        }
         loser.liege = king.id;
+        loser.bannersDirty = true;
+        king.bannersDirty = true;
         Brute kb = brute(king.boss);
         String kingName = kb != null ? kb.fullName() : cap(king.title());
         tell(News.Kind.SWALLOWED, cap(loser.title()) + " now kneels to " + kingName + ".", kb);
@@ -707,7 +720,11 @@ public final class Feud {
     private void succession(Pack p, long now) {
         List<Pack> vassals = vassals(p);
         if (!vassals.isEmpty()) {
-            for (Pack v : vassals) v.liege = null;
+            for (Pack v : vassals) {
+                v.liege = null;
+                v.bannersDirty = true;
+            }
+            p.bannersDirty = true;
             tellAt(p, News.Kind.SPLIT, "With its King gone, " + p.title() + " has lost its hold: " + vassals.size()
                     + (vassals.size() == 1 ? " pack goes" : " packs go") + " its own way.");
         }
@@ -735,7 +752,16 @@ public final class Feud {
             while (abandonedSites.size() > MAX_ABANDONED_SITES) abandonedSites.remove(0);
         }
         packs.remove(p.id);
-        for (Pack v : packs.values()) if (p.id.equals(v.liege)) v.liege = null;
+        if (p.liege != null) {
+            Pack liege = pack(p.liege);
+            if (liege != null) liege.bannersDirty = true;
+        }
+        for (Pack v : packs.values()) {
+            if (p.id.equals(v.liege)) {
+                v.liege = null;
+                v.bannersDirty = true;
+            }
+        }
         for (Brute b : brutes.values()) if (p.id.equals(b.pack)) b.pack = null;
         if (announce) tellAt(p, News.Kind.SPLIT, cap(p.title()) + " has scattered.");
     }

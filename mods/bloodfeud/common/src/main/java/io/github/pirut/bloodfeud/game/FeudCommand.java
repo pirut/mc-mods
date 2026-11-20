@@ -298,10 +298,20 @@ public final class FeudCommand {
         }
         SettlementTier chosen = tier;
         String label = chosen.title(ruined);
-        Pack pack = Live.get(c.getSource().getServer()).spawnCommandCamp(p, family, chosen, ruined, built -> {
-            p.sendSystemMessage(Component.literal(cap(built.title()) + " (" + label + ") is ready at "
-                    + built.campX() + " " + built.siteY + " " + built.campZ() + ".").withStyle(ChatFormatting.GOLD));
+        UUID playerId = p.getUUID();
+        net.minecraft.server.MinecraftServer srv = c.getSource().getServer();
+        Pack pack = Live.get(srv).spawnCommandCamp(p, family, chosen, ruined, built -> {
+            ServerPlayer online = srv.getPlayerList().getPlayer(playerId);
+            if (online != null) {
+                online.sendSystemMessage(Component.literal(cap(built.title()) + " (" + label + ") is ready at "
+                        + built.campX() + " " + built.siteY + " " + built.campZ() + ".").withStyle(ChatFormatting.GOLD));
+            }
         });
+        if (pack == null) {
+            c.getSource().sendFailure(Component.literal("No dry, solid ground ahead of you to build "
+                    + withArticle(label) + "."));
+            return 0;
+        }
         c.getSource().sendSuccess(() -> Component.literal("Building " + cap(pack.title()) + " (" + label
                 + ", " + family.title + ") at " + pack.campX() + " " + pack.siteY + " " + pack.campZ() + "..."), true);
         if (!BloodFeud.config().buildCamps) {
@@ -313,16 +323,33 @@ public final class FeudCommand {
 
     private static int campUpgrade(CommandContext<CommandSourceStack> c) throws CommandSyntaxException {
         ServerPlayer p = c.getSource().getPlayerOrException();
-        Live.UpgradeResult res = Live.get(c.getSource().getServer()).upgradeNearestCamp(p, built -> {
-            p.sendSystemMessage(Component.literal(cap(built.title()) + " now stands as an intact "
-                    + built.tier.title + ".").withStyle(ChatFormatting.GOLD));
+        UUID playerId = p.getUUID();
+        net.minecraft.server.MinecraftServer srv = c.getSource().getServer();
+        Live.UpgradeResult res = Live.get(srv).upgradeNearestCamp(p, built -> {
+            ServerPlayer online = srv.getPlayerList().getPlayer(playerId);
+            if (online != null) {
+                online.sendSystemMessage(Component.literal(cap(built.title()) + " now stands as "
+                        + withArticle(built.tier.title) + ".").withStyle(ChatFormatting.GOLD));
+            }
         });
         if (!res.ok()) {
             c.getSource().sendFailure(Component.literal(res.error()));
             return 0;
         }
         c.getSource().sendSuccess(() -> Component.literal("Building " + cap(res.pack().title()) + " as "
-                + res.target().title + " at " + res.pack().campX() + " " + res.pack().siteY + " " + res.pack().campZ() + "..."), true);
+                + withArticle(res.target().title) + " at " + res.pack().campX() + " " + res.pack().siteY + " " + res.pack().campZ() + "..."), true);
+        if (!res.skippedZones().isEmpty() || res.skippedRingColumns() > 0) {
+            StringBuilder note = new StringBuilder("Protected nearby builds/terrain — skipped");
+            if (!res.skippedZones().isEmpty()) {
+                note.append(" zones: ").append(String.join(", ", res.skippedZones()));
+            }
+            if (res.skippedRingColumns() > 0) {
+                if (!res.skippedZones().isEmpty()) note.append("; and");
+                note.append(" ").append(res.skippedRingColumns()).append(" wall/street columns");
+            }
+            note.append(".");
+            c.getSource().sendSystemMessage(Component.literal(note.toString()).withStyle(ChatFormatting.YELLOW));
+        }
         if (!BloodFeud.config().buildCamps) {
             c.getSource().sendSystemMessage(Component.literal("Note: automatic pack camps are off (/bloodfeud camps on to re-enable).")
                     .withStyle(ChatFormatting.GRAY));
@@ -332,9 +359,14 @@ public final class FeudCommand {
 
     private static int campRuin(CommandContext<CommandSourceStack> c) throws CommandSyntaxException {
         ServerPlayer p = c.getSource().getPlayerOrException();
-        Live.UpgradeResult res = Live.get(c.getSource().getServer()).ruinNearestCamp(p, built -> {
-            p.sendSystemMessage(Component.literal(cap(built.title()) + "'s "
-                    + resLabel(built) + " now lies in ruins.").withStyle(ChatFormatting.GRAY));
+        UUID playerId = p.getUUID();
+        net.minecraft.server.MinecraftServer srv = c.getSource().getServer();
+        Live.UpgradeResult res = Live.get(srv).ruinNearestCamp(p, built -> {
+            ServerPlayer online = srv.getPlayerList().getPlayer(playerId);
+            if (online != null) {
+                online.sendSystemMessage(Component.literal(cap(built.title()) + "'s "
+                        + resLabel(built) + " now lies in ruins.").withStyle(ChatFormatting.GRAY));
+            }
         });
         if (!res.ok()) {
             c.getSource().sendFailure(Component.literal(res.error()));
@@ -406,5 +438,11 @@ public final class FeudCommand {
 
     private static String cap(String s) {
         return s.isEmpty() ? s : s.substring(0, 1).toUpperCase(Locale.ROOT) + s.substring(1);
+    }
+
+    private static String withArticle(String word) {
+        if (word == null || word.isEmpty()) return "";
+        char c = Character.toLowerCase(word.charAt(0));
+        return ("aeiou".indexOf(c) >= 0 ? "an " : "a ") + word;
     }
 }

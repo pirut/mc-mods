@@ -7,21 +7,44 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.Container;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.AbstractChestBlock;
+import net.minecraft.world.level.block.AbstractFurnaceBlock;
+import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.BrewingStandBlock;
+import net.minecraft.world.level.block.ChiseledBookShelfBlock;
+import net.minecraft.world.level.block.CrafterBlock;
+import net.minecraft.world.level.block.DecoratedPotBlock;
+import net.minecraft.world.level.block.DispenserBlock;
+import net.minecraft.world.level.block.EnderChestBlock;
+import net.minecraft.world.level.block.HopperBlock;
+import net.minecraft.world.level.block.JukeboxBlock;
+import net.minecraft.world.level.block.LecternBlock;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
 /**
- * Finds safe terrain sites for pack settlements, guards against overwriting player builds,
- * and never force-loads chunks during automatic placement.
+ * Finds safe terrain sites for pack settlements, guards against overwriting player builds using a strict
+ * natural/replaceable allowlist, and never force-loads chunks during automatic placement.
  */
 public final class SiteFinder {
     private static final int MAX_CLIFF_SPREAD = 8;
     private static final int MAX_SPIRAL_RADIUS = 36;
     private static final int SPIRAL_STEP = 6;
+    private static final int MAX_CANDIDATES_PER_ATTEMPT = 8;
+
+    private static final List<int[]> SPIRAL_OFFSETS = buildSpiralOffsets();
 
     public record Site(BlockPos origin, int facing) {
     }
@@ -29,25 +52,48 @@ public final class SiteFinder {
     private SiteFinder() {
     }
 
-    /** Checks whether all chunks overlapping a square footprint around (cx, cz) are currently loaded. */
-    public static boolean isFootprintLoaded(ServerLevel level, int cx, int cz, int radius) {
-        int r = Math.max(1, radius + 2);
-        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        for (int dx = -r; dx <= r; dx += 8) {
-            for (int dz = -r; dz <= r; dz += 8) {
-                if (!level.isLoaded(pos.set(cx + dx, 64, cz + dz))) return false;
+    private static List<int[]> buildSpiralOffsets() {
+        List<int[]> list = new ArrayList<>();
+        list.add(new int[]{0, 0});
+        for (int dist = SPIRAL_STEP; dist <= MAX_SPIRAL_RADIUS; dist += SPIRAL_STEP) {
+            list.add(new int[]{dist, 0});
+            list.add(new int[]{-dist, 0});
+            list.add(new int[]{0, dist});
+            list.add(new int[]{0, -dist});
+            list.add(new int[]{dist, dist});
+            list.add(new int[]{-dist, dist});
+            list.add(new int[]{dist, -dist});
+            list.add(new int[]{-dist, -dist});
+        }
+        return List.copyOf(list);
+    }
+
+    /** Checks every chunk intersecting {@code [minX..maxX] x [minZ..maxZ]} without triggering chunk loads. */
+    public static boolean areBoundsLoaded(ServerLevel level, int minX, int minZ, int maxX, int maxZ) {
+        int[] b = CampBlueprint.chunkBounds(minX, minZ, maxX, maxZ);
+        for (int chunkX = b[0]; chunkX <= b[2]; chunkX++) {
+            for (int chunkZ = b[1]; chunkZ <= b[3]; chunkZ++) {
+                if (!level.hasChunk(chunkX, chunkZ)) return false;
             }
         }
-        return level.isLoaded(pos.set(cx + r, 64, cz + r))
-                && level.isLoaded(pos.set(cx - r, 64, cz + r))
-                && level.isLoaded(pos.set(cx + r, 64, cz - r))
-                && level.isLoaded(pos.set(cx - r, 64, cz - r));
+        return true;
+    }
+
+    /** Checks whether every chunk overlapping a square footprint around (cx, cz) plus margin is loaded. */
+    public static boolean isFootprintLoaded(ServerLevel level, int cx, int cz, int radius) {
+        int[] b = CampBlueprint.footprintChunkBounds(cx, cz, radius);
+        for (int chunkX = b[0]; chunkX <= b[2]; chunkX++) {
+            for (int chunkZ = b[1]; chunkZ <= b[3]; chunkZ++) {
+                if (!level.hasChunk(chunkX, chunkZ)) return false;
+            }
+        }
+        return true;
     }
 
     /**
      * Finds an automatic settlement site near {@code (pack.homeX, pack.homeZ)}.
-     * Respects spawn safe radius, refuses water/lava/cliffs, avoids player-built blocks with spiral search
-     * up to 36 blocks, and never force-loads chunks.
+     * Caps candidate evaluations per attempt ({@value #MAX_CANDIDATES_PER_ATTEMPT}) to avoid tick spikes,
+     * respects spawn safe radius, refuses water/lava/cliffs/trees, avoids non-natural blocks, and never force-loads chunks.
      */
     public static Site findAutoSite(ServerLevel level, Pack pack, SettlementTier tier) {
         int radius = Math.max(SettlementTier.CAMP.radius, tier == null ? SettlementTier.CAMP.radius : tier.radius);
@@ -55,20 +101,19 @@ public final class SiteFinder {
         int baseX = pack.homeX;
         int baseZ = pack.homeZ;
 
-        // First try the pack's own home coordinates, then spiral outward up to 36 blocks
-        Site direct = evaluateAutoCandidate(level, baseX, baseZ, radius, facing);
-        if (direct != null) return direct;
-
-        for (int dist = SPIRAL_STEP; dist <= MAX_SPIRAL_RADIUS; dist += SPIRAL_STEP) {
-            int[][] offsets = {
-                    {dist, 0}, {-dist, 0}, {0, dist}, {0, -dist},
-                    {dist, dist}, {-dist, dist}, {dist, -dist}, {-dist, -dist}
-            };
-            for (int[] off : offsets) {
-                Site candidate = evaluateAutoCandidate(level, baseX + off[0], baseZ + off[1], radius, facing);
-                if (candidate != null) return candidate;
+        int total = SPIRAL_OFFSETS.size();
+        int start = Math.floorMod(pack.siteSearchOffset, total);
+        int checked = 0;
+        for (int i = 0; i < MAX_CANDIDATES_PER_ATTEMPT && i < total; i++) {
+            int[] off = SPIRAL_OFFSETS.get((start + i) % total);
+            checked++;
+            Site candidate = evaluateAutoCandidate(level, baseX + off[0], baseZ + off[1], radius, facing);
+            if (candidate != null) {
+                pack.siteSearchOffset = 0;
+                return candidate;
             }
         }
+        pack.siteSearchOffset = (start + checked) % total;
         return null;
     }
 
@@ -79,14 +124,14 @@ public final class SiteFinder {
         Integer y = findSurfaceY(level, cx, cz);
         if (y == null) return null;
 
-        // Check core terrain stability (reject water/lava and extreme cliffs > 8 blocks spread)
+        // 1. Inner core terrain stability (reject water/lava and steep cliffs > 8 blocks spread)
         int coreR = Math.min(radius, 9);
         int minY = y, maxY = y;
-        int[][] samples = {
+        int[][] coreSamples = {
                 {-coreR, 0}, {coreR, 0}, {0, -coreR}, {0, coreR},
                 {-coreR / 2, -coreR / 2}, {coreR / 2, -coreR / 2}, {-coreR / 2, coreR / 2}, {coreR / 2, coreR / 2}
         };
-        for (int[] s : samples) {
+        for (int[] s : coreSamples) {
             Integer sy = findSurfaceY(level, cx + s[0], cz + s[1]);
             if (sy == null) return null;
             minY = Math.min(minY, sy);
@@ -94,10 +139,28 @@ public final class SiteFinder {
             if (maxY - minY > MAX_CLIFF_SPREAD) return null;
         }
 
-        // Player-build guard across the footprint
-        if (hasPlayerBuild(level, cx, y, cz, radius, 0)) return null;
+        // 2. Full-radius outer ring terrain sampling (reject deep drops/water outside core so foundations never float)
+        if (radius > coreR) {
+            int maxDrop = CampBuilder.MAX_FOUNDATION_DEPTH - 2;
+            int[][] outerSamples = {
+                    {-radius, 0}, {radius, 0}, {0, -radius}, {0, radius},
+                    {-radius, -radius}, {radius, -radius}, {-radius, radius}, {radius, radius}
+            };
+            for (int[] s : outerSamples) {
+                Integer sy = findSurfaceY(level, cx + s[0], cz + s[1]);
+                if (sy == null) return null;
+                if (Math.abs(sy - y) > maxDrop) return null;
+            }
+        }
 
-        return new Site(new BlockPos(cx, y, cz), facing);
+        // 3. Fast sparse player-build rejection before full 1-block scan
+        BlockPos origin = new BlockPos(cx, y, cz);
+        if (hasPlayerBuildSparse(level, origin, radius)) return null;
+
+        // 4. Full allowlist player-build guard across the footprint
+        if (hasPlayerBuild(level, origin, radius, Set.of(), Set.of())) return null;
+
+        return new Site(origin, facing);
     }
 
     private static boolean tooCloseToWorldSpawn(ServerLevel level, int x, int z) {
@@ -110,7 +173,7 @@ public final class SiteFinder {
     /**
      * Operator placement for {@code /bloodfeud camp ...}: places the settlement ahead of the player
      * ({@code tier.radius + 6} blocks along their horizontal look direction) with the main gate facing them.
-     * Ignores spawn safe radius, adapts to terrain, and avoids void/fluids.
+     * Returns {@code null} if no dry solid surface is found ahead (e.g. open ocean or void).
      */
     public static Site findCommandSite(ServerLevel level, ServerPlayer player, SettlementTier tier) {
         int radius = Math.max(SettlementTier.CAMP.radius, tier.radius);
@@ -139,8 +202,7 @@ public final class SiteFinder {
 
         Integer y = findSurfaceY(level, cx, cz);
         if (y == null) {
-            // Try a couple small side/forward nudges to avoid placing directly over a pond or lava pocket
-            int[][] nudges = {{0, 0}, {4, 0}, {-4, 0}, {0, 4}, {0, -4}, {8, 0}, {-8, 0}};
+            int[][] nudges = {{4, 0}, {-4, 0}, {0, 4}, {0, -4}, {8, 0}, {-8, 0}, {0, 8}, {0, -8}};
             for (int[] n : nudges) {
                 Integer ny = findSurfaceY(level, cx + n[0], cz + n[1]);
                 if (ny != null) {
@@ -151,20 +213,19 @@ public final class SiteFinder {
                 }
             }
         }
-        if (y == null) {
-            int minY = level.getMinBuildHeight() + 6;
-            int maxY = level.getMaxBuildHeight() - 20;
-            y = Math.max(minY, Math.min(maxY, player.getBlockY()));
-        }
+        if (y == null) return null;
         return new Site(new BlockPos(cx, y, cz), facing);
     }
 
     /**
-     * Finds a dry, solid surface Y at (x, z), or null if water/lava/void.
-     * In roofed dimensions (Nether), scans downward from y=100 to y=34 for solid floor with >= 8 air blocks above.
+     * Finds a dry, solid ground surface Y at (x, z), walking down past tree trunks, leaves, and replaceable cover,
+     * or returns {@code null} if unloaded, water, lava, or void.
      */
     public static Integer findSurfaceY(ServerLevel level, int x, int z) {
-        if (!level.isLoaded(new BlockPos(x, 64, z))) return null;
+        if (!level.hasChunk(x >> 4, z >> 4)) return null;
+        int minY = level.getMinBuildHeight() + 2;
+        int maxY = level.getMaxBuildHeight() - 18;
+
         if (level.dimensionType().hasCeiling()) {
             BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
             int airStreak = 0;
@@ -174,11 +235,11 @@ public final class SiteFinder {
                     airStreak = 0;
                     continue;
                 }
-                if (state.isAir() || state.canBeReplaced()) {
+                if (state.isAir() || state.canBeReplaced() || isTreeOrFoliage(state)) {
                     airStreak++;
                     continue;
                 }
-                if (airStreak >= 8 && state.blocksMotion() && state.getFluidState().isEmpty()) {
+                if (airStreak >= 8 && state.blocksMotion()) {
                     return y + 1;
                 }
                 airStreak = 0;
@@ -186,92 +247,317 @@ public final class SiteFinder {
             return null;
         }
 
-        int surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
-        if (surface <= level.getMinBuildHeight() + 2 || surface >= level.getMaxBuildHeight() - 18) return null;
-        BlockPos at = new BlockPos(x, surface, z);
-        BlockPos below = at.below();
-        if (!level.getFluidState(at).isEmpty() || !level.getFluidState(below).isEmpty()) return null;
-        BlockState ground = level.getBlockState(below);
-        if (!ground.blocksMotion()) return null;
-        return surface;
+        int topY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+        if (topY < minY || topY >= maxY) return null;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int y = topY; y >= minY; y--) {
+            BlockState state = level.getBlockState(pos.set(x, y, z));
+            if (!state.getFluidState().isEmpty()) return null;
+            if (state.isAir() || state.canBeReplaced() || isTreeOrFoliage(state)) {
+                continue;
+            }
+            if (state.blocksMotion()) {
+                int surface = y + 1;
+                if (surface <= minY || surface >= maxY) return null;
+                if (!level.getFluidState(pos.set(x, surface, z)).isEmpty()) return null;
+                return surface;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isTreeOrFoliage(BlockState state) {
+        if (state.is(BlockTags.LOGS) || state.is(BlockTags.LEAVES) || state.is(BlockTags.WART_BLOCKS)) {
+            return true;
+        }
+        Block b = state.getBlock();
+        return b == Blocks.MUSHROOM_STEM || b == Blocks.RED_MUSHROOM_BLOCK || b == Blocks.BROWN_MUSHROOM_BLOCK
+                || b == Blocks.BAMBOO || b == Blocks.CACTUS || b == Blocks.MANGROVE_ROOTS;
     }
 
     /**
-     * Checks whether a newly expanding zone box collides with any player-placed indicator blocks.
-     * Chests/barrels inside {@code previousBuiltRadius} are treated as our own settlement containers.
+     * Checks whether a discrete zone box collides with any player-built block or foreign container.
+     * Uses exact chunk-loaded checks and scans down to {@code Math.min(-2, box.minY())}.
      */
-    public static boolean isZoneBlockedByPlayer(ServerLevel level, BlockPos origin, CampBlueprint.Box box, int previousBuiltRadius) {
+    public static boolean isZoneBlockedByPlayer(ServerLevel level, BlockPos origin, CampBlueprint.Box box,
+                                                Set<CampBlueprint.Spot> ownedPositions,
+                                                Set<CampBlueprint.Spot> ownedContainers) {
         int minX = origin.getX() + box.minX();
         int maxX = origin.getX() + box.maxX();
-        int minY = Math.max(level.getMinBuildHeight() + 1, origin.getY() + Math.max(-2, box.minY()));
+        int minY = Math.max(level.getMinBuildHeight() + 1, origin.getY() + Math.min(-2, box.minY()));
         int maxY = Math.min(level.getMaxBuildHeight() - 1, origin.getY() + Math.max(6, box.maxY()));
         int minZ = origin.getZ() + box.minZ();
         int maxZ = origin.getZ() + box.maxZ();
 
+        if (!areBoundsLoaded(level, minX, minZ, maxX, maxZ)) return true;
+
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
-                if (!level.isLoaded(pos.set(x, origin.getY(), z))) return true;
-                boolean insideOld = previousBuiltRadius > 0
-                        && Math.abs(x - origin.getX()) <= previousBuiltRadius
-                        && Math.abs(z - origin.getZ()) <= previousBuiltRadius;
                 for (int y = minY; y <= maxY; y++) {
-                    BlockState state = level.getBlockState(pos.set(x, y, z));
-                    if (isPlayerIndicator(state, !insideOld)) return true;
+                    if (isPlayerBlockAt(level, origin, pos.set(x, y, z), ownedPositions, ownedContainers)) {
+                        return true;
+                    }
                 }
             }
         }
         return false;
     }
 
-    private static boolean hasPlayerBuild(ServerLevel level, int cx, int cy, int cz, int radius, int previousBuiltRadius) {
+    /** Checks a single vertical column at relative {@code (rx, rz)} for any player-built block or foreign container. */
+    public static boolean hasPlayerBlockInColumn(ServerLevel level, BlockPos origin, int rx, int rz,
+                                                 int relMinY, int relMaxY,
+                                                 Set<CampBlueprint.Spot> ownedPositions,
+                                                 Set<CampBlueprint.Spot> ownedContainers) {
+        int wx = origin.getX() + rx;
+        int wz = origin.getZ() + rz;
+        if (!level.hasChunk(wx >> 4, wz >> 4)) return true;
+        int minY = Math.max(level.getMinBuildHeight() + 1, origin.getY() + Math.min(-2, relMinY));
+        int maxY = Math.min(level.getMaxBuildHeight() - 1, origin.getY() + Math.max(6, relMaxY));
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int y = minY; y <= maxY; y++) {
+            if (isPlayerBlockAt(level, origin, pos.set(wx, y, wz), ownedPositions, ownedContainers)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Preflight check for upgrade building zones: returns {@code true} if any corner, edge midpoint, or center
+     * column sits over lava or has no solid non-fluid ground within {@code maxFoundationDepth} blocks below origin.
+     */
+    public static boolean isZoneOverAbyss(ServerLevel level, BlockPos origin, CampBlueprint.Box box,
+                                          int maxFoundationDepth) {
+        int minX = origin.getX() + box.minX();
+        int maxX = origin.getX() + box.maxX();
+        int minZ = origin.getZ() + box.minZ();
+        int maxZ = origin.getZ() + box.maxZ();
+        int midX = (minX + maxX) / 2;
+        int midZ = (minZ + maxZ) / 2;
+
+        int[][] samples = {
+                {minX, minZ}, {maxX, minZ}, {minX, maxZ}, {maxX, maxZ},
+                {midX, minZ}, {midX, maxZ}, {minX, midZ}, {maxX, midZ},
+                {midX, midZ}
+        };
+        int minBuild = level.getMinBuildHeight() + 1;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int[] s : samples) {
+            int wx = s[0], wz = s[1];
+            if (!level.hasChunk(wx >> 4, wz >> 4)) return true;
+            if (level.getFluidState(pos.set(wx, origin.getY() - 1, wz)).is(FluidTags.LAVA)
+                    || level.getFluidState(pos.set(wx, origin.getY() - 2, wz)).is(FluidTags.LAVA)) {
+                return true;
+            }
+            boolean solidFound = false;
+            for (int depth = 0; depth <= maxFoundationDepth; depth++) {
+                int y = origin.getY() - 1 - depth;
+                if (y <= minBuild) break;
+                BlockState state = level.getBlockState(pos.set(wx, y, wz));
+                if (state.blocksMotion() && state.getFluidState().isEmpty() && !state.canBeReplaced()) {
+                    solidFound = true;
+                    break;
+                }
+            }
+            if (!solidFound) return true;
+        }
+        return false;
+    }
+
+    /** Full footprint player-build scan (always checks chunk loadedness first). */
+    public static boolean hasPlayerBuild(ServerLevel level, BlockPos origin, int radius,
+                                         Set<CampBlueprint.Spot> ownedPositions,
+                                         Set<CampBlueprint.Spot> ownedContainers) {
+        int cx = origin.getX(), cy = origin.getY(), cz = origin.getZ();
+        if (!areBoundsLoaded(level, cx - radius, cz - radius, cx + radius, cz + radius)) return true;
         int minY = Math.max(level.getMinBuildHeight() + 1, cy - 3);
         int maxY = Math.min(level.getMaxBuildHeight() - 1, cy + 10);
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
-                boolean insideOld = previousBuiltRadius > 0
-                        && Math.abs(dx) <= previousBuiltRadius
-                        && Math.abs(dz) <= previousBuiltRadius;
                 for (int y = minY; y <= maxY; y++) {
-                    BlockState state = level.getBlockState(pos.set(cx + dx, y, cz + dz));
-                    if (isPlayerIndicator(state, !insideOld)) return true;
+                    if (isPlayerBlockAt(level, origin, pos.set(cx + dx, y, cz + dz), ownedPositions, ownedContainers)) {
+                        return true;
+                    }
                 }
             }
         }
         return false;
     }
 
-    /** True for blocks that strongly indicate a player-built base/contraption. */
-    public static boolean isPlayerIndicator(BlockState state, boolean includeContainers) {
-        if (state.isAir()) return false;
-        Block b = state.getBlock();
-        if (state.is(BlockTags.BEDS) || state.is(BlockTags.ANVIL) || state.is(BlockTags.SHULKER_BOXES)
-                || state.is(BlockTags.DOORS)) {
-            return true;
-        }
-        if (b == Blocks.CRAFTING_TABLE || b == Blocks.FURNACE || b == Blocks.BLAST_FURNACE || b == Blocks.SMOKER
-                || b == Blocks.ENCHANTING_TABLE || b == Blocks.BEACON || b == Blocks.CONDUIT || b == Blocks.ENDER_CHEST
-                || b == Blocks.REDSTONE_WIRE || b == Blocks.REPEATER || b == Blocks.COMPARATOR
-                || b == Blocks.PISTON || b == Blocks.STICKY_PISTON || b == Blocks.HOPPER
-                || b == Blocks.JUKEBOX || b == Blocks.LECTERN) {
-            return true;
-        }
-        if (includeContainers && (b == Blocks.CHEST || b == Blocks.TRAPPED_CHEST || b == Blocks.BARREL)) {
-            return true;
+    private static boolean hasPlayerBuildSparse(ServerLevel level, BlockPos origin, int radius) {
+        int cx = origin.getX(), cy = origin.getY(), cz = origin.getZ();
+        int minY = Math.max(level.getMinBuildHeight() + 1, cy - 1);
+        int maxY = Math.min(level.getMaxBuildHeight() - 1, cy + 6);
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int dx = -radius; dx <= radius; dx += 4) {
+            for (int dz = -radius; dz <= radius; dz += 4) {
+                for (int y = minY; y <= maxY; y += 2) {
+                    if (isPlayerBlockAt(level, origin, pos.set(cx + dx, y, cz + dz), Set.of(), Set.of())) {
+                        return true;
+                    }
+                }
+            }
         }
         return false;
     }
 
-    /** Never overwrite indestructible world blocks or player-build indicators during clearing. */
-    public static boolean isProtectedBlock(BlockState state) {
-        if (state.isAir()) return false;
-        Block b = state.getBlock();
-        if (b == Blocks.BEDROCK || b == Blocks.END_PORTAL || b == Blocks.END_PORTAL_FRAME
-                || b == Blocks.NETHER_PORTAL || b == Blocks.COMMAND_BLOCK || b == Blocks.REPEATING_COMMAND_BLOCK
-                || b == Blocks.CHAIN_COMMAND_BLOCK || b == Blocks.BARRIER) {
+    /**
+     * Returns {@code true} if the block at {@code pos} must be treated as player-built or protected.
+     * Any container is ALWAYS protected unless its exact relative position is in {@code ownedContainers}.
+     * Outside {@code ownedPositions}, any block not on the strict natural/replaceable allowlist is protected.
+     */
+    public static boolean isPlayerBlockAt(ServerLevel level, BlockPos origin, BlockPos pos,
+                                          Set<CampBlueprint.Spot> ownedPositions,
+                                          Set<CampBlueprint.Spot> ownedContainers) {
+        BlockState state = level.getBlockState(pos);
+        if (isIndestructibleBlock(state)) return true;
+        CampBlueprint.Spot rel = new CampBlueprint.Spot(
+                pos.getX() - origin.getX(), pos.getY() - origin.getY(), pos.getZ() - origin.getZ());
+        if (isContainerBlock(level, pos, state)) {
+            return !ownedContainers.contains(rel);
+        }
+        if (ownedPositions.contains(rel)) return false;
+        return !isNaturalOrReplaceable(state);
+    }
+
+    /** Strict allowlist of natural terrain/foliage and replaceable blocks safe for automatic builds to clear. */
+    public static boolean isNaturalOrReplaceable(BlockState state) {
+        if (state.isAir() || !state.getFluidState().isEmpty() || state.canBeReplaced()) {
             return true;
         }
-        return isPlayerIndicator(state, false);
+        if (state.is(BlockTags.DIRT)
+                || state.is(BlockTags.BASE_STONE_OVERWORLD)
+                || state.is(BlockTags.BASE_STONE_NETHER)
+                || state.is(BlockTags.SAND)
+                || state.is(BlockTags.TERRACOTTA)
+                || state.is(BlockTags.SNOW)
+                || state.is(BlockTags.ICE)
+                || state.is(BlockTags.LOGS)
+                || state.is(BlockTags.LEAVES)
+                || state.is(BlockTags.FLOWERS)
+                || state.is(BlockTags.SMALL_FLOWERS)
+                || state.is(BlockTags.TALL_FLOWERS)
+                || state.is(BlockTags.SAPLINGS)
+                || state.is(BlockTags.MUSHROOM_GROW_BLOCK)
+                || state.is(BlockTags.WART_BLOCKS)) {
+            return true;
+        }
+        Block b = state.getBlock();
+        return b == Blocks.GRAVEL
+                || b == Blocks.CLAY
+                || b == Blocks.MUD
+                || b == Blocks.PACKED_MUD
+                || b == Blocks.SANDSTONE
+                || b == Blocks.RED_SANDSTONE
+                || b == Blocks.CALCITE
+                || b == Blocks.TUFF
+                || b == Blocks.POINTED_DRIPSTONE
+                || b == Blocks.DRIPSTONE_BLOCK
+                || b == Blocks.NETHERRACK
+                || b == Blocks.SOUL_SAND
+                || b == Blocks.SOUL_SOIL
+                || b == Blocks.BASALT
+                || b == Blocks.SMOOTH_BASALT
+                || b == Blocks.BLACKSTONE
+                || b == Blocks.END_STONE
+                || b == Blocks.MYCELIUM
+                || b == Blocks.PODZOL
+                || b == Blocks.ROOTED_DIRT
+                || b == Blocks.MOSS_BLOCK
+                || b == Blocks.MOSS_CARPET
+                || b == Blocks.CACTUS
+                || b == Blocks.SUGAR_CANE
+                || b == Blocks.VINE
+                || b == Blocks.GLOW_LICHEN
+                || b == Blocks.SCULK
+                || b == Blocks.SCULK_VEIN
+                || b == Blocks.DEAD_BUSH
+                || b == Blocks.FERN
+                || b == Blocks.LARGE_FERN
+                || b == Blocks.SHORT_GRASS
+                || b == Blocks.TALL_GRASS
+                || b == Blocks.SEAGRASS
+                || b == Blocks.TALL_SEAGRASS
+                || b == Blocks.KELP
+                || b == Blocks.KELP_PLANT
+                || b == Blocks.BROWN_MUSHROOM
+                || b == Blocks.RED_MUSHROOM
+                || b == Blocks.BROWN_MUSHROOM_BLOCK
+                || b == Blocks.RED_MUSHROOM_BLOCK
+                || b == Blocks.MUSHROOM_STEM
+                || b == Blocks.CRIMSON_FUNGUS
+                || b == Blocks.WARPED_FUNGUS
+                || b == Blocks.CRIMSON_NYLIUM
+                || b == Blocks.WARPED_NYLIUM
+                || b == Blocks.CRIMSON_ROOTS
+                || b == Blocks.WARPED_ROOTS
+                || b == Blocks.NETHER_SPROUTS
+                || b == Blocks.WEEPING_VINES
+                || b == Blocks.WEEPING_VINES_PLANT
+                || b == Blocks.TWISTING_VINES
+                || b == Blocks.TWISTING_VINES_PLANT
+                || b == Blocks.BAMBOO
+                || b == Blocks.BAMBOO_SAPLING
+                || b == Blocks.LILY_PAD
+                || b == Blocks.BIG_DRIPLEAF
+                || b == Blocks.BIG_DRIPLEAF_STEM
+                || b == Blocks.SMALL_DRIPLEAF
+                || b == Blocks.HANGING_ROOTS
+                || b == Blocks.SPORE_BLOSSOM
+                || b == Blocks.AZALEA
+                || b == Blocks.FLOWERING_AZALEA
+                || b == Blocks.PINK_PETALS
+                || b == Blocks.SWEET_BERRY_BUSH
+                || b == Blocks.MAGMA_BLOCK
+                || b == Blocks.MANGROVE_ROOTS
+                || b == Blocks.MUDDY_MANGROVE_ROOTS;
+    }
+
+    /** True for any block that stores items or is a container BlockEntity. */
+    public static boolean isContainerBlock(ServerLevel level, BlockPos pos, BlockState state) {
+        if (state.hasBlockEntity()) {
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be instanceof Container) return true;
+        }
+        Block b = state.getBlock();
+        return b instanceof AbstractChestBlock<?>
+                || b instanceof BarrelBlock
+                || b instanceof ShulkerBoxBlock
+                || b instanceof AbstractFurnaceBlock
+                || b instanceof HopperBlock
+                || b instanceof DispenserBlock
+                || b instanceof BrewingStandBlock
+                || b instanceof EnderChestBlock
+                || b instanceof DecoratedPotBlock
+                || b instanceof ChiseledBookShelfBlock
+                || b instanceof CrafterBlock
+                || b instanceof LecternBlock
+                || b instanceof JukeboxBlock;
+    }
+
+    /** True if the block at {@code pos} is a container BlockEntity currently holding any items. */
+    public static boolean isNonEmptyContainer(ServerLevel level, BlockPos pos, BlockState state) {
+        if (!state.hasBlockEntity()) return false;
+        BlockEntity be = level.getBlockEntity(pos);
+        return be instanceof Container container && !container.isEmpty();
+    }
+
+    /** Never overwrite indestructible world/technical blocks even during manual operator builds. */
+    public static boolean isIndestructibleBlock(BlockState state) {
+        if (state.isAir()) return false;
+        Block b = state.getBlock();
+        return b == Blocks.BEDROCK
+                || b == Blocks.END_PORTAL
+                || b == Blocks.END_PORTAL_FRAME
+                || b == Blocks.END_GATEWAY
+                || b == Blocks.NETHER_PORTAL
+                || b == Blocks.COMMAND_BLOCK
+                || b == Blocks.REPEATING_COMMAND_BLOCK
+                || b == Blocks.CHAIN_COMMAND_BLOCK
+                || b == Blocks.BARRIER
+                || b == Blocks.STRUCTURE_BLOCK
+                || b == Blocks.JIGSAW;
     }
 }
