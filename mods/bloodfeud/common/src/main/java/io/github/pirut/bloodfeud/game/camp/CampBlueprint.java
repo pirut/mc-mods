@@ -57,6 +57,7 @@ public final class CampBlueprint {
         GROUND(PASS_FOUNDATION),
         PATH(PASS_FOUNDATION),
         FLOOR(PASS_FOUNDATION),
+        RUIN_FLOOR(PASS_FOUNDATION),
 
         LOG(PASS_STRUCTURE),
         PILLAR(PASS_STRUCTURE),
@@ -71,6 +72,9 @@ public final class CampBlueprint {
         WOOL_PRIMARY(PASS_STRUCTURE),
         WOOL_ACCENT(PASS_STRUCTURE),
         FAMILY_PROP_A(PASS_STRUCTURE),
+        RUIN_WALL(PASS_STRUCTURE),
+        RUIN_WALL_ALT(PASS_STRUCTURE),
+        RUIN_SLAB(PASS_STRUCTURE),
 
         BARREL(PASS_FURNITURE),
         CHEST_CAMP(PASS_FURNITURE),
@@ -78,6 +82,7 @@ public final class CampBlueprint {
         CHEST_STRONGHOLD(PASS_FURNITURE),
         CHEST_TOWN(PASS_FURNITURE),
         CAMPFIRE(PASS_FURNITURE),
+        CAMPFIRE_UNLIT(PASS_FURNITURE),
         THRONE(PASS_FURNITURE),
         FAMILY_PROP_B(PASS_FURNITURE),
         WORK_PROP_A(PASS_FURNITURE),
@@ -94,7 +99,9 @@ public final class CampBlueprint {
         VASSAL_BANNER(PASS_DECOR),
         CARPET(PASS_DECOR),
         FAMILY_CANOPY(PASS_DECOR),
-        CHAIN(PASS_DECOR);
+        CHAIN(PASS_DECOR),
+        RUIN_OVERGROWTH(PASS_DECOR),
+        RUIN_WEB(PASS_DECOR);
 
         public final int pass;
 
@@ -108,6 +115,12 @@ public final class CampBlueprint {
 
         public boolean isBanner() {
             return this == BANNER_STANDING || this == BANNER_WALL || this == VASSAL_BANNER;
+        }
+
+        public boolean isRuinMaterial() {
+            return this == RUIN_FLOOR || this == RUIN_WALL || this == RUIN_WALL_ALT
+                    || this == RUIN_SLAB || this == CAMPFIRE_UNLIT
+                    || this == RUIN_OVERGROWTH || this == RUIN_WEB;
         }
     }
 
@@ -210,6 +223,283 @@ public final class CampBlueprint {
             if (p.material.isBanner()) banners.add(p);
         }
         return banners;
+    }
+
+    /**
+     * Generates a complete ruined settlement blueprint from scratch for tiers {@code 1..toTier}:
+     * extinguished campfires, crumbled roofs and upper walls, weathered masonry, tattered banners,
+     * rubble slabs, and family-themed overgrowth/cobwebs, with no floating isolated blocks.
+     */
+    public static Plan ruinPlan(UUID packId, Family family, int packColor, List<Integer> vassalColors,
+                                int facing, int toTier) {
+        int to = Math.max(1, Math.min(SettlementTier.TOWN.level, toTier));
+        Plan intact = plan(packId, family, packColor, vassalColors, facing, 0, to);
+        long seed = ruinSeed(packId, family);
+        Map<Long, Placement> ruinedMap = computeRuinedMap(intact, family, seed, false);
+
+        List<Placement> out = new ArrayList<>(intact.placements.size());
+        for (Placement p : intact.placements) {
+            if (p.material == Material.FOUNDATION_COLUMN) out.add(p);
+        }
+        out.addAll(ruinedMap.values());
+        out.sort(Comparator.comparingInt(Placement::pass)
+                .thenComparingInt(Placement::ry)
+                .thenComparingInt(Placement::rx)
+                .thenComparingInt(Placement::rz));
+        return new Plan(List.copyOf(out), intact.zones, intact.bossSpot, intact.guardSpots,
+                intact.patrolSpots, 0, to, intact.facing);
+    }
+
+    /**
+     * Generates an incremental in-place ruination diff for an already-built {@code 1..builtTier} settlement.
+     * Emits only changed coordinates, preserves existing chests/barrels to prevent item-drop spam or lost loot,
+     * and orders teardown top-down (decor -> furniture -> structure -> weathered masonry & overgrowth).
+     */
+    public static Plan ruinDiffPlan(UUID packId, Family family, int packColor, List<Integer> vassalColors,
+                                    int facing, int builtTier) {
+        int tier = Math.max(1, Math.min(SettlementTier.TOWN.level, builtTier));
+        Plan intact = plan(packId, family, packColor, vassalColors, facing, 0, tier);
+        long seed = ruinSeed(packId, family);
+        Map<Long, Placement> intactMap = indexNonFoundation(intact);
+        Map<Long, Placement> ruinedMap = computeRuinedMap(intact, family, seed, true);
+
+        List<Placement> clearDecor = new ArrayList<>();
+        List<Placement> changeFurniture = new ArrayList<>();
+        List<Placement> clearStructure = new ArrayList<>();
+        List<Placement> weatherAndDebris = new ArrayList<>();
+
+        for (Map.Entry<Long, Placement> e : ruinedMap.entrySet()) {
+            Placement target = e.getValue();
+            Placement before = intactMap.get(e.getKey());
+            if (before != null && before.material == target.material
+                    && before.facing == target.facing && before.meta == target.meta) {
+                continue;
+            }
+            if (target.material == Material.AIR) {
+                if (before == null || before.material == Material.AIR) continue;
+                if (before.material.pass == PASS_DECOR) {
+                    clearDecor.add(new Placement(target.rx, target.ry, target.rz, Material.AIR, target.facing, 0, 0, target.zone));
+                } else if (before.material.pass == PASS_FURNITURE) {
+                    changeFurniture.add(new Placement(target.rx, target.ry, target.rz, Material.AIR, target.facing, 0, 1, target.zone));
+                } else {
+                    clearStructure.add(new Placement(target.rx, target.ry, target.rz, Material.AIR, target.facing, 0, 2, target.zone));
+                }
+            } else if (target.material.pass == PASS_FURNITURE) {
+                changeFurniture.add(new Placement(target.rx, target.ry, target.rz, target.material, target.facing, target.meta, 1, target.zone));
+            } else {
+                weatherAndDebris.add(new Placement(target.rx, target.ry, target.rz, target.material, target.facing, target.meta, 3, target.zone));
+            }
+        }
+
+        Comparator<Placement> topDown = Comparator.comparingInt(Placement::ry).reversed()
+                .thenComparingInt(Placement::rx).thenComparingInt(Placement::rz);
+        Comparator<Placement> bottomUp = Comparator.comparingInt((Placement p) -> p.material.pass)
+                .thenComparingInt(Placement::ry)
+                .thenComparingInt(Placement::rx)
+                .thenComparingInt(Placement::rz);
+
+        clearDecor.sort(topDown);
+        changeFurniture.sort(topDown);
+        clearStructure.sort(topDown);
+        weatherAndDebris.sort(bottomUp);
+
+        List<Placement> ops = new ArrayList<>(clearDecor.size() + changeFurniture.size()
+                + clearStructure.size() + weatherAndDebris.size());
+        ops.addAll(clearDecor);
+        ops.addAll(changeFurniture);
+        ops.addAll(clearStructure);
+        ops.addAll(weatherAndDebris);
+        return new Plan(List.copyOf(ops), intact.zones, intact.bossSpot, intact.guardSpots,
+                intact.patrolSpots, tier, tier, intact.facing);
+    }
+
+    /**
+     * Generates a repair/restoration blueprint for a ruined settlement of {@code builtTier} recovering back to
+     * intact {@code toTier} (where {@code toTier >= builtTier}). Restores every intact block and explicitly clears
+     * any ruin-only rubble/overgrowth blocks back to air.
+     */
+    public static Plan repairPlan(UUID packId, Family family, int packColor, List<Integer> vassalColors,
+                                  int facing, int builtTier, int toTier) {
+        int built = Math.max(1, Math.min(SettlementTier.TOWN.level, builtTier));
+        int to = Math.max(built, Math.min(SettlementTier.TOWN.level, toTier));
+        Plan intact = plan(packId, family, packColor, vassalColors, facing, 0, to);
+        Plan builtIntact = (built == to) ? intact : plan(packId, family, packColor, vassalColors, facing, 0, built);
+        long seed = ruinSeed(packId, family);
+        Map<Long, Placement> ruinedMap = computeRuinedMap(builtIntact, family, seed, true);
+        Map<Long, Placement> intactMap = indexNonFoundation(intact);
+
+        List<Placement> all = new ArrayList<>(intact.placements.size() + 64);
+        all.addAll(intact.placements);
+        for (Map.Entry<Long, Placement> e : ruinedMap.entrySet()) {
+            Placement rp = e.getValue();
+            if (rp.material != Material.AIR && !intactMap.containsKey(e.getKey())) {
+                all.add(new Placement(rp.rx, rp.ry, rp.rz, Material.AIR, Facing.NORTH, 0, PASS_FOUNDATION, rp.zone));
+            }
+        }
+        all.sort(Comparator.comparingInt(Placement::pass)
+                .thenComparingInt(Placement::ry)
+                .thenComparingInt(Placement::rx)
+                .thenComparingInt(Placement::rz));
+        return new Plan(List.copyOf(all), intact.zones, intact.bossSpot, intact.guardSpots,
+                intact.patrolSpots, built, to, intact.facing);
+    }
+
+    private static long ruinSeed(UUID packId, Family family) {
+        return packId.getMostSignificantBits() ^ (packId.getLeastSignificantBits() * 0x9E3779B97F4A7C15L)
+                ^ ((long) family.ordinal() * 0xBF58476D1CE4E5B9L) ^ 0x5255494E4544L;
+    }
+
+    private static Map<Long, Placement> indexNonFoundation(Plan plan) {
+        Map<Long, Placement> map = new LinkedHashMap<>(plan.placements.size());
+        for (Placement p : plan.placements) {
+            if (p.material == Material.FOUNDATION_COLUMN) continue;
+            map.put(Builder.key(p.rx, p.ry, p.rz), p);
+        }
+        return map;
+    }
+
+    private static Map<Long, Placement> computeRuinedMap(Plan intact, Family family, long seed, boolean preserveContainers) {
+        Map<Long, Placement> intactMap = indexNonFoundation(intact);
+        Map<Long, Placement> ruined = new LinkedHashMap<>(intactMap.size());
+        java.util.Set<Long> collapsedCols = new java.util.HashSet<>();
+
+        for (Map.Entry<Long, Placement> e : intactMap.entrySet()) {
+            Placement p = e.getValue();
+            int x = p.rx, y = p.ry, z = p.rz;
+            Material m = p.material;
+            int r = roll100(seed, x, y, z, 1);
+            int r2 = roll100(seed, x, y, z, 2);
+
+            Material out = switch (m) {
+                case AIR, GROUND, FOUNDATION_COLUMN -> m;
+                case PATH, FLOOR -> r < 30 ? Material.RUIN_FLOOR : m;
+                case CAMPFIRE -> Material.CAMPFIRE_UNLIT;
+                case CHEST_CAMP, CHEST_OUTPOST, CHEST_STRONGHOLD, CHEST_TOWN, BARREL ->
+                        preserveContainers ? m : (r < 40 ? Material.AIR : m);
+                case THRONE, WORK_PROP_A, WORK_PROP_B, FAMILY_PROP_B ->
+                        r < 35 ? Material.AIR : m;
+                case TORCH, WALL_TORCH, LANTERN, HANGING_LANTERN, FAMILY_LIGHT ->
+                        r < 85 ? Material.AIR : m;
+                case BANNER_STANDING, BANNER_WALL, VASSAL_BANNER ->
+                        r < 70 ? Material.AIR : m;
+                case WOOL_PRIMARY, WOOL_ACCENT, CARPET ->
+                        r < 55 ? Material.AIR : m;
+                case LADDER, CHAIN, FAMILY_CANOPY ->
+                        r < 45 ? Material.AIR : m;
+                case LOG, PILLAR, PLANKS, WALL, WALL_ACCENT, SLAB, STAIR, STAIR_TOP, FENCE, IRON_BARS, FAMILY_PROP_A -> {
+                    int collapsePct = y <= 0 ? 10 : (y == 1 ? 22 : (y <= 3 ? 45 : 68));
+                    int weatherPct = y <= 0 ? 48 : (y == 1 ? 45 : (y <= 3 ? 35 : 22));
+                    if (r < collapsePct) {
+                        yield Material.AIR;
+                    } else if (r < collapsePct + weatherPct) {
+                        if (m == Material.SLAB || m == Material.STAIR || m == Material.STAIR_TOP) {
+                            yield Material.RUIN_SLAB;
+                        } else if (m == Material.FENCE || m == Material.IRON_BARS) {
+                            yield r2 < 40 ? Material.AIR : m;
+                        } else {
+                            yield r2 < 60 ? Material.RUIN_WALL : Material.RUIN_WALL_ALT;
+                        }
+                    } else {
+                        yield m;
+                    }
+                }
+                default -> m;
+            };
+
+            if (out == Material.AIR && m.pass == PASS_STRUCTURE) {
+                collapsedCols.add(Builder.key(x, 0, z));
+            }
+            ruined.put(e.getKey(), out == m ? p : new Placement(x, y, z, out, p.facing, p.meta, out.pass, p.zone));
+        }
+
+        // Collapse floating isolated structure blocks (ry >= 1 with no support below and < 2 horizontal neighbors)
+        for (int iter = 0; iter < 64; iter++) {
+            boolean changed = false;
+            for (Map.Entry<Long, Placement> e : ruined.entrySet()) {
+                Placement p = e.getValue();
+                if (p.ry < 1 || p.material.pass != PASS_STRUCTURE || p.material == Material.AIR) continue;
+                if (isSolidSupport(ruined.get(Builder.key(p.rx, p.ry - 1, p.rz)))) continue;
+                int horiz = 0;
+                if (isSolidSupport(ruined.get(Builder.key(p.rx + 1, p.ry, p.rz)))) horiz++;
+                if (isSolidSupport(ruined.get(Builder.key(p.rx - 1, p.ry, p.rz)))) horiz++;
+                if (isSolidSupport(ruined.get(Builder.key(p.rx, p.ry, p.rz + 1)))) horiz++;
+                if (isSolidSupport(ruined.get(Builder.key(p.rx, p.ry, p.rz - 1)))) horiz++;
+                if (horiz < 2) {
+                    e.setValue(new Placement(p.rx, p.ry, p.rz, Material.AIR, p.facing, 0, PASS_FOUNDATION, p.zone));
+                    collapsedCols.add(Builder.key(p.rx, 0, p.rz));
+                    changed = true;
+                }
+            }
+            if (!changed) break;
+        }
+
+        // Remove any surviving decor whose supporting block collapsed
+        for (Map.Entry<Long, Placement> e : ruined.entrySet()) {
+            Placement p = e.getValue();
+            if (p.material.pass != PASS_DECOR || p.material == Material.AIR) continue;
+            boolean supported = switch (p.material) {
+                case WALL_TORCH, BANNER_WALL, LADDER ->
+                        isSolidSupport(ruined.get(Builder.key(p.rx - p.facing.dx, p.ry, p.rz - p.facing.dz)));
+                case HANGING_LANTERN, CHAIN -> {
+                    Placement above = ruined.get(Builder.key(p.rx, p.ry + 1, p.rz));
+                    yield isSolidSupport(above) || (above != null && above.material == Material.CHAIN);
+                }
+                default -> isSolidSupport(ruined.get(Builder.key(p.rx, p.ry - 1, p.rz)));
+            };
+            if (!supported) {
+                e.setValue(new Placement(p.rx, p.ry, p.rz, Material.AIR, p.facing, 0, PASS_FOUNDATION, p.zone));
+            }
+        }
+
+        // Rubble slabs, ground overgrowth, and corner cobwebs/chains
+        int webChance = family == Family.SPIDERS ? 26 : 12;
+        for (Map.Entry<Long, Placement> e : ruined.entrySet()) {
+            Placement p = e.getValue();
+            if (p.material != Material.AIR) continue;
+            int x = p.rx, y = p.ry, z = p.rz;
+            if (y == 0) {
+                if (!isSolidSupport(ruined.get(Builder.key(x, -1, z)))) continue;
+                boolean nearWall = isSolidSupport(ruined.get(Builder.key(x + 1, 0, z)))
+                        || isSolidSupport(ruined.get(Builder.key(x - 1, 0, z)))
+                        || isSolidSupport(ruined.get(Builder.key(x, 0, z + 1)))
+                        || isSolidSupport(ruined.get(Builder.key(x, 0, z - 1)));
+                if (collapsedCols.contains(Builder.key(x, 0, z)) || nearWall) {
+                    int rr = roll100(seed, x, y, z, 3);
+                    if (rr < 14) {
+                        e.setValue(new Placement(x, y, z, Material.RUIN_SLAB, Facing.NORTH, 0, Material.RUIN_SLAB.pass, p.zone));
+                    } else if (rr < 24) {
+                        e.setValue(new Placement(x, y, z, Material.RUIN_OVERGROWTH, Facing.NORTH, 0, Material.RUIN_OVERGROWTH.pass, p.zone));
+                    }
+                }
+            } else if (y >= 1 && y <= 3) {
+                int neighbors = 0;
+                if (isSolidSupport(ruined.get(Builder.key(x + 1, y, z)))) neighbors++;
+                if (isSolidSupport(ruined.get(Builder.key(x - 1, y, z)))) neighbors++;
+                if (isSolidSupport(ruined.get(Builder.key(x, y, z + 1)))) neighbors++;
+                if (isSolidSupport(ruined.get(Builder.key(x, y, z - 1)))) neighbors++;
+                if (isSolidSupport(ruined.get(Builder.key(x, y + 1, z)))) neighbors++;
+                if (neighbors >= 2 && roll100(seed, x, y, z, 4) < webChance) {
+                    e.setValue(new Placement(x, y, z, Material.RUIN_WEB, Facing.NORTH, 0, Material.RUIN_WEB.pass, p.zone));
+                }
+            }
+        }
+
+        return ruined;
+    }
+
+    private static boolean isSolidSupport(Placement p) {
+        if (p == null) return false;
+        Material m = p.material;
+        return m != Material.AIR && m.pass != PASS_DECOR && m != Material.CAMPFIRE && m != Material.CAMPFIRE_UNLIT;
+    }
+
+    private static int roll100(long seed, int x, int y, int z, int salt) {
+        long h = seed ^ ((long) x * 0x9E3779B97F4A7C15L) ^ ((long) y * 0xBF58476D1CE4E5B9L)
+                ^ ((long) z * 0x94D049BB133111EBL) ^ ((long) salt * 0x517CC1B727220A95L);
+        h = (h ^ (h >>> 30)) * 0xBF58476D1CE4E5B9L;
+        h = (h ^ (h >>> 27)) * 0x94D049BB133111EBL;
+        h ^= (h >>> 31);
+        return (int) (Math.floorMod(h, 100L));
     }
 
     private static Spot rotSpot(int facing, int x, int y, int z) {

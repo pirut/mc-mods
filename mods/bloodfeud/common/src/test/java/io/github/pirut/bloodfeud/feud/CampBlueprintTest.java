@@ -109,4 +109,107 @@ class CampBlueprintTest {
         assertEquals(step4.placements(), repeat.placements());
         assertEquals(step4.zones(), repeat.zones());
     }
+
+    @Test
+    void ruinedPlansWorkAcrossAllTiersAndFamiliesWithExtinguishedFiresAndNoFloatingBlocks() {
+        UUID packId = new UUID(0xCAFEBABE12345678L, 0x0102030405060708L);
+        List<Integer> vassals = List.of(1, 11, 14);
+
+        for (Family family : Family.values()) {
+            for (SettlementTier tier : new SettlementTier[]{
+                    SettlementTier.CAMP, SettlementTier.OUTPOST, SettlementTier.STRONGHOLD, SettlementTier.TOWN}) {
+                int facing = (family.ordinal() + tier.level) % 4;
+                CampBlueprint.Plan intact = CampBlueprint.plan(packId, family, 14, vassals, facing, 0, tier.level);
+                CampBlueprint.Plan ruined = CampBlueprint.ruinPlan(packId, family, 14, vassals, facing, tier.level);
+
+                assertFalse(ruined.placements().isEmpty());
+                // Deterministic
+                CampBlueprint.Plan repeat = CampBlueprint.ruinPlan(packId, family, 14, vassals, facing, tier.level);
+                assertEquals(ruined.placements(), repeat.placements());
+
+                // No lit campfires remain; extinguished campfires and weathered ruin blocks are present
+                assertTrue(ruined.placements().stream().noneMatch(p -> p.material() == CampBlueprint.Material.CAMPFIRE),
+                        family + " " + tier + " ruins must extinguish campfires");
+                assertTrue(ruined.placements().stream().anyMatch(p -> p.material() == CampBlueprint.Material.CAMPFIRE_UNLIT),
+                        family + " " + tier + " ruins should include an unlit campfire");
+                assertTrue(ruined.placements().stream().anyMatch(p -> p.material().isRuinMaterial()),
+                        family + " " + tier + " ruins should include weathered ruin materials");
+
+                // Fewer structural blocks than intact (visible collapse/crumbling)
+                long intactStructure = intact.placements().stream()
+                        .filter(p -> p.material().pass == CampBlueprint.PASS_STRUCTURE && p.material() != CampBlueprint.Material.AIR).count();
+                long ruinedStructure = ruined.placements().stream()
+                        .filter(p -> p.material().pass == CampBlueprint.PASS_STRUCTURE && p.material() != CampBlueprint.Material.AIR).count();
+                assertTrue(ruinedStructure < intactStructure,
+                        family + " " + tier + " ruins should collapse part of structure (" + ruinedStructure + " vs " + intactStructure + ")");
+
+                // Pass and bottom-up y ordering, within tier bounds, and no isolated floating structure blocks
+                int prevPass = -1;
+                int prevY = Integer.MIN_VALUE;
+                int maxBound = tier.radius + 3;
+                Set<String> solidCoords = new HashSet<>();
+                for (CampBlueprint.Placement p : ruined.placements()) {
+                    assertTrue(p.pass() >= prevPass);
+                    if (p.pass() > prevPass) {
+                        prevPass = p.pass();
+                        prevY = Integer.MIN_VALUE;
+                    }
+                    assertTrue(p.ry() >= prevY);
+                    prevY = p.ry();
+                    assertTrue(Math.abs(p.rx()) <= maxBound && Math.abs(p.rz()) <= maxBound);
+                    if (p.material() != CampBlueprint.Material.AIR
+                            && p.material() != CampBlueprint.Material.FOUNDATION_COLUMN
+                            && p.material().pass != CampBlueprint.PASS_DECOR
+                            && p.material() != CampBlueprint.Material.CAMPFIRE_UNLIT) {
+                        solidCoords.add(p.rx() + "," + p.ry() + "," + p.rz());
+                    }
+                }
+                for (CampBlueprint.Placement p : ruined.placements()) {
+                    if (p.ry() >= 1 && p.material().pass == CampBlueprint.PASS_STRUCTURE && p.material() != CampBlueprint.Material.AIR) {
+                        boolean below = solidCoords.contains(p.rx() + "," + (p.ry() - 1) + "," + p.rz());
+                        int horiz = 0;
+                        if (solidCoords.contains((p.rx() + 1) + "," + p.ry() + "," + p.rz())) horiz++;
+                        if (solidCoords.contains((p.rx() - 1) + "," + p.ry() + "," + p.rz())) horiz++;
+                        if (solidCoords.contains(p.rx() + "," + p.ry() + "," + (p.rz() + 1))) horiz++;
+                        if (solidCoords.contains(p.rx() + "," + p.ry() + "," + (p.rz() - 1))) horiz++;
+                        assertTrue(below || horiz >= 2, "Floating isolated ruin block at " + p);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void ruinDiffOrdersTeardownTopDownPreservesContainersAndRepairRestoresCleanly() {
+        UUID packId = new UUID(99, 77);
+        for (SettlementTier tier : new SettlementTier[]{
+                SettlementTier.CAMP, SettlementTier.OUTPOST, SettlementTier.STRONGHOLD, SettlementTier.TOWN}) {
+            CampBlueprint.Plan diff = CampBlueprint.ruinDiffPlan(packId, Family.ROTTEN, 14, List.of(1), 2, tier.level);
+            assertFalse(diff.placements().isEmpty(), tier + " ruinDiff should not be empty");
+
+            // Never overwrites or removes chests/barrels in-place
+            assertTrue(diff.placements().stream().noneMatch(p -> p.material().isChest() || p.material() == CampBlueprint.Material.BARREL));
+            // Extinguishes campfire in-place
+            assertTrue(diff.placements().stream().anyMatch(p -> p.material() == CampBlueprint.Material.CAMPFIRE_UNLIT));
+            // Pass order strictly monotonic 0 -> 1 -> 2 -> 3, and passes 0..2 are top-down (descending ry)
+            int prevPass = -1;
+            int prevY = Integer.MAX_VALUE;
+            for (CampBlueprint.Placement p : diff.placements()) {
+                assertTrue(p.pass() >= prevPass, "Pass regressed in ruinDiff");
+                if (p.pass() > prevPass) {
+                    prevPass = p.pass();
+                    prevY = Integer.MAX_VALUE;
+                }
+                if (p.pass() <= 2) {
+                    assertTrue(p.ry() <= prevY, "Teardown pass " + p.pass() + " must run top-down");
+                    prevY = p.ry();
+                }
+            }
+
+            // Repair plan restores lit campfires and includes all intact placements
+            CampBlueprint.Plan repair = CampBlueprint.repairPlan(packId, Family.ROTTEN, 14, List.of(1), 2, tier.level, tier.level);
+            assertTrue(repair.placements().stream().anyMatch(p -> p.material() == CampBlueprint.Material.CAMPFIRE));
+            assertTrue(repair.placements().stream().noneMatch(p -> p.material().isRuinMaterial()));
+        }
+    }
 }

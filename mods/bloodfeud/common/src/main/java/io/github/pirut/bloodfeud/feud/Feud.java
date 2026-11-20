@@ -47,6 +47,14 @@ public final class Feud {
     public int maxBrutes = 256;
 
     private final Random random;
+    /** Built settlement left behind by a disbanded pack, waiting to be crumbled into ruins in the world. */
+    public record AbandonedSite(UUID packId, Family family, int color, String dimension,
+                                int siteX, int siteY, int siteZ, int siteFacing, int builtTier) {
+    }
+
+    public static final int MAX_ABANDONED_SITES = 64;
+    public final List<AbandonedSite> abandonedSites = new ArrayList<>();
+
     private final List<News> news = new ArrayList<>();
 
     /** Where a player is right now. */
@@ -255,6 +263,14 @@ public final class Feud {
         return fin;
     }
 
+    /** Records that a pack lost a grunt in the world and re-checks whether its settlement falls into ruin. */
+    public void gruntKilled(Pack p, long now) {
+        if (p == null) return;
+        clock = now;
+        p.grunts = Math.max(0, p.grunts - 1);
+        updateSettlement(p);
+    }
+
     /** The player ran from a fight with this Brute. It gets a little stronger for driving them off. */
     public void playerFled(UUID bruteId, UUID player, long now) {
         clock = now;
@@ -290,11 +306,14 @@ public final class Feud {
             if (!packs.containsKey(p.id) || !awake(p, players)) continue;
             int nights = (int) Math.max(1, Math.min(CATCH_UP_NIGHTS, (now - p.lastAwake) / DAY));
             for (int i = 0; i < nights; i++) grow(p, now);
-            advanceSettlement(p);
+            updateSettlement(p);
             p.lastAwake = now;
             challenge(p, now);
         }
         raids(now, players);
+        for (Pack p : new ArrayList<>(packs.values())) {
+            if (packs.containsKey(p.id) && awake(p, players)) updateSettlement(p);
+        }
         trim(now, players);
     }
 
@@ -450,30 +469,55 @@ public final class Feud {
         }
     }
 
-    /**
-     * Checks whether a pack has grown enough to ratchet its settlement tier upward (never shrinks automatically).
-     * Does nothing while {@link #campsEnabled} is false.
-     */
+    /** Compatibility alias for {@link #updateSettlement(Pack)}. */
     public boolean advanceSettlement(Pack p) {
-        if (!campsEnabled || p == null) return false;
-        if (p.tier == null) p.tier = SettlementTier.CAMP;
-        SettlementTier target = SettlementTier.forPack(members(p).size(), p.grunts, strength(p), !vassals(p).isEmpty());
-        if (target.level <= p.tier.level) return false;
-        p.tier = target;
-        tellAt(p, News.Kind.SETTLED, settlementNews(p, target));
-        return true;
+        return updateSettlement(p);
     }
 
     /**
-     * Operator helper: ratchets a pack to at least {@code target} tier and ensures its living roster of Brutes
-     * and grunts fits that tier so command-spawned settlements immediately have a gang running them.
+     * Re-evaluates a pack's settlement against its current living roster, grunts, strength, and King rank:
+     * advances {@code p.tier} upward when it grows past a threshold, marks {@code p.ruined = true} when its
+     * numbers fall below its current tier's threshold, and restores {@code p.ruined = false} once it recovers.
+     * Does nothing while {@link #campsEnabled} is false.
+     */
+    public boolean updateSettlement(Pack p) {
+        if (!campsEnabled || p == null) return false;
+        if (p.tier == null || p.tier == SettlementTier.NONE) p.tier = SettlementTier.CAMP;
+        SettlementTier sustained = SettlementTier.forPack(members(p).size(), p.grunts, strength(p), !vassals(p).isEmpty());
+        if (sustained.level > p.tier.level) {
+            p.tier = sustained;
+            p.ruined = false;
+            tellAt(p, News.Kind.SETTLED, settlementNews(p, sustained));
+            return true;
+        }
+        if (sustained.level < p.tier.level) {
+            if (!p.ruined) {
+                p.ruined = true;
+                tellAt(p, News.Kind.SETTLED, ruinedNews(p, p.tier));
+                return true;
+            }
+            return false;
+        }
+        if (p.ruined) {
+            p.ruined = false;
+            tellAt(p, News.Kind.SETTLED, rebuiltNews(p, p.tier));
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Operator helper: ratchets a pack to at least {@code target} tier, clears any ruined state, and ensures
+     * its living roster of Brutes and grunts fits that tier so command-spawned settlements have a gang running them.
      */
     public SettlementTier upgradeSettlement(Pack p, SettlementTier target, long now) {
         clock = now;
         if (target == null || target == SettlementTier.NONE) target = SettlementTier.CAMP;
-        if (p.tier == null) p.tier = SettlementTier.CAMP;
+        if (p.tier == null || p.tier == SettlementTier.NONE) p.tier = SettlementTier.CAMP;
         boolean raised = target.level > p.tier.level;
+        boolean restored = p.ruined;
         if (raised) p.tier = target;
+        p.ruined = false;
         int needBrutes = Math.min(MAX_MEMBERS, Math.max(1, p.tier.minBrutes));
         int needGrunts = Math.min(MAX_GRUNTS, p.tier.minGrunts);
         Brute boss = brute(p.boss);
@@ -494,6 +538,29 @@ public final class Feud {
             if (boss.level < minBossLevel) boss.level = minBossLevel;
         }
         if (raised) tellAt(p, News.Kind.SETTLED, settlementNews(p, p.tier));
+        else if (restored) tellAt(p, News.Kind.SETTLED, rebuiltNews(p, p.tier));
+        return p.tier;
+    }
+
+    /**
+     * Operator helper: puts a pack's settlement (at {@code target} tier) into ruins and trims its numbers
+     * below that tier's threshold so the ruins persist until the pack recovers.
+     */
+    public SettlementTier ruinSettlement(Pack p, SettlementTier target, long now) {
+        clock = now;
+        if (target == null || target == SettlementTier.NONE) {
+            target = (p.tier == null || p.tier == SettlementTier.NONE) ? SettlementTier.CAMP : p.tier;
+        }
+        if (p.tier == null || target.level > p.tier.level) p.tier = target;
+        for (Pack v : vassals(p)) v.liege = null;
+        p.grunts = p.tier == SettlementTier.CAMP ? 0 : Math.min(p.grunts, Math.max(1, p.tier.minGrunts / 4));
+        // If high-level Brutes would still sustain the tier via raw strength, zero grunts so it stays ruined
+        if (SettlementTier.forPack(members(p).size(), p.grunts, strength(p), false).level >= p.tier.level) {
+            p.grunts = 0;
+        }
+        boolean newlyRuined = !p.ruined;
+        p.ruined = true;
+        if (newlyRuined) tellAt(p, News.Kind.SETTLED, ruinedNews(p, p.tier));
         return p.tier;
     }
 
@@ -504,6 +571,16 @@ public final class Feud {
             case TOWN -> cap(p.title()) + " now runs a full town.";
             default -> cap(p.title()) + " has pitched camp.";
         };
+    }
+
+    public static String ruinedNews(Pack p, SettlementTier tier) {
+        SettlementTier t = tier == null || tier == SettlementTier.NONE ? SettlementTier.CAMP : tier;
+        return "With its numbers broken, " + p.title() + "'s " + t.key + " has fallen into ruin.";
+    }
+
+    public static String rebuiltNews(Pack p, SettlementTier tier) {
+        SettlementTier t = tier == null || tier == SettlementTier.NONE ? SettlementTier.CAMP : tier;
+        return cap(p.title()) + " has rebuilt its ruined " + t.key + ".";
     }
 
     private void challenge(Pack p, long now) {
@@ -616,12 +693,14 @@ public final class Feud {
         b.killedBy = killer;
         Pack p = packOf(b);
         if (p != null && b.id.equals(p.boss)) succession(p, now);
+        if (p != null && packs.containsKey(p.id)) updateSettlement(p);
     }
 
     private void leavePack(Brute b, long now) {
         Pack p = packOf(b);
         b.pack = null;
         if (p != null && b.id.equals(p.boss)) succession(p, now);
+        if (p != null && packs.containsKey(p.id)) updateSettlement(p);
     }
 
     /** The Boss is gone: the strongest Brute takes over, or the pack breaks up. A King's packs go their own way. */
@@ -650,6 +729,11 @@ public final class Feud {
     }
 
     private void disband(Pack p, boolean announce) {
+        if (campsEnabled && p.siteSet && p.builtTier > 0 && !p.builtRuined) {
+            abandonedSites.add(new AbandonedSite(p.id, p.family, p.color, p.dimension,
+                    p.siteX, p.siteY, p.siteZ, p.siteFacing, p.builtTier));
+            while (abandonedSites.size() > MAX_ABANDONED_SITES) abandonedSites.remove(0);
+        }
         packs.remove(p.id);
         for (Pack v : packs.values()) if (p.id.equals(v.liege)) v.liege = null;
         for (Brute b : brutes.values()) if (p.id.equals(b.pack)) b.pack = null;

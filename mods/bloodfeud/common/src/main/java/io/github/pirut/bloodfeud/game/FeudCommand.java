@@ -91,14 +91,17 @@ public final class FeudCommand {
                 }))
                 .then(Commands.literal("camp").requires(s -> s.hasPermission(2))
                         .then(Commands.literal("upgrade").executes(FeudCommand::campUpgrade))
+                        .then(Commands.literal("ruin").executes(FeudCommand::campRuin))
                         .then(Commands.argument("family", StringArgumentType.word())
                                 .suggests((c, b) -> SharedSuggestionProvider.suggest(
                                         java.util.Arrays.stream(Family.values()).map(Family::key), b))
-                                .executes(c -> campSpawn(c, SettlementTier.CAMP))
+                                .executes(c -> campSpawn(c, SettlementTier.CAMP, false))
                                 .then(Commands.argument("tier", StringArgumentType.word())
                                         .suggests((c, b) -> SharedSuggestionProvider.suggest(
                                                 List.of("camp", "outpost", "stronghold", "town"), b))
-                                        .executes(c -> campSpawn(c, null)))))
+                                        .executes(c -> campSpawn(c, null, false))
+                                        .then(Commands.literal("ruined")
+                                                .executes(c -> campSpawn(c, null, true))))))
                 .then(Commands.literal("camps").requires(s -> s.hasPermission(2))
                         .executes(c -> campsStatus(c.getSource()))
                         .then(Commands.literal("on").executes(c -> campsToggle(c.getSource(), true)))
@@ -149,8 +152,8 @@ public final class FeudCommand {
         for (Pack pk : near) {
             Brute boss = f.brute(pk.boss);
             Pack top = f.top(pk);
-            SettlementTier tier = pk.displayTier(BloodFeud.config().buildCamps);
-            String tierNote = tier == SettlementTier.NONE ? "" : " — " + tier.title;
+            String tierTitle = pk.displayTierTitle(BloodFeud.config().buildCamps);
+            String tierNote = tierTitle.isEmpty() ? "" : " — " + tierTitle;
             MutableComponent line = Component.literal("■ ").withStyle(s -> s.withColor(DyeColor.byId(pk.color).getTextColor()))
                     .append(Component.literal(cap(pk.title())).withStyle(ChatFormatting.WHITE, ChatFormatting.BOLD))
                     .append(Component.literal(" (" + pk.family.title + tierNote + ")").withStyle(ChatFormatting.GRAY));
@@ -277,7 +280,7 @@ public final class FeudCommand {
         return 1;
     }
 
-    private static int campSpawn(CommandContext<CommandSourceStack> c, SettlementTier fixedTier) throws CommandSyntaxException {
+    private static int campSpawn(CommandContext<CommandSourceStack> c, SettlementTier fixedTier, boolean ruined) throws CommandSyntaxException {
         ServerPlayer p = c.getSource().getPlayerOrException();
         Family family = Family.byKey(StringArgumentType.getString(c, "family"));
         if (family == null) {
@@ -294,11 +297,12 @@ public final class FeudCommand {
             }
         }
         SettlementTier chosen = tier;
-        Pack pack = Live.get(c.getSource().getServer()).spawnCommandCamp(p, family, chosen, built -> {
-            p.sendSystemMessage(Component.literal(cap(built.title()) + " (" + chosen.title + ") is ready at "
+        String label = chosen.title(ruined);
+        Pack pack = Live.get(c.getSource().getServer()).spawnCommandCamp(p, family, chosen, ruined, built -> {
+            p.sendSystemMessage(Component.literal(cap(built.title()) + " (" + label + ") is ready at "
                     + built.campX() + " " + built.siteY + " " + built.campZ() + ".").withStyle(ChatFormatting.GOLD));
         });
-        c.getSource().sendSuccess(() -> Component.literal("Building " + cap(pack.title()) + " (" + chosen.title
+        c.getSource().sendSuccess(() -> Component.literal("Building " + cap(pack.title()) + " (" + label
                 + ", " + family.title + ") at " + pack.campX() + " " + pack.siteY + " " + pack.campZ() + "..."), true);
         if (!BloodFeud.config().buildCamps) {
             c.getSource().sendSystemMessage(Component.literal("Note: automatic pack camps are off (/bloodfeud camps on to re-enable).")
@@ -310,20 +314,45 @@ public final class FeudCommand {
     private static int campUpgrade(CommandContext<CommandSourceStack> c) throws CommandSyntaxException {
         ServerPlayer p = c.getSource().getPlayerOrException();
         Live.UpgradeResult res = Live.get(c.getSource().getServer()).upgradeNearestCamp(p, built -> {
-            p.sendSystemMessage(Component.literal(cap(built.title()) + " has finished expanding into a "
+            p.sendSystemMessage(Component.literal(cap(built.title()) + " now stands as an intact "
                     + built.tier.title + ".").withStyle(ChatFormatting.GOLD));
         });
         if (!res.ok()) {
             c.getSource().sendFailure(Component.literal(res.error()));
             return 0;
         }
-        c.getSource().sendSuccess(() -> Component.literal("Upgrading " + cap(res.pack().title()) + " to "
+        c.getSource().sendSuccess(() -> Component.literal("Building " + cap(res.pack().title()) + " as "
                 + res.target().title + " at " + res.pack().campX() + " " + res.pack().siteY + " " + res.pack().campZ() + "..."), true);
         if (!BloodFeud.config().buildCamps) {
             c.getSource().sendSystemMessage(Component.literal("Note: automatic pack camps are off (/bloodfeud camps on to re-enable).")
                     .withStyle(ChatFormatting.GRAY));
         }
         return 1;
+    }
+
+    private static int campRuin(CommandContext<CommandSourceStack> c) throws CommandSyntaxException {
+        ServerPlayer p = c.getSource().getPlayerOrException();
+        Live.UpgradeResult res = Live.get(c.getSource().getServer()).ruinNearestCamp(p, built -> {
+            p.sendSystemMessage(Component.literal(cap(built.title()) + "'s "
+                    + resLabel(built) + " now lies in ruins.").withStyle(ChatFormatting.GRAY));
+        });
+        if (!res.ok()) {
+            c.getSource().sendFailure(Component.literal(res.error()));
+            return 0;
+        }
+        c.getSource().sendSuccess(() -> Component.literal("Ruining " + cap(res.pack().title()) + " ("
+                + res.target().title(true) + ") at " + res.pack().campX() + " " + res.pack().siteY + " " + res.pack().campZ() + "..."), true);
+        if (!BloodFeud.config().buildCamps) {
+            c.getSource().sendSystemMessage(Component.literal("Note: automatic pack camps are off (/bloodfeud camps on to re-enable).")
+                    .withStyle(ChatFormatting.GRAY));
+        }
+        return 1;
+    }
+
+    private static String resLabel(Pack pack) {
+        SettlementTier t = pack.builtTier > 0 ? SettlementTier.byLevel(pack.builtTier)
+                : (pack.tier == null ? SettlementTier.CAMP : pack.tier);
+        return t.key;
     }
 
     private static int campsStatus(CommandSourceStack source) {
@@ -350,8 +379,8 @@ public final class FeudCommand {
                 + f.brutes.values().stream().filter(b -> b.alive).count() + " alive).").withStyle(ChatFormatting.GOLD));
         for (Pack pk : f.packs.values()) {
             Brute boss = f.brute(pk.boss);
-            SettlementTier tier = pk.displayTier(campsOn);
-            String tierPart = tier == SettlementTier.NONE ? "" : " [" + tier.title + (pk.builtTier > 0 ? " built" : "") + "]";
+            String tierTitle = pk.displayTierTitle(campsOn);
+            String tierPart = tierTitle.isEmpty() ? "" : " [" + tierTitle + (pk.builtTier > 0 ? " built" : "") + "]";
             source.sendSystemMessage(Component.literal(cap(pk.title()) + " [" + pk.family.key() + "]" + tierPart + " " + pk.dimension + " "
                     + pk.campX() + " " + pk.campZ() + ": " + (boss == null ? "?" : boss.fullName() + " L" + boss.level) + ", "
                     + f.members(pk).size() + " Brutes, " + pk.grunts + " grunts" + (pk.liege != null ? ", vassal" : ""))

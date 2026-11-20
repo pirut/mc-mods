@@ -59,6 +59,21 @@ public final class FeudData extends SavedData {
         ListTag packs = new ListTag();
         for (Pack p : feud.packs.values()) packs.add(savePack(p));
         tag.put("packs", packs);
+        ListTag abandoned = new ListTag();
+        for (Feud.AbandonedSite s : feud.abandonedSites) {
+            CompoundTag st = new CompoundTag();
+            st.putUUID("id", s.packId());
+            st.putString("family", s.family().key());
+            st.putInt("color", s.color());
+            st.putString("dimension", s.dimension());
+            st.putInt("siteX", s.siteX());
+            st.putInt("siteY", s.siteY());
+            st.putInt("siteZ", s.siteZ());
+            st.putInt("siteFacing", s.siteFacing());
+            st.putInt("builtTier", s.builtTier());
+            abandoned.add(st);
+        }
+        tag.put("abandonedSites", abandoned);
         ListTag given = new ListTag();
         for (UUID u : ledgerGiven) given.add(StringTag.valueOf(u.toString()));
         tag.put("ledgerGiven", given);
@@ -137,6 +152,8 @@ public final class FeudData extends SavedData {
         t.putInt("playerKills", p.playerKills);
         t.putString("tier", (p.tier == null ? SettlementTier.CAMP : p.tier).key);
         t.putInt("builtTier", p.builtTier);
+        t.putBoolean("ruined", p.ruined);
+        t.putBoolean("builtRuined", p.builtRuined);
         t.putBoolean("siteSet", p.siteSet);
         if (p.siteSet) {
             t.putInt("siteX", p.siteX);
@@ -240,6 +257,8 @@ public final class FeudData extends SavedData {
                     SettlementTier parsed = SettlementTier.byKey(t.getString("tier"));
                     p.tier = parsed != null ? parsed : SettlementTier.CAMP;
                     p.builtTier = Math.max(0, Math.min(SettlementTier.TOWN.level, t.getInt("builtTier")));
+                    p.ruined = t.getBoolean("ruined");
+                    p.builtRuined = t.getBoolean("builtRuined");
                     p.siteSet = t.getBoolean("siteSet");
                     if (p.siteSet) {
                         p.siteX = t.getInt("siteX");
@@ -262,7 +281,23 @@ public final class FeudData extends SavedData {
             }
         }
         for (Pack p : legacyPacks) {
-            p.tier = SettlementTier.forPack(f.members(p).size(), p.grunts, f.strength(p), !f.vassals(p).isEmpty());
+            SettlementTier sustained = SettlementTier.forPack(f.members(p).size(), p.grunts, f.strength(p), !f.vassals(p).isEmpty());
+            p.tier = sustained == SettlementTier.NONE ? SettlementTier.CAMP : sustained;
+            p.ruined = sustained == SettlementTier.NONE;
+        }
+        for (Tag raw : tag.getList("abandonedSites", Tag.TAG_COMPOUND)) {
+            try {
+                CompoundTag st = (CompoundTag) raw;
+                Family fam = Family.byKey(st.getString("family"));
+                if (fam == null || !st.hasUUID("id")) continue;
+                int bt = Math.max(1, Math.min(SettlementTier.TOWN.level, st.getInt("builtTier")));
+                f.abandonedSites.add(new Feud.AbandonedSite(
+                        st.getUUID("id"), fam, st.getInt("color"), st.getString("dimension"),
+                        st.getInt("siteX"), st.getInt("siteY"), st.getInt("siteZ"),
+                        Math.floorMod(st.getInt("siteFacing"), 4), bt));
+            } catch (RuntimeException e) {
+                BloodFeud.LOG.warn("Skipped an abandoned site that couldn't be read: {}", e.toString());
+            }
         }
         return d;
     }

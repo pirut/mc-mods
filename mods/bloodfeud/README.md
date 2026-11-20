@@ -56,6 +56,11 @@ As a pack grows stronger, it claims ground at its home and builds out in four ti
    flying vassal banners and holding the King's Treasury, a war monument square, tavern, town jail, blacksmith,
    smuggler market stalls, and gang houses. Crowning a King unlocks a Town right away.
 
+If a pack's numbers drop below its settlement tier's threshold — from player raids, rival wars, losing its Boss or
+King, or being wiped out completely — its Camp, Outpost, Stronghold, or Town falls into **ruins** (extinguished
+campfires, collapsed roofs and walls, cracked/mossy family masonry, tattered banners, rubble, and cobwebs). If the
+pack later rebuilds its strength back to its threshold, it restores its ruined settlement.
+
 Every family builds in its own vanilla block palette, foundations adapt to hills, builds stream in gradually with no
 lag or chunk force-loading, and automatic placement avoids player-built bases and world spawn. Turn automatic pack
 settlements off or back on anytime with `buildCamps=false` in `config/bloodfeud.properties` or `/bloodfeud camps off`
@@ -129,8 +134,8 @@ far-away pack no one has met fades away.
   rewrites itself each time you open it.
 - `/bloodfeud mapitem`: a Map of the Feuds item, with each pack home you know marked by a banner in its color and a
   red X on each Brute hunting you.
-- Operators: `/bloodfeud rise <family>`, `/bloodfeud camp <family> [camp|outpost|stronghold|town]`,
-  `/bloodfeud camp upgrade`, `/bloodfeud camps [on|off]`, `/bloodfeud scar <scar> <name>`, `/bloodfeud night`,
+- Operators: `/bloodfeud rise <family>`, `/bloodfeud camp <family> [camp|outpost|stronghold|town] [ruined]`,
+  `/bloodfeud camp upgrade`, `/bloodfeud camp ruin`, `/bloodfeud camps [on|off]`, `/bloodfeud scar <scar> <name>`, `/bloodfeud night`,
   `/bloodfeud all`, `/bloodfeud forget everything`.
 
 ## Server only (screens optional)

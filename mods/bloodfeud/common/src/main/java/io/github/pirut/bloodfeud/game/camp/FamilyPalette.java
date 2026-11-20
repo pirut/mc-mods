@@ -46,6 +46,12 @@ public final class FamilyPalette {
     public final Block workPropA;
     public final Block workPropB;
     public final Block throne;
+    public final Block ruinFloor;
+    public final Block ruinWall;
+    public final Block ruinWallAlt;
+    public final Block ruinSlab;
+    public final Block ruinOvergrowth;
+    public final Block ruinWeb;
 
     private FamilyPalette(
             Block foundation, Block ground, Block path, Block floor,
@@ -53,7 +59,9 @@ public final class FamilyPalette {
             Block slab, Block stair, Block fence,
             Block campfire, Block lantern, Block torch, Block wallTorch,
             Block familyPropA, Block familyPropB, Block familyCanopy, Block familyLight,
-            Block workPropA, Block workPropB, Block throne
+            Block workPropA, Block workPropB, Block throne,
+            Block ruinFloor, Block ruinWall, Block ruinWallAlt, Block ruinSlab,
+            Block ruinOvergrowth, Block ruinWeb
     ) {
         this.foundation = foundation;
         this.ground = ground;
@@ -78,6 +86,12 @@ public final class FamilyPalette {
         this.workPropA = workPropA;
         this.workPropB = workPropB;
         this.throne = throne;
+        this.ruinFloor = ruinFloor;
+        this.ruinWall = ruinWall;
+        this.ruinWallAlt = ruinWallAlt;
+        this.ruinSlab = ruinSlab;
+        this.ruinOvergrowth = ruinOvergrowth;
+        this.ruinWeb = ruinWeb;
     }
 
     private static final FamilyPalette ROTTEN = new FamilyPalette(
@@ -86,7 +100,9 @@ public final class FamilyPalette {
             Blocks.SPRUCE_SLAB, Blocks.SPRUCE_STAIRS, Blocks.OAK_FENCE,
             Blocks.CAMPFIRE, Blocks.LANTERN, Blocks.TORCH, Blocks.WALL_TORCH,
             Blocks.BONE_BLOCK, Blocks.MOSSY_STONE_BRICKS, Blocks.MOSS_CARPET, Blocks.LANTERN,
-            Blocks.GRINDSTONE, Blocks.SMITHING_TABLE, Blocks.SPRUCE_STAIRS
+            Blocks.GRINDSTONE, Blocks.SMITHING_TABLE, Blocks.SPRUCE_STAIRS,
+            Blocks.COARSE_DIRT, Blocks.MOSSY_STONE_BRICKS, Blocks.CRACKED_STONE_BRICKS, Blocks.MOSSY_COBBLESTONE_SLAB,
+            Blocks.MOSS_CARPET, Blocks.COBWEB
     );
 
     private static final FamilyPalette BONES = new FamilyPalette(
@@ -95,7 +111,9 @@ public final class FamilyPalette {
             Blocks.COBBLED_DEEPSLATE_SLAB, Blocks.DEEPSLATE_BRICK_STAIRS, Blocks.DARK_OAK_FENCE,
             Blocks.SOUL_CAMPFIRE, Blocks.SOUL_LANTERN, Blocks.SOUL_TORCH, Blocks.SOUL_WALL_TORCH,
             Blocks.BONE_BLOCK, Blocks.FLETCHING_TABLE, Blocks.SOUL_LANTERN, Blocks.SOUL_LANTERN,
-            Blocks.TARGET, Blocks.FLETCHING_TABLE, Blocks.DEEPSLATE_BRICK_STAIRS
+            Blocks.TARGET, Blocks.FLETCHING_TABLE, Blocks.DEEPSLATE_BRICK_STAIRS,
+            Blocks.GRAVEL, Blocks.CRACKED_DEEPSLATE_BRICKS, Blocks.COBBLED_DEEPSLATE, Blocks.COBBLED_DEEPSLATE_SLAB,
+            Blocks.COBWEB, Blocks.COBWEB
     );
 
     private static final FamilyPalette ILLAGERS = new FamilyPalette(
@@ -104,7 +122,9 @@ public final class FamilyPalette {
             Blocks.DARK_OAK_SLAB, Blocks.DARK_OAK_STAIRS, Blocks.DARK_OAK_FENCE,
             Blocks.CAMPFIRE, Blocks.LANTERN, Blocks.TORCH, Blocks.WALL_TORCH,
             Blocks.IRON_BARS, Blocks.HAY_BLOCK, Blocks.LANTERN, Blocks.LANTERN,
-            Blocks.GRINDSTONE, Blocks.SMITHING_TABLE, Blocks.DARK_OAK_STAIRS
+            Blocks.GRINDSTONE, Blocks.SMITHING_TABLE, Blocks.DARK_OAK_STAIRS,
+            Blocks.COARSE_DIRT, Blocks.CRACKED_STONE_BRICKS, Blocks.MOSSY_COBBLESTONE, Blocks.COBBLESTONE_SLAB,
+            Blocks.MOSS_CARPET, Blocks.COBWEB
     );
 
     private static final FamilyPalette NETHER = new FamilyPalette(
@@ -113,7 +133,9 @@ public final class FamilyPalette {
             Blocks.POLISHED_BLACKSTONE_BRICK_SLAB, Blocks.POLISHED_BLACKSTONE_BRICK_STAIRS, Blocks.CRIMSON_FENCE,
             Blocks.SOUL_CAMPFIRE, Blocks.SOUL_LANTERN, Blocks.SOUL_TORCH, Blocks.SOUL_WALL_TORCH,
             Blocks.GILDED_BLACKSTONE, Blocks.MAGMA_BLOCK, Blocks.CHAIN, Blocks.SOUL_LANTERN,
-            Blocks.SMITHING_TABLE, Blocks.GRINDSTONE, Blocks.POLISHED_BLACKSTONE_BRICK_STAIRS
+            Blocks.SMITHING_TABLE, Blocks.GRINDSTONE, Blocks.POLISHED_BLACKSTONE_BRICK_STAIRS,
+            Blocks.SOUL_SOIL, Blocks.CRACKED_POLISHED_BLACKSTONE_BRICKS, Blocks.BLACKSTONE, Blocks.BLACKSTONE_SLAB,
+            Blocks.BLACKSTONE_SLAB, Blocks.CHAIN
     );
 
     private static final FamilyPalette SPIDERS = new FamilyPalette(
@@ -122,7 +144,9 @@ public final class FamilyPalette {
             Blocks.DARK_OAK_SLAB, Blocks.DARK_OAK_STAIRS, Blocks.DARK_OAK_FENCE,
             Blocks.CAMPFIRE, Blocks.LANTERN, Blocks.REDSTONE_TORCH, Blocks.REDSTONE_WALL_TORCH,
             Blocks.COBWEB, Blocks.PODZOL, Blocks.COBWEB, Blocks.REDSTONE_TORCH,
-            Blocks.COBWEB, Blocks.BARREL, Blocks.DARK_OAK_STAIRS
+            Blocks.COBWEB, Blocks.BARREL, Blocks.DARK_OAK_STAIRS,
+            Blocks.PODZOL, Blocks.MOSSY_COBBLESTONE, Blocks.CRACKED_STONE_BRICKS, Blocks.MOSSY_COBBLESTONE_SLAB,
+            Blocks.COBWEB, Blocks.COBWEB
     );
 
     private static final FamilyPalette WITCHES = new FamilyPalette(
@@ -131,7 +155,9 @@ public final class FamilyPalette {
             Blocks.SPRUCE_SLAB, Blocks.SPRUCE_STAIRS, Blocks.SPRUCE_FENCE,
             Blocks.CAMPFIRE, Blocks.LANTERN, Blocks.TORCH, Blocks.WALL_TORCH,
             Blocks.CAULDRON, Blocks.RED_MUSHROOM, Blocks.BROWN_MUSHROOM, Blocks.LANTERN,
-            Blocks.CAULDRON, Blocks.BREWING_STAND, Blocks.SPRUCE_STAIRS
+            Blocks.CAULDRON, Blocks.BREWING_STAND, Blocks.SPRUCE_STAIRS,
+            Blocks.MUD, Blocks.MOSSY_COBBLESTONE, Blocks.PACKED_MUD, Blocks.MUD_BRICK_SLAB,
+            Blocks.MOSS_CARPET, Blocks.COBWEB
     );
 
     public static FamilyPalette of(Family family) {
@@ -191,6 +217,13 @@ public final class FamilyPalette {
             case FAMILY_CANOPY -> familyCanopy.defaultBlockState();
             case WORK_PROP_A -> workPropA.defaultBlockState();
             case WORK_PROP_B -> workPropB.defaultBlockState();
+            case RUIN_FLOOR -> ruinFloor.defaultBlockState();
+            case RUIN_WALL -> ruinWall.defaultBlockState();
+            case RUIN_WALL_ALT -> ruinWallAlt.defaultBlockState();
+            case RUIN_SLAB -> ruinSlab.defaultBlockState();
+            case CAMPFIRE_UNLIT -> campfire.defaultBlockState().setValue(CampfireBlock.LIT, false);
+            case RUIN_OVERGROWTH -> ruinOvergrowth.defaultBlockState();
+            case RUIN_WEB -> ruinWeb.defaultBlockState();
         };
     }
 

@@ -695,17 +695,21 @@ final class LedgerScreen extends Screen {
             boolean isTown = "town".equals(p.tier);
             boolean isStronghold = "stronghold".equals(p.tier);
             if (isTown) {
-                // Fortified golden double wall outline for full gang-run towns
-                g.fill(sx - 10, sy - 10, sx + 10, sy + 10, 0xCCD9A441);
-                g.fill(sx - 8, sy - 8, sx + 8, sy + 8, 0xCC2B1A12);
+                // Fortified golden double wall outline for intact towns, cracked ash-gray outline for ruined towns
+                g.fill(sx - 10, sy - 10, sx + 10, sy + 10, p.ruined ? 0xAA6A6662 : 0xCCD9A441);
+                g.fill(sx - 8, sy - 8, sx + 8, sy + 8, p.ruined ? 0xAA3A3634 : 0xCC2B1A12);
                 g.fill(sx - 7, sy - 7, sx + 7, sy + 7, 0x60EDE2C8);
             } else if (isStronghold) {
-                // Stone wall frame for strongholds
-                g.fill(sx - 9, sy - 9, sx + 9, sy + 9, 0xB04A4440);
+                // Stone wall frame for strongholds (dimmed when ruined)
+                g.fill(sx - 9, sy - 9, sx + 9, sy + 9, p.ruined ? 0x806A6662 : 0xB04A4440);
                 g.fill(sx - 7, sy - 7, sx + 7, sy + 7, 0x60EDE2C8);
+            } else if (p.ruined && !p.tierTitle.isEmpty()) {
+                // Subtle ash border for ruined camps and outposts
+                g.fill(sx - 8, sy - 8, sx + 8, sy + 8, 0x706A6662);
+                g.fill(sx - 7, sy - 7, sx + 7, sy + 7, 0x50EDE2C8);
             }
             sprite(g, new MapBanner(BlockPos.ZERO, DyeColor.byId(p.color), Optional.empty()).getDecoration(), sx, sy, 0, isTown ? 16 : 14);
-            String mapLabel = isTown ? "★ " + p.name : p.name;
+            String mapLabel = (isTown && !p.ruined) ? "★ " + p.name : p.name;
             int nw = font.width(mapLabel);
             boolean crowded = false;
             for (int[] l : labels) {

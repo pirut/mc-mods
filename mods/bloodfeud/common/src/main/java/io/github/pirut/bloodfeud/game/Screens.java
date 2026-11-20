@@ -114,10 +114,12 @@ public final class Screens {
         t.putInt("color", pk.color);
         t.putInt("x", pk.campX());
         t.putInt("z", pk.campZ());
-        SettlementTier displayTier = pk.displayTier(BloodFeud.config().buildCamps);
+        boolean campsOn = BloodFeud.config().buildCamps;
+        SettlementTier displayTier = pk.displayTier(campsOn);
         t.putString("tier", displayTier.key);
-        t.putString("tierTitle", displayTier == SettlementTier.NONE ? "" : displayTier.title);
+        t.putString("tierTitle", pk.displayTierTitle(campsOn));
         t.putInt("builtTier", pk.builtTier);
+        t.putBoolean("ruined", displayTier != SettlementTier.NONE && (campsOn ? pk.ruined : (pk.builtTier > 0 && (pk.builtRuined || pk.ruined))));
         t.putString("dim", pk.dimension);
         t.putLong("formed", day(pk.formedAt));
         t.putInt("grunts", pk.grunts);

@@ -26,6 +26,11 @@ public enum SettlementTier {
         this.minGrunts = minGrunts;
     }
 
+    public String title(boolean ruined) {
+        if (this == NONE) return title;
+        return ruined ? "Ruined " + title : title;
+    }
+
     public static SettlementTier byKey(String key) {
         if (key == null) return null;
         String k = key.toLowerCase(Locale.ROOT);
@@ -52,11 +57,19 @@ public enum SettlementTier {
         };
     }
 
-    /** The settlement tier a pack qualifies for based on its living roster, strength and rank. */
+    /**
+     * The highest settlement tier a pack currently sustains based on its living roster, grunts, strength and rank.
+     * Returns {@link #NONE} when the pack drops below even the Camp threshold (no living Brutes or fewer than 2 grunts
+     * without King status), causing a Camp to fall into ruin.
+     */
     public static SettlementTier forPack(int livingMembers, int grunts, double strength, boolean king) {
-        if (king || (livingMembers >= 5 && grunts >= 18) || strength >= 46) return TOWN;
+        if (livingMembers <= 0) return NONE;
+        if (king) return TOWN;
+        if (grunts <= 0) return NONE;
+        if ((livingMembers >= 5 && grunts >= 18) || strength >= 46) return TOWN;
         if ((livingMembers >= 4 && grunts >= 12) || strength >= 30) return STRONGHOLD;
         if ((livingMembers >= 2 && grunts >= 6) || strength >= 16) return OUTPOST;
-        return CAMP;
+        if (grunts >= 2) return CAMP;
+        return NONE;
     }
 }

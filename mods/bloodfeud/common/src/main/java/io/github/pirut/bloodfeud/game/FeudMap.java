@@ -2,7 +2,6 @@ package io.github.pirut.bloodfeud.game;
 
 import io.github.pirut.bloodfeud.BloodFeud;
 import io.github.pirut.bloodfeud.feud.Brute;
-import io.github.pirut.bloodfeud.feud.SettlementTier;
 import io.github.pirut.bloodfeud.feud.Feud;
 import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.Relation;
@@ -58,8 +57,8 @@ public final class FeudMap {
         boolean campsOn = BloodFeud.config().buildCamps;
         for (Pack pk : packs) {
             Brute boss = f.brute(pk.boss);
-            SettlementTier tier = pk.displayTier(campsOn);
-            String tierTag = tier == SettlementTier.NONE ? "" : " (" + tier.title + ")";
+            String tierTitle = pk.displayTierTitle(campsOn);
+            String tierTag = tierTitle.isEmpty() ? "" : " (" + tierTitle + ")";
             String who = boss == null ? "" : ", " + boss.name + (f.top(pk) == pk && !f.vassals(pk).isEmpty() ? " the King" : "");
             marks.add(new Mark("pack:" + pk.id, pk.campX(), pk.campZ(), cap(pk.title()) + tierTag + who, pk.color, false));
         }

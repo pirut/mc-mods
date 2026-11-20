@@ -241,7 +241,10 @@ public final class Live {
         gruntLevel.remove(mob.getUUID());
         if (owner != null) {
             Pack p = data.feud.pack(owner);
-            if (p != null) p.grunts = Math.max(0, p.grunts - 1);
+            if (p != null) {
+                data.feud.gruntKilled(p, now());
+                announce(data.feud.drainNews());
+            }
             data.changed();
         }
         marked.remove(mob.getUUID());
@@ -1300,8 +1303,8 @@ public final class Live {
         return b;
     }
 
-    /** Ops only: creates a pack ahead of the player, queues its settlement build, and populates its garrison. */
-    public Pack spawnCommandCamp(ServerPlayer player, Family family, SettlementTier tier,
+    /** Ops only: creates a pack ahead of the player, queues its intact or ruined settlement build, and populates its garrison. */
+    public Pack spawnCommandCamp(ServerPlayer player, Family family, SettlementTier tier, boolean ruined,
                                  java.util.function.Consumer<Pack> onDone) {
         ServerLevel level = player.serverLevel();
         SettlementTier target = tier == null || tier == SettlementTier.NONE ? SettlementTier.CAMP : tier;
@@ -1310,52 +1313,54 @@ public final class Live {
         Feud f = data.feud;
         Brute boss = f.rise(family.defaultType, family, dim(level), origin.getX(), origin.getZ(),
                 player.getUUID(), Memory.Kind.SAW_KILLS, null, null, now());
-        Pack pack = f.form(boss, this::placeName, now(), target.minGrunts);
+        Pack pack = f.form(boss, this::placeName, now(), ruined ? 0 : target.minGrunts);
         pack.siteSet = true;
         pack.siteX = origin.getX();
         pack.siteY = origin.getY();
         pack.siteZ = origin.getZ();
         pack.siteFacing = site.facing();
         pack.met.add(player.getUUID());
-        f.upgradeSettlement(pack, target, now());
+        if (ruined) {
+            f.ruinSettlement(pack, target, now());
+        } else {
+            f.upgradeSettlement(pack, target, now());
+        }
         f.drainNews();
         data.changed();
 
-        campBuilder.queueBuild(level, f, pack, 0, target.level, false, () -> {
+        Runnable done = () -> {
             rested.remove(pack.id);
             spawnPack(level, pack, player);
             if (onDone != null) onDone.accept(pack);
-        });
+        };
+        if (ruined) {
+            campBuilder.queueRuin(level, f, pack, target.level, false, done);
+        } else {
+            campBuilder.queueBuild(level, f, pack, 0, target.level, false, done);
+        }
         return pack;
     }
 
     public record UpgradeResult(boolean ok, String error, Pack pack, SettlementTier target) {
     }
 
-    /** Ops only: upgrades the nearest pack within 256 blocks by 1 settlement tier and queues in-place expansion. */
+    /** Ops only: upgrades (or repairs if ruined) the nearest pack within 256 blocks and queues in-place work. */
     public UpgradeResult upgradeNearestCamp(ServerPlayer player, java.util.function.Consumer<Pack> onDone) {
         ServerLevel level = player.serverLevel();
         String dim = dim(level);
         Feud f = data.feud;
-        Pack nearest = null;
-        double best = 256.0;
-        for (Pack pk : f.packs.values()) {
-            double d = pk.distanceTo(dim, player.getX(), player.getZ());
-            if (d <= best) {
-                nearest = pk;
-                best = d;
-            }
-        }
+        Pack nearest = nearestPack(f, dim, player.getX(), player.getZ(), 256.0);
         if (nearest == null) {
             return new UpgradeResult(false, "No pack within 256 blocks to upgrade.", null, null);
         }
         int currentBuilt = nearest.builtTier;
-        if (currentBuilt >= SettlementTier.TOWN.level) {
+        boolean wasRuined = nearest.ruined || nearest.builtRuined;
+        if (currentBuilt >= SettlementTier.TOWN.level && !wasRuined) {
             return new UpgradeResult(false, Feud.cap(nearest.title()) + " already runs a full Town.", nearest, SettlementTier.TOWN);
         }
         SettlementTier base = currentBuilt > 0 ? SettlementTier.byLevel(currentBuilt)
                 : (nearest.tier == null ? SettlementTier.CAMP : nearest.tier);
-        SettlementTier target = base == SettlementTier.TOWN ? SettlementTier.TOWN : base.next();
+        SettlementTier target = wasRuined ? base : (base == SettlementTier.TOWN ? SettlementTier.TOWN : base.next());
         if (!nearest.siteSet) {
             SiteFinder.Site site = SiteFinder.findAutoSite(level, nearest, target);
             if (site == null) site = SiteFinder.findCommandSite(level, player, target);
@@ -1379,11 +1384,61 @@ public final class Live {
         return new UpgradeResult(true, "", pack, target);
     }
 
+    /** Ops only: turns the nearest pack's settlement within 256 blocks into ruins in-place (or builds ruins if unbuilt). */
+    public UpgradeResult ruinNearestCamp(ServerPlayer player, java.util.function.Consumer<Pack> onDone) {
+        ServerLevel level = player.serverLevel();
+        String dim = dim(level);
+        Feud f = data.feud;
+        Pack nearest = nearestPack(f, dim, player.getX(), player.getZ(), 256.0);
+        if (nearest == null) {
+            return new UpgradeResult(false, "No pack within 256 blocks to ruin.", null, null);
+        }
+        if (nearest.ruined && nearest.builtRuined && nearest.builtTier > 0) {
+            SettlementTier t = SettlementTier.byLevel(nearest.builtTier);
+            return new UpgradeResult(false, Feud.cap(nearest.title()) + "'s " + t.key + " is already in ruins.", nearest, t);
+        }
+        SettlementTier target = nearest.builtTier > 0 ? SettlementTier.byLevel(nearest.builtTier)
+                : (nearest.tier == null || nearest.tier == SettlementTier.NONE ? SettlementTier.CAMP : nearest.tier);
+        if (!nearest.siteSet) {
+            SiteFinder.Site site = SiteFinder.findAutoSite(level, nearest, target);
+            if (site == null) site = SiteFinder.findCommandSite(level, player, target);
+            nearest.siteSet = true;
+            nearest.siteX = site.origin().getX();
+            nearest.siteY = site.origin().getY();
+            nearest.siteZ = site.origin().getZ();
+            nearest.siteFacing = site.facing();
+        }
+        nearest.met.add(player.getUUID());
+        f.ruinSettlement(nearest, target, now());
+        f.drainNews();
+        data.changed();
+
+        Pack pack = nearest;
+        campBuilder.queueRuin(level, f, pack, target.level, false, () -> {
+            if (onDone != null) onDone.accept(pack);
+        });
+        return new UpgradeResult(true, "", pack, target);
+    }
+
+    private static Pack nearestPack(Feud f, String dim, double x, double z, double maxDist) {
+        Pack nearest = null;
+        double best = maxDist;
+        for (Pack pk : f.packs.values()) {
+            double d = pk.distanceTo(dim, x, z);
+            if (d <= best) {
+                nearest = pk;
+                best = d;
+            }
+        }
+        return nearest;
+    }
+
     public void forgetAll() {
         for (UUID id : new ArrayList<>(active.keySet())) removeActive(id, true);
         campBuilder.clearAll();
         data.feud.brutes.clear();
         data.feud.packs.clear();
+        data.feud.abandonedSites.clear();
         data.stolen.clear();
         marked.clear();
         data.changed();

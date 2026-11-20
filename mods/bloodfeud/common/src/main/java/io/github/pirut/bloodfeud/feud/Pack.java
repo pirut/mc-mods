@@ -23,10 +23,14 @@ public final class Pack {
     /** The last time it had a night with a player nearby. */
     public long lastAwake;
     public int playerKills;
-    /** Settlement tier this pack has unlocked (ratchets upward as the pack grows). */
+    /** Peak settlement tier this pack has built/unlocked (remains intact footprint even when ruined). */
     public SettlementTier tier = SettlementTier.CAMP;
     /** Highest tier actually built in the world (0 = not yet built). */
     public int builtTier = 0;
+    /** True when the pack's numbers have dropped below its current tier's threshold and the settlement is in ruins. */
+    public boolean ruined;
+    /** True when the blocks currently built in the world at this site are in the ruined state. */
+    public boolean builtRuined;
     /** True once a concrete build site has been chosen in the world. */
     public boolean siteSet;
     public int siteX, siteY, siteZ;
@@ -77,6 +81,14 @@ public final class Pack {
     public SettlementTier displayTier(boolean campsEnabled) {
         if (campsEnabled) return tier == null ? SettlementTier.CAMP : tier;
         return builtTier > 0 ? SettlementTier.byLevel(builtTier) : SettlementTier.NONE;
+    }
+
+    /** Human-readable settlement label (e.g. "Town", "Ruined Town", "Ruined Camp"), or empty when omitted. */
+    public String displayTierTitle(boolean campsEnabled) {
+        SettlementTier t = displayTier(campsEnabled);
+        if (t == SettlementTier.NONE) return "";
+        boolean showRuined = campsEnabled ? ruined : (builtTier > 0 && (builtRuined || ruined));
+        return t.title(showRuined);
     }
 
     public String title() {

@@ -23,6 +23,7 @@ final class FeudView {
     static final class PackV {
         String id, name, family, familyTitle, place, dim, boss, liege, tier, tierTitle;
         int color, x, z, grunts, vassals, unknown, unmetRivals, theyKilled, youKilled, builtTier;
+        boolean ruined;
         long formed;
         double strength;
         final List<String> members = new ArrayList<>();
@@ -82,6 +83,7 @@ final class FeudView {
             p.tier = c.getString("tier");
             p.tierTitle = c.getString("tierTitle");
             p.builtTier = c.getInt("builtTier");
+            p.ruined = c.getBoolean("ruined");
             p.grunts = c.getInt("grunts");
             p.vassals = c.getInt("vassals");
             p.unknown = c.getInt("unknown");
