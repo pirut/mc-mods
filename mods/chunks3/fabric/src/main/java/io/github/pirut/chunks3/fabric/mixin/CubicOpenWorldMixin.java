@@ -14,8 +14,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
 /**
- * Opening a world with a cubic dimension skips the experimental settings warning its data pack
- * dimension would bring up every time, as creating one does. NeoForge asks once per world and remembers the answer.
+ * Opening a world with a cubic dimension (a mod's, or a Cubic world type's) skips the experimental settings
+ * warning its data pack dimension would bring up every time, as creating one does. NeoForge asks once per world and remembers the answer.
  */
 @Mixin(WorldOpenFlows.class)
 abstract class CubicOpenWorldMixin {
@@ -24,7 +24,7 @@ abstract class CubicOpenWorldMixin {
     private Lifecycle chunks3$trustCubic(WorldData data, Operation<Lifecycle> original,
                                                LevelStorageSource.LevelStorageAccess storage, WorldStem stem, PackRepository packs, Runnable onFail) {
         var stems = stem.registries().compositeAccess().registryOrThrow(Registries.LEVEL_STEM);
-        boolean cubic = Cubic.dimensions().stream().anyMatch(key -> stems.containsKey(key.location()));
+        boolean cubic = Cubic.cubicWorld(stems.entrySet());
         return cubic ? Lifecycle.stable() : original.call(data);
     }
 }

@@ -17,7 +17,7 @@ displayURL="https://github.com/pirut/chunks3"
 authors="pirut"
 credits='''Split out of Earth Platform (https://github.com/pirut/earth-platform). Distant terrain is built on ideas from Voxy by Cortex (MCRcortex) and Distant Horizons by James Seibel and contributors: the voxel level pyramid, detail by on-screen size, compact GPU faces and Voxy's shader-pack interface from Voxy; exact far heights and server-built far terrain from Distant Horizons. It contains no code from either.'''
 description='''
-Cubic chunks for NeoForge: a library that lets a mod's dimensions keep their blocks in 16-block cubes from Y -16384 to 16383, with vanilla gameplay on top and its own distant terrain renderer. It adds nothing to the game by itself.
+Cubic chunks for NeoForge: a "Cubic" world type (a vanilla-looking overworld whose ground goes on down to bedrock at Y -4096) and a library that lets a mod's dimensions keep their blocks in 16-block cubes from Y -16384 to 16383, with vanilla gameplay on top and its own distant terrain renderer.
 '''
 
 [[mixins]]

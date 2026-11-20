@@ -6,6 +6,9 @@ import io.github.pirut.chunks3.client.Flawless;
 import io.github.pirut.chunks3.client.PerfExportCommand;
 import io.github.pirut.chunks3.client.PerformanceDiagnostics;
 import io.github.pirut.chunks3.compat.CubicCompat;
+import io.github.pirut.chunks3.config.Chunks3Config;
+import io.github.pirut.chunks3.config.Chunks3ConfigScreen;
+import io.github.pirut.chunks3.config.PauseMenu;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -24,6 +27,20 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 @EventBusSubscriber(modid = Cubic.MOD_ID, value = Dist.CLIENT)
 public final class NeoForgeClientEvents {
     private NeoForgeClientEvents() {}
+
+    /** From the mod's constructor on the client: the settings, read before the engine's classes, and the config screen (Mods > Chunks3 > Config). */
+    static void construct(net.neoforged.fml.ModContainer container) {
+        Chunks3Config.load(net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get());
+        container.registerExtensionPoint(net.neoforged.neoforge.client.gui.IConfigScreenFactory.class,
+                (net.neoforged.neoforge.client.gui.IConfigScreenFactory) (mod, parent) -> new Chunks3ConfigScreen(parent));
+    }
+
+    /** The far distance and sharpness on the pause menu in cubic worlds (see {@link PauseMenu}). */
+    @SubscribeEvent public static void screen(net.neoforged.neoforge.client.event.ScreenEvent.Init.Post event) {
+        PauseMenu.afterInit(event.getScreen(), event.getListenersList(), event::addListener);
+    }
+
+    @SubscribeEvent public static void screenClosing(net.neoforged.neoforge.client.event.ScreenEvent.Closing event) { PauseMenu.closing(event.getScreen()); }
 
     /** Client setup and registration, on the mod's own event bus. */
     @EventBusSubscriber(modid = Cubic.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)

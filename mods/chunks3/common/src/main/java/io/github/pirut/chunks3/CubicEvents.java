@@ -27,9 +27,11 @@ public final class CubicEvents {
     private CubicEvents() {}
 
     public static void load(LevelAccessor levelAccessor) {
-        if (!(levelAccessor instanceof ServerLevel level) || !Cubic.isCubic(level.dimension())) return;
+        if (!(levelAccessor instanceof ServerLevel level) || !Cubic.isCubic(level.dimension()) || CubicLevel.of(level) != null) return;
         var folder = DimensionType.getStorageFolder(level.dimension(), level.getServer().getWorldPath(LevelResource.ROOT));
         CubeGenerator generator = Cubic.open(level, folder);
+        // Caches and far workers make room when memory runs short (see MemoryPressure); started once, by the first cubic level.
+        io.github.pirut.chunks3.util.MemoryPressure.watch(Cubic.LOGGER::warn);
         ((CubicLevel) level).chunks3$setCubes(new ServerCubeWorld(level, generator));
         // Fetch the data around the arrival point now, so the first visit does not wait on it.
         int[] home = generator.arrival();
@@ -39,6 +41,50 @@ public final class CubicEvents {
             generator.prepareNear(home[0], home[1]);
             generator.prepareFar(home[0], home[1]);
         });
+        // Beside them, the little the horizon's quick stand-ins read, and the stand-ins themselves, ready for the first player.
+        if (CubicLevel.of(level) instanceof ServerCubeWorld cubes) standIns(generator, cubes, home[0], home[1]);
+    }
+
+    /** Fetches the data of the far stand-ins round a place and makes them ahead of a player arriving there, off-thread. */
+    private static void standIns(CubeGenerator generator, ServerCubeWorld cubes, int x, int z) {
+        if (!generator.farPreviews(io.github.pirut.chunks3.far.Far.MAX_LEVEL)) return;
+        Util.ioPool().execute(() -> {
+            try {
+                generator.preparePreview(x, z, io.github.pirut.chunks3.far.Far.BACKDROP_LEVEL);
+                cubes.far().warmPreviews(x, z);
+            } catch (RuntimeException failure) {
+                Cubic.LOGGER.warn("Could not make the far stand-ins ahead", failure);
+            }
+        });
+    }
+
+    /**
+     * A new world's spawn, when its overworld is cubic: a dry, gentle landing near the generator's arrival
+     * point, on the ground. Null for any other level, which vanilla gives its spawn as usual.
+     */
+    public static @Nullable BlockPos initialSpawn(ServerLevel level) {
+        if (level.dimension() != Level.OVERWORLD || !Cubic.isCubic(level.dimension())) return null;
+        load(level);
+        if (!(CubicLevel.of(level) instanceof ServerCubeWorld cubes)) return null;
+        int[] spot = landing(cubes, null);
+        BlockPos spawn = BlockPos.containing(standOn(cubes, spot[0], spot[1]));
+        Cubic.LOGGER.info("Cubic world: spawn at {}", spawn.toShortString());
+        return spawn;
+    }
+
+    /**
+     * Where a player starts about the world spawn of a cubic overworld (a first join, or a respawn with no
+     * bed): a spot on the ground with its cubes loaded, never farther from the spawn than the spawnRadius rule
+     * (0 is the spawn column itself) nor past the world border, as vanilla keeps it. Null for other levels.
+     */
+    public static @Nullable BlockPos spawnNear(ServerLevel level, BlockPos spawn) {
+        if (level.dimension() != Level.OVERWORLD || !(CubicLevel.of(level) instanceof ServerCubeWorld cubes)) return null;
+        int border = net.minecraft.util.Mth.floor(level.getWorldBorder().getDistanceToBorder(spawn.getX(), spawn.getZ()));
+        int radius = Math.max(0, Math.min(level.getServer().getSpawnRadius(level), border - 1));
+        int[] spot = scatter(cubes, new int[]{spawn.getX(), spawn.getZ()}, radius);
+        int moved = Math.max(Math.abs(spot[0] - spawn.getX()), Math.abs(spot[1] - spawn.getZ()));
+        // The radius bounds where the spot is scattered; the search round it stays local, however wide the radius.
+        return BlockPos.containing(standOn(cubes, spot[0], spot[1], Math.min(STAND_REACH, radius - moved)));
     }
 
     public static void save(LevelAccessor levelAccessor) {
@@ -143,7 +189,13 @@ public final class CubicEvents {
         if (!(cubes.level() instanceof ServerLevel level)) return spot;
         // An Earth world sets the rule to 0 so vanilla never searches the stand-in overworld for a
         // spawn; the Earth then scatters over vanilla's default instead.
-        int rule = level.getServer().getSpawnRadius(level), radius = rule > 0 ? rule : DEFAULT_SPAWN_RADIUS;
+        int rule = level.getServer().getSpawnRadius(level);
+        return scatter(cubes, spot, rule > 0 ? rule : DEFAULT_SPAWN_RADIUS);
+    }
+
+    /** A random dry column within {@code radius} blocks of a spot, as {@link #scatter(ServerCubeWorld, int[])}; the spot itself for 0. */
+    private static int[] scatter(ServerCubeWorld cubes, int[] spot, int radius) {
+        if (radius <= 0 || !(cubes.level() instanceof ServerLevel level)) return spot;
         CubeGenerator generator = cubes.generator();
         int ground = generator.surfaceY(spot[0], spot[1]);
         for (int attempt = 0; attempt < 16; attempt++) {
@@ -184,14 +236,20 @@ public final class CubicEvents {
      * of snow leave room) and not on powder snow, which a player sinks into and freezes in; else on
      * top of whatever stands there, such as a tree, with a drift underfoot packed firm.
      */
-    private static Vec3 standOn(ServerCubeWorld cubes, int x, int z) {
+    /** How far, in blocks, a landing looks from its column for a better spot to stand. */
+    private static final int STAND_REACH = 15;
+
+    private static Vec3 standOn(ServerCubeWorld cubes, int x, int z) { return standOn(cubes, x, z, STAND_REACH); }
+
+    /** The same, looking no more than {@code reach} blocks from the column for a better spot. */
+    private static Vec3 standOn(ServerCubeWorld cubes, int x, int z, int reach) {
         CubeGenerator generator = cubes.generator();
         int ground = Math.max(generator.surfaceY(x, z), generator.waterY(x, z));
         cubes.loadAround(new BlockPos(x, ground, z));
         // First somewhere dry and roomy, so nobody arrives in a one-block pit facing a wall, then dry
         // with headroom; swimming only where there is no dry ground (a start on a sea stack or islet).
         for (int pass = 0; pass < 4; pass++)
-            for (int radius = 0; radius <= 15; radius++) for (int dz = -radius; dz <= radius; dz++) for (int dx = -radius; dx <= radius; dx++) {
+            for (int radius = 0; radius <= reach; radius++) for (int dz = -radius; dz <= radius; dz++) for (int dx = -radius; dx <= radius; dx++) {
                 if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
                 boolean roomy = pass % 2 == 0, dry = generator.waterY(x + dx, z + dz) < generator.surfaceY(x + dx, z + dz);
                 if (pass < 2 && !dry) continue;

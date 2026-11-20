@@ -7,6 +7,7 @@ import io.github.pirut.chunks3.CubicSpawns;
 import io.github.pirut.chunks3.compat.PortalReturn;
 import io.github.pirut.chunks3.net.CubePayloads;
 import io.github.pirut.chunks3.portal.CubicTravel;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -20,6 +21,8 @@ import net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerRespawnPositionEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
@@ -45,6 +48,12 @@ public final class NeoForgeEvents {
             });
         }
     }
+
+    /** The world's Cubic-type dimensions are adopted before its levels load, and dropped when it stops. */
+    @SubscribeEvent public static void starting(ServerAboutToStartEvent event) {
+        Cubic.adopt(event.getServer().registryAccess().registryOrThrow(Registries.LEVEL_STEM));
+    }
+    @SubscribeEvent public static void stopped(ServerStoppedEvent event) { Cubic.adopt(java.util.List.of()); }
 
     @SubscribeEvent public static void load(LevelEvent.Load event) { CubicEvents.load(event.getLevel()); }
     @SubscribeEvent public static void save(LevelEvent.Save event) { CubicEvents.save(event.getLevel()); }
