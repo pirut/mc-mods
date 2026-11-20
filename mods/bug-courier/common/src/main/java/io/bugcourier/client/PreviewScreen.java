@@ -3,17 +3,18 @@ package io.bugcourier.client;
 import io.bugcourier.core.Attachment;
 import io.bugcourier.core.IssueBody;
 import io.bugcourier.core.Report;
+import io.bugcourier.client.gui.BaseScreen;
+import io.bugcourier.client.gui.Canvas;
+import io.bugcourier.client.gui.TextView;
+import io.bugcourier.client.version.Mc;
 import java.time.Duration;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
-import net.minecraft.client.gui.components.MultiLineLabel;
 import net.minecraft.client.gui.components.Tooltip;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /** Step two: the player sees every byte that will leave the computer, unticks what they don't want, and sends. */
-final class PreviewScreen extends Screen {
+final class PreviewScreen extends BaseScreen {
     private final ReportScreen parent;
     private final ReportTarget target;
     private final Report report;
@@ -77,7 +78,7 @@ final class PreviewScreen extends Screen {
     private void send() {
         Duration wait = Sender.cooldownLeft(target.modId());
         if (!wait.isZero()) return;
-        minecraft.setScreen(Sender.send(this, parent, target, report, full));
+        Mc.setScreen(Sender.send(this, parent, target, report, full));
     }
 
     @Override
@@ -89,15 +90,14 @@ final class PreviewScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        super.render(g, mouseX, mouseY, partialTick);
-        g.drawCenteredString(font, title, width / 2, 8, 0xFFFFFF);
-        if (showHow) MultiLineLabel.create(font, how(), width - 24).renderCentered(g, width / 2, height - 50, font.lineHeight, 0xA0A0A0);
+    protected void draw(Canvas c) {
+        c.centered(font, title, width / 2, 8, Canvas.WHITE);
+        if (showHow) c.centeredLines(font, font.split(how(), width - 24), width / 2, height - 50, Canvas.GREY);
     }
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        Mc.setScreen(parent);
     }
 
     private static String kb(int bytes) {

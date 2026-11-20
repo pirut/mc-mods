@@ -11,9 +11,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import io.bugcourier.platform.Platform;
+import io.bugcourier.client.version.Mc;
 import io.bugcourier.platform.Platform.ModEntry;
 
 /**
@@ -49,10 +49,9 @@ public final class ReportTargets {
 
     /** Opens the report screen on the next tick, so a closing chat or menu can't replace it. */
     public static void openScreen(String modId, String crashText) {
-        Minecraft mc = Minecraft.getInstance();
-        mc.tell(() -> {
-            Screen parent = mc.screen;
-            mc.setScreen(new ReportScreen(parent, modId, crashText));
+        Mc.later(() -> {
+            Screen parent = Mc.screen();
+            Mc.setScreen(new ReportScreen(parent, modId, crashText));
         });
     }
 

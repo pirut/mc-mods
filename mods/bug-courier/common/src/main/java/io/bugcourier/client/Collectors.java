@@ -1,6 +1,5 @@
 package io.bugcourier.client;
 
-import com.mojang.blaze3d.platform.GlUtil;
 import io.bugcourier.BugCourier;
 import io.bugcourier.api.ReportConfig;
 import io.bugcourier.core.Attachment;
@@ -9,6 +8,7 @@ import io.bugcourier.core.IssueBody;
 import io.bugcourier.core.Redactor;
 import io.bugcourier.core.Report;
 import io.bugcourier.platform.Platform;
+import io.bugcourier.client.version.Mc;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
@@ -19,7 +19,6 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.stream.Stream;
-import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 
 /** Gathers what a report can carry. Every text passes through the redactor before anyone sees it. */
@@ -58,15 +57,15 @@ final class Collectors {
 
         var env = report.environment();
         env.put(target.name(), target.version());
-        env.put("Minecraft", SharedConstants.getCurrentVersion().getName());
+        env.put("Minecraft", Mc.gameVersion());
         Platform platform = Platform.get();
         env.put(platform.loaderName(), platform.loaderVersion());
         env.put("Bug Courier", Sender.libraryVersion());
         env.put("Mods installed", Integer.toString(platform.allMods().size()));
         env.put("OS", System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")");
         env.put("Java", System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ")");
-        env.put("CPU", GlUtil.getCpuInfo() + ", " + Runtime.getRuntime().availableProcessors() + " threads");
-        env.put("GPU", GlUtil.getRenderer() + " (" + GlUtil.getVendor() + "), OpenGL " + GlUtil.getOpenGLVersion());
+        env.put("CPU", Mc.cpu() + ", " + Runtime.getRuntime().availableProcessors() + " threads");
+        env.put("GPU", Mc.gpu());
         env.put("Memory", (Runtime.getRuntime().maxMemory() >> 20) + " MB allowed for Java");
         ReportConfig config = target.config();
         if (config != null) {
