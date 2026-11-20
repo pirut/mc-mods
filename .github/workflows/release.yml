@@ -7,11 +7,14 @@ name: Release
 # - Push to main: every mod whose current mod_version has no release yet. So bumping mod_version and adding a
 #   '## <version>' section to the mod's CHANGELOG.md releases it on merge.
 # - Push a tag <folder>-v<version> by hand: that mod (the version must match its gradle.properties).
-# - Run this workflow from the Actions tab with a mod folder: that mod's current version (also retries a
-#   failed Modrinth upload).
+# - Run this workflow from the Actions tab with a mod folder: that mod's current version. This also uploads a
+#   version that is already on GitHub to the stores (a first upload, or a retry of a failed one).
 #
 # Mods with a modrinth_project_id in their gradle.properties are also uploaded to Modrinth. That needs the
-# MODRINTH_TOKEN secret (a Modrinth personal access token with "Create versions").
+# MODRINTH_TOKEN secret (a Modrinth personal access token with "Create versions"). Mods with a
+# curseforge_project_id (the number under About Project on the CurseForge page) are also uploaded to CurseForge.
+# That needs the CURSEFORGE_TOKEN secret (CurseForge > Account settings > API tokens). Modrinth skips versions it
+# already has; CurseForge can't tell, so a run by hand uploads there only with "Upload to CurseForge too" ticked.
 
 on:
   push:
@@ -22,6 +25,10 @@ on:
       mod:
         description: Mod folder in mods/ (for example cc-agent)
         required: true
+      curseforge:
+        description: Upload to CurseForge too. Leave it unticked if CurseForge already has this version, or it gets the files twice.
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -124,5 +131,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          CURSEFORGE_UPLOAD: ${{ inputs.curseforge && '1' || '' }}
         run: |
-          for m in ${{ needs.pick.outputs.mods }}; do .github/scripts/release-mod.sh "$m" "dist/$m"; done
+          failed=0
+          for m in ${{ needs.pick.outputs.mods }}; do .github/scripts/release-mod.sh "$m" "dist/$m" || failed=1; done
+          exit $failed

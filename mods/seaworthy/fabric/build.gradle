@@ -1,0 +1,16 @@
+plugins {
+    id 'mcmods.fabric'
+}
+
+repositories {
+    maven {
+        url = 'https://maven.ryanhcode.dev/releases'
+        content { includeGroupAndSubgroups 'dev.ryanhcode' }
+    }
+}
+
+dependencies {
+    // Sable is a required mod at runtime, so it is only compiled against here.
+    modCompileOnly("dev.ryanhcode.sable:sable-fabric-${minecraft_version}:${sable_version}") { transitive = false }
+    modCompileOnly("dev.ryanhcode.sable-companion:sable-companion-fabric-${minecraft_version}:${sable_companion_version}") { transitive = false }
+}

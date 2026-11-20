@@ -9,7 +9,10 @@ own version and changelog, and is released on its own.
 | --- | --- | --- | --- |
 | [CC: Agent](mods/cc-agent) | Lets Claude Code, Codex or any MCP client write programs for and drive CC: Tweaked computers and turtles. | NeoForge, Fabric | [Releases](https://github.com/pirut/mc-mods/releases?q=cc-agent) |
 | [Bug Courier](mods/bug-courier) | A clear in-game way for players to report bugs to the mods they play. | NeoForge, Fabric | [Releases](https://github.com/pirut/mc-mods/releases?q=bug-courier) |
+| [Create: Seaworthy](mods/seaworthy) | Watertight hulls for Create Aeronautics and Sable ships: dry hulls below the waterline, displacement buoyancy, and compartments that flood through holes. | NeoForge, Fabric | [Releases](https://github.com/pirut/mc-mods/releases?q=seaworthy) |
+| [Blood Feud](mods/bloodfeud) | Mobs that remember you: the ones that watch you kill their kind rise as named Brutes, band into packs with a home and a Boss, feud with rival packs and crown Kings. | NeoForge, Fabric | [Releases](https://github.com/pirut/mc-mods/releases?q=bloodfeud) |
 | [Chunks3](mods/chunks3) | Cubic chunks as a library: other mods register dimensions up to 32,768 blocks tall, with a distant terrain renderer. The engine of Earth Platform. | NeoForge, Fabric | [Releases](https://github.com/pirut/mc-mods/releases?q=chunks3) |
+| [Pirut Lib](mods/pirutlib) | The shared library behind these mods: the same server hooks on NeoForge and Fabric, title cards, save data and spawn spots. Mods nest it, so players never install it by hand. | NeoForge, Fabric | [Releases](https://github.com/pirut/mc-mods/releases?q=pirutlib) |
 | [Earth Platform](https://github.com/pirut/earth-platform) | The real Earth in Minecraft at true scale, with real terrain and climate and a far view to the horizon. Lives in its own repo. | NeoForge, Fabric | [Modrinth](https://modrinth.com/mod/earth-platform) |
 
 Each mod's README says which Minecraft versions it's for. Issues for any mod in this repo go to
@@ -27,7 +30,8 @@ mods/<mod>/           one folder per mod
   versions/<mc>.properties  optional: this mod's settings for one Minecraft version
 versions/<mc>.properties  each Minecraft version's Minecraft, NeoForge, Fabric, Parchment and Java versions
 build-logic/          shared Gradle plugins: mcmods.neoforge, mcmods.fabric, mcmods.library
-common-lib/           internal library a mod can bundle into its jars (uses_common_lib=true)
+common-lib/           plain-Java internal library a mod can bundle into its jars (uses_common_lib=true)
+mods/pirutlib/        Pirut Lib: shared loader hooks and game helpers a mod can build on (uses_pirut_lib=true)
 template/             a buildable example mod to copy for a new one
 ```
 
@@ -95,6 +99,12 @@ Every release goes to GitHub with the jars and their SHA-256 sums. A mod with a 
 `gradle.properties` is also uploaded to Modrinth, one Modrinth version per jar, numbered
 `<version>+<minecraft>-<loader>` (for example `0.6.0+1.21.1-neoforge`). That needs the `MODRINTH_TOKEN` repository secret: a Modrinth personal access token with
 the "Create versions" scope. `modrinth_required` lists extra Modrinth project ids the mod needs.
+
+A mod with a `curseforge_project_id` is also uploaded to CurseForge (one file per loader; the Fabric one needs
+Fabric API). That needs the `CURSEFORGE_TOKEN` repository secret: an API token from CurseForge's account
+settings. CurseForge can't say whether it already has a version, so a release is uploaded there once, when it is
+first made; to upload a version that is already on GitHub (a first upload, or after a failure), run the Release
+workflow by hand with "Upload to CurseForge too" ticked.
 
 ## License
 

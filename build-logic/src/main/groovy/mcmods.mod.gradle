@@ -111,6 +111,9 @@ tasks.named('jar', Jar) {
 // Minecraft version: the repo's, versions/<mc>.properties, the mod's gradle.properties, the mod's versions/<mc>.properties.
 def metadata = new TreeMap(mcmodsProperties)
 metadata.mod_version = mod_version
+// The same values for the loader plugins' dependencies (a mod's own gradle.properties isn't a property of its
+// loader projects: the repo's shared value would win there).
+ext.modMetadata = metadata
 tasks.named('processResources', ProcessResources) {
     inputs.properties metadata
     filesMatching(['META-INF/neoforge.mods.toml', 'fabric.mod.json']) { expand metadata }

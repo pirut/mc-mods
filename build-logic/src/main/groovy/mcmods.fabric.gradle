@@ -41,10 +41,20 @@ dependencies {
             parchment("org.parchmentmc.data:parchment-${parchment_minecraft_version}:${parchment_mappings_version}@zip")
         }
     }
-    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+    modImplementation "net.fabricmc:fabric-loader:${modMetadata.loader_version ?: loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
 }
 
 if (usesCommonLib) {
     dependencies { include project(':common-lib') }
+}
+
+// Pirut Lib (mods/pirutlib), when the mod asks for it with uses_pirut_lib=true: compiled against, nested in the
+// jar, and loaded as a mod in dev runs.
+if (findProperty('uses_pirut_lib')?.toString() == 'true' && project.path != ':pirutlib:fabric') {
+    evaluationDependsOn(':pirutlib:fabric')
+    dependencies {
+        implementation project(path: ':pirutlib:fabric', configuration: 'namedElements')
+        include project(':pirutlib:fabric')
+    }
 }

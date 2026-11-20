@@ -1,0 +1,874 @@
+# What Brutes say. All of it written for Blood Feud.
+#
+# Each [section] is a pool. A Brute picks a line it hasn't said to anyone lately, so the more lines a pool has,
+# the longer it stays fresh. A line is skipped when one of its words can't be filled in right now.
+#
+#   {player}  the player's name          {name}    the Brute's name       {times}  how many times (in words)
+#   {pack}    its pack ("the Mossy Bog Pack")    {home}  where the pack lives ("Mossy Bog")
+#   {king}    the name of the King it kneels to  {item}  the thing it stole from the player
+#   {weapon}  what the player is holding         {days}  how long since it last saw the player ("three days")
+#   {scar}    what the player did to its body    {kin}   what it calls its own kind
+#
+# Family pools (greet.rotten, ...) and rank pools (greet.king, ...) mix in with the memory pools, so the same
+# memory sounds different coming from a drowned Boss than from a pillager nobody.
+
+# ---------------------------------------------------------------- greetings, by what it remembers
+
+[greet.saw_kills]
+You cut down my {kin} like wheat. I counted every one.
+I watched you. I learned. Now it's my turn.
+You killed my {kin}. I'm still here.
+I was in the dark the whole time, {player}. Watching.
+You never look behind you. I noticed.
+Every one you killed had a name. I'm the only one left who remembers them.
+I saw how you swing. Slow on the backswing. I'll be quick.
+You left one alive. That was a mistake.
+Three of mine, gone. I'll take three of yours. Starting with your hearts.
+I've been practicing on chickens. You're next.
+You walked right past me. I was close enough to bite.
+They told me you were dangerous. They were wrong, I just watched you miss twice.
+You fight like someone who's never been hunted. Let's fix that.
+My {kin} didn't stand a chance. I'm not my {kin}.
+Do you even remember them? I do.
+I hid under a ledge and watched you swing. I learned the rhythm.
+You kill like it's chores. To me it was family.
+Someone had to see it. I saw it.
+I've been following your trail of rotten flesh and arrows.
+They dropped and you didn't even look. I looked.
+I gave them a burial. You gave them nothing.
+I learned one thing watching you: you get careless when you win.
+I could have run. I stayed to remember your face.
+You were busy looting. I was busy planning.
+It's not personal. Oh, wait. Yes it is.
+
+[greet.killed_you]
+Back for another beating?
+Remember me? I'm the one who put you in the dirt.
+Your bed's a long way off. That's how I like it.
+Did your stuff wait for you? I hope not.
+Last time you dropped everything. I kept the good bits.
+Look who respawned.
+You look better than last time. Last time you looked dead.
+Still sore? You should be.
+I've told everyone about you, {player}. They all laughed.
+I could do this all day. Can you?
+Ah, {player}. My favorite way to pass the night.
+You came back. Brave or stupid? We'll see.
+{days} ago I beat you. Let's see if you learned anything.
+I still have your things, by the way. Some of them.
+I told the others you'd come back. They owe me an emerald.
+You died with your mouth open. It was very funny.
+That armor didn't help last time. Did you bring better armor?
+You know how this ends. We both do.
+I've been sleeping well since I killed you.
+You smell like a fresh respawn.
+Last time, you lasted about a minute. Beat that.
+Welcome back to the place you died.
+I kept your spot warm. It's right there, in the dirt.
+
+[greet.killed_you_often]
+That's {times} times now. I keep count.
+Again? You never learn, and I never get tired of it.
+{times} times, {player}. Should I start charging you?
+I've worn a path to your bed by now.
+I've killed you {times} times. Each one gets easier.
+The pack has a song about you now. It's very short.
+Your grave's getting crowded, {player}.
+Is this a habit? It's a habit for me.
+You keep feeding me. I keep getting stronger. Think about that.
+You're my best customer, {player}.
+I've lost count. No I haven't. It's {times}.
+I'm going to need a bigger graveyard.
+Do you ever wonder if it's you? It's you.
+You're not a player anymore. You're a hobby.
+The grunts take bets on how long you last. They always win.
+
+[greet.fled]
+Ran off last time. Your legs tired yet?
+No running today. I brought friends.
+You ran so fast you left your dignity behind.
+Last time you turned your back. I remember the view.
+Running again? Go on. I'll follow the footprints.
+I chased you for a mile, {player}. I'm in no hurry. I'm never in a hurry.
+Coward's luck runs out. Yours ran out today.
+You ran {days} ago. I've been walking ever since.
+I could hear you panting the whole way.
+Your boots are good for running. Not much else.
+We had a fight to finish. You left it half done.
+You always run the same way. I'll be waiting there next time.
+I know which way you run now. Left. Always left.
+Turn around, {player}. Oh, you already are.
+
+[greet.stole]
+Still got your {item}. Want it back? Come and take it.
+Nice {item}. Mine now.
+Looking for your {item}? It's right here. Come closer.
+I sleep on your {item} every night. It's very comfortable.
+Your {item} has a new owner. It likes me better.
+I showed your {item} to the whole pack. They were jealous.
+Finders keepers, {player}. Still finding. Still keeping.
+Your {item} and I have become very close.
+I'll give your {item} back. One piece at a time.
+I've been using your {item}. Badly, but still.
+What's a {item} worth to you? Your life?
+The pack keeps asking where I got a {item}. I tell them about you.
+
+[greet.it_fled]
+I left last time. Don't think it was because of you.
+I had somewhere to be. Now I'm here.
+Last time was a warm-up.
+I went home, sharpened up, came back. That's the difference between us.
+Don't tell anyone I ran. I'll know if you do.
+I went for help. Here's the help.
+Tactical retreat. Look it up.
+I needed a moment. I've had a moment.
+
+[greet.hunted]
+You thought you could walk far enough? I walk too.
+Every step you took, I took two.
+You left. I followed. That's how this works now.
+New place, same {player}.
+You can build a house anywhere. I'll knock on every door.
+I followed your torches. You leave a lot of torches.
+{days} on the road. My feet hurt. You'll hurt more.
+The whole world isn't big enough, {player}.
+I smelled your campfire three hills back.
+You crossed rivers. I swam them.
+You slept, {player}. I didn't.
+I asked every zombie between here and there. They all knew your name.
+Nice place. Shame about the neighbors. That's me now.
+You can't outrun a grudge.
+Did you think the border of the map would stop me?
+I'll follow you to the Nether if I have to. I've heard it's warm.
+You leave a trail. Broken leaves, dropped seeds, torches. I read it all.
+
+# ---------------------------------------------------------------- came back from the dead
+
+[returned.fire]
+You burned me. Look at me now. Look!
+I still smell the smoke. Do you?
+Fire doesn't keep me down. It just makes me angry.
+Every night I dream about that fire. Tonight you're in it.
+You lit me up like a torch. I'll return the favor.
+My skin crackles when I walk. Listen.
+I put myself out in a river. Took a while.
+Water bucket? Should've brought one for me too.
+
+[returned.arrow]
+I've still got your arrow in me. Came to give it back.
+One arrow? That's all you had?
+I pulled out every arrow. Kept them. Want to count?
+You shoot from far away because you're scared to get close. Get close.
+I have a hole right here. You made it.
+Arrows sting. Revenge stings more.
+I've been eating with an arrow through my cheek. Thanks for that.
+
+[returned.fall]
+You knocked me off a cliff. I climbed back up.
+I've learned to land. Have you?
+It's a long way down. I had time to think about you the whole way.
+Gravity tried. Gravity failed.
+I hit every rock on the way down. I remember each one.
+You pushed. I fell. I got up. Your turn.
+My legs bend the wrong way now. I'm still faster than you.
+
+[returned.drowning]
+You left me at the bottom of the water. I walked out.
+The water didn't want me either.
+I spent a week down there with the squid. They told me where you live.
+I've got kelp in places kelp shouldn't be. That's on you.
+The fish ate my ears. I still hear you fine.
+I've been holding my breath since you left me down there.
+I came back with a belly full of water and a head full of you.
+
+[returned.explosion]
+You blew me to bits. Most of them came back.
+I'm missing a few pieces. You'll pay for each one.
+My ears are still ringing. Speak up, {player}.
+You used a whole lot of gunpowder on me. I'm flattered.
+Boom. That's what I hear every time I see you.
+I found my arm. Took two days.
+TNT? Really? I thought we had something.
+
+[returned.beast]
+Your dog chewed me up. Where is it now?
+Bring your animals. I'm ready for them this time.
+Your wolf likes the taste of me. I'll make sure it never gets another bite.
+Your wolf has my ear. I'd like it back.
+I hate dogs now. Thanks to you.
+
+[returned.any]
+You cut me down. It didn't take.
+Remember me? You killed me. Bad job.
+Dead? Me? Not even close.
+You left me {scar}. I wear it for you.
+I came back {scar}. Look what you made.
+The ground spat me back out. It knew I had work to do.
+You should have finished it. You didn't.
+I counted the days, {player}. {days}. Every one in the dark.
+Killing me once just made me remember you.
+I've been dead. It's boring. You'll find out.
+I'm worse now. Much worse. You did this.
+Dying taught me things, {player}.
+I woke up angry. I've stayed angry.
+Even death has a waiting list. I skipped it.
+You buried me shallow.
+They wouldn't take me down there. Said I had business up here.
+You know what's worse than me? Me, twice.
+I spent every night thinking about our rematch.
+
+# ---------------------------------------------------------------- by rank, with no memory to bring up
+
+[greet.king]
+Every pack here kneels to me. You'll kneel too.
+Kings don't run. Kings don't die. Ask the last one who tried.
+I own every hill from here to the sea. You're standing on mine.
+I've swallowed packs bigger than your whole village.
+Bow, or be buried. Those are the choices.
+You're in my kingdom now, {player}.
+A dozen packs answer to me. You answer to me too.
+I wasn't born a King. I ate my way there.
+Your village pays tribute to me now. It just doesn't know it yet.
+I was a nobody once. Then I ate the somebodies.
+{home} is my throne. You're on my carpet.
+My packs cover the map like moss.
+Hundreds kneel to me. One more won't hurt.
+Even the Bosses fear me. You should too.
+
+[greet.boss]
+This is our place. You're not leaving it.
+You're on our ground. Get them!
+The pack is hungry tonight.
+Welcome to {home}. Nobody leaves {home}.
+{pack} has been waiting for you.
+You've found {pack}. That was the easy part.
+I lead {pack}. You're about to see why.
+Everyone, look! Dinner walked in on its own.
+{king} wants your head. I want it first.
+{king} will hear about this. I'd rather bring you as proof.
+Pack! We have a visitor!
+{home} is ours. Whose is yours?
+You came to {home} alone? Brave. Stupid, but brave.
+I didn't get to lead {pack} by being nice.
+Nobody crosses {home} without paying.
+Stand still. The pack likes it when they stand still.
+The grunts saw you first. I saw you second. You won't see a third.
+{pack} doesn't take prisoners. We take boots.
+I fought my way to the top of {pack}. You're just another step.
+
+[greet.brute]
+Fresh meat!
+Oh, I've heard about you.
+Let's see what you've got.
+You look soft. I like soft.
+Nice {weapon}. It'll look better on me.
+That's a {weapon}? Mine's bigger.
+Hey! You! Yeah, you.
+Nobody knows my name yet. After tonight they will.
+I've been waiting for someone like you.
+Finally. Something worth fighting.
+You. Me. Right now.
+Today's my lucky day.
+The Boss said not to start fights. I didn't listen.
+Something smells like a player.
+Ooh, you've got good boots.
+I'll be famous after this.
+Try not to die too fast. I want a story.
+Is that diamond? Is it mine yet?
+Wait here. I'm going to hit you.
+Who let you out at night?
+
+# ---------------------------------------------------------------- by family, mixed into greetings
+
+[greet.rotten]
+Brains. Kidding. Mostly.
+I can smell you from the other side of the hill.
+I don't sleep. I don't eat. I just walk toward you.
+The sun can't keep me away forever.
+Everything rots, {player}. You too, someday. Maybe today.
+We were villagers once. Some of us still remember the bells.
+Don't mind the smell. You'll smell like this soon.
+Hunnngh. That means hello.
+My arm fell off yesterday. I found a new one.
+We don't stop. We never stop.
+Come closer. I don't bite. That's a lie.
+I've been shuffling toward you for an hour.
+I miss sunlight. I don't miss burning.
+
+[greet.bones]
+I can hear your heart. It's very loud.
+Nothing left of me but aim.
+I have all the time in the world. Bones don't get tired.
+Stand still. It's easier for both of us.
+I used to have skin like yours. It didn't help.
+Rattle, rattle, {player}.
+The cold doesn't bother me. Nothing bothers me.
+You've got a skeleton too. I'd like to see it.
+I'm all elbows and grudges.
+I don't need eyes to see you.
+Your heartbeat gives you away every time.
+Clack, clack. That's me laughing.
+I'll pick my teeth with your arrows.
+
+[greet.illagers]
+Your village owes us. We've come to collect.
+Every banner you see is a promise. That's ours.
+You look like you'd fetch a good price.
+We burn villages for less than what you did.
+The raid is coming. I'm just early.
+Lovely armor. We'll take it.
+We don't forgive, {player}. We keep lists.
+A traveler! Hand over the emeralds.
+We've burned better forts than yours.
+The totem is ours. Everything is ours.
+Hold still, I'm deciding which part of you to sell.
+We know where every village sleeps.
+Raid tonight. You're invited.
+
+[greet.nether]
+You brought gold? No? Wrong answer.
+This place burns hotter than you.
+The fire made me. What made you?
+Down here, the weak melt.
+You're a long way from home. The lava's a short way from you.
+Shiny. Shiny, shiny. Give it.
+The heat has made us hard. You're soft.
+You smell like grass. Disgusting.
+Gold or blood. Either will do.
+Ghasts cry for less than what I'll do to you.
+You walked through a portal for this? Bad trade.
+Everything here wants to kill you. I just want it most.
+
+[greet.spiders]
+Eight eyes, {player}. All of them on you.
+You walked through my web. I felt every step.
+Climb a wall. Go on. I'll wait at the top.
+The brood is hungry and I'm the oldest.
+Your bed is lovely. I've been living under it.
+Click, click. That's the sound of you getting caught.
+Day or night, I see you just fine.
+I spin while you sleep.
+
+[greet.witches]
+Drink this. It's good for you. It isn't.
+My cauldron has been bubbling for you all week.
+A little poison, a little slowness. A little you.
+The coven has read your fortune, {player}. It's short.
+Don't touch the potions. They're for you anyway.
+Hee hee. Oh, sorry. Hello.
+I've got a bottle for every one of your hearts.
+The moon told me you'd come.
+
+# ---------------------------------------------------------------- in a fight
+
+[killed_player]
+Stay down.
+Tell your bed I said hello.
+That's how it goes.
+Next!
+Run home, {player}. I'll be here.
+Leave the {weapon}. You won't need it.
+Pick up your stuff before I do.
+One more for the pack's stories.
+Easy.
+Go cry to your bed.
+Get up. Oh, wait.
+I'll hang your boots on the wall.
+Was that your best? Really?
+Another one for the stories.
+See you at the bed, {player}.
+Thanks for the loot.
+Down you go.
+The pack eats well tonight.
+Hope you set your spawn.
+That's what happens in {home}.
+Same time tomorrow?
+
+[killed_player.often]
+That's {times}. Keep coming.
+Again. Always again.
+{times} times! Somebody write that down.
+I'm almost tired of this. Almost.
+I could set my clock by you.
+At this point you're just bringing me presents.
+{times}. You're making this easy.
+Have you thought about farming instead?
+You're the best thing that ever happened to me, {player}.
+Keep coming back. I'm getting so strong.
+
+[hurt]
+That hurt. You'll pay for that.
+Lucky hit!
+Is that all your {weapon} can do?
+I've been hit harder by rain.
+Blood for blood, {player}.
+You'll have to do better than that.
+Pack! To me!
+I'm not dying today. You hear me?
+Oh, now I'm angry.
+Ha! I barely felt that.
+Ow! Okay, now it's serious.
+You'll regret that.
+That one's going on the list.
+I've had worse. Not much worse.
+Grunts! Get over here!
+Fine. No more playing.
+You found a weak spot. I have more of them.
+That's going to leave a mark. On you, later.
+
+[winning]
+You're bleeding, {player}.
+Look at you. Shaking.
+Your hearts are almost gone. I can count them.
+Not so tough now.
+Run while you still can.
+Eat something. You'll need it. Oh wait, there's no time.
+One more hit. Just one.
+Go on. Eat your bread. I'll wait.
+Down to your last hearts, {player}.
+You should've stayed in bed.
+I can hear your heart slowing down.
+Is your bed far? I hope it's far.
+This is the part I like.
+
+[falling]
+This isn't over...
+I'll be back. You'll see.
+You'll wish you'd finished it.
+Remember my name...
+I'll... come back... worse...
+The ground won't hold me...
+Next time... I'll know your tricks...
+I'll find you, {player}...
+I'll remember this...
+You didn't finish it, {player}...
+Wait for me...
+Not... the end...
+Dig me a hole... I'll climb out...
+Next time... I'll bring the pack...
+
+[falling.final]
+No... not like this...
+Tell the pack... I...
+Huh. So that's what it's like.
+Well. That's it, then.
+You were... better...
+Remember me, {player}. Someone has to.
+Finally. Quiet.
+{king} will avenge me...
+Look after {home}... for me...
+It's quiet... finally...
+So... you're the one...
+At least... it was you...
+Don't let them forget...
+Tell my grunts... to run...
+I should have stayed home...
+
+[rose.killed_you]
+Look at that. I'm somebody now.
+I'll remember you. Every time.
+I've never killed anything that big before.
+They'll know my name now.
+That felt good. Let's do it again sometime.
+First you. Then everyone like you.
+I'll keep your spot warm, {player}.
+A player! I killed a player!
+I'm going to need a name for this.
+So that's what winning feels like.
+Wait until the others hear.
+
+[rose.saw]
+You killed my kin. I won't forget it.
+I saw what you did. I'll find you.
+Run along. I'll come to you.
+Not tonight. But soon.
+I know your face now, {player}.
+Keep looking over your shoulder.
+Not now. When you least expect it.
+You'll hear my name soon.
+I'm going to get strong. Then I'm coming for you.
+
+[flee]
+Get it away from me!
+No, no, no!
+Not that! Anything but that!
+Where did you even get that?!
+Fine! Fine! You win this round!
+I'm not scared! I'm just... going over here!
+Put it out! Put it out!
+I'll be back when that's gone!
+Cheater!
+This doesn't count!
+Not fair! Not fair!
+Retreat! Retreat!
+
+[drive_off]
+Run, then! Run and keep running!
+That's right. Go.
+Coward! I'll find you again.
+Go on. I know where you sleep.
+Leaving so soon?
+The pack will hear about this, {player}.
+Back to your little house. I'll knock later.
+Run! It's more fun when you run.
+See you around, {player}.
+That's the second time you've run. I'm counting.
+Next time I bring friends.
+Run to {home}? Wrong way.
+Go home. Sleep. Dream of me.
+
+[stole]
+Ooh, a {item}. Mine now.
+Thanks for the {item}!
+Finders keepers.
+A {item}! For me? You shouldn't have.
+I'll take that {item}, thank you.
+Ha! Your {item} looks better on me.
+Pack! Look what I got! A {item}!
+That {item} is going in my collection.
+Mmm. {item}.
+One {item}, please. Too late, already took it.
+You dropped this {item}. Kidding. I stole it.
+
+# ---------------------------------------------------------------- name parts (one per line)
+
+[epithets.general]
+the Gravel-Eater
+Torchbane
+the Bedbreaker
+Cobble-Tooth
+the Unburied
+Moss-Belly
+the Pit-Digger
+Rot-Hand
+the Lantern-Snuffer
+Creeper-Kisser
+the Cave Lord
+Mud-Mouth
+the Fence-Climber
+Door-Breaker
+the Quiet
+the Loud
+Dirt-Nap
+the Hungry
+Ore-Thief
+the Grinning
+Two-Boots
+the Wheat-Trampler
+Bucket-Head
+the Last Light
+Iron-Jaw
+the Patient
+Flint-Eye
+the Sour
+Hollow-Chest
+the Collector
+the Chest-Robber
+Bell-Hater
+the Night Shift
+Coal-Mouth
+the Ladder-Kicker
+Gravel-Gut
+the Crop-Eater
+Lava-Toe
+the Furnace
+Rail-Rider
+the Sleepless
+the Pumpkin
+Cobweb-Beard
+the Snorer
+Glass-Jaw
+the Moody
+Bonemeal
+the Late
+the Early
+Slab-Head
+the Uninvited
+Saddle-Thief
+Stair-Climber
+the Forgotten
+Map-Burner
+the Tunneler
+Elytra-Envy
+the Wet
+Three-Fingers
+the Crooked
+Cake-Stealer
+the Gloomy
+Hay-Bale
+the Pebble
+the Spiteful
+the Tall
+the Short
+Pickaxe-Biter
+the Restless
+Portal-Lurker
+the Uneasy
+Sign-Breaker
+Furnace-Breath
+
+[epithets.melee]
+Bone-Knocker
+the Butcher-Bird
+Heavy-Hand
+the Gutter
+Skull-Cracker
+the Brawler
+Knuckles
+the Bruiser
+
+[epithets.arrow]
+Long-Shot
+the Fletcher
+Two-Arrows
+Bowstring
+Dead-Eye
+the Quiver
+
+[epithets.fall]
+the Shover
+Cliff-Pusher
+the Ledge
+the Nudge
+
+[epithets.drowning]
+the Drowner
+Deep-Hand
+the Undertow
+Riptide
+
+[epithets.fire]
+the Kindler
+Ember-Hand
+Hearth-Wrecker
+the Matchstick
+
+[epithets.explosion]
+Boomhand
+the Blaster
+Crater-Maker
+Fuse-Lighter
+
+[epithets.beast]
+the Kennel-Master
+Pack-Lord
+the Beastmaster
+
+[epithets.minecraft:drowned]
+of the Deep
+Kelp-Beard
+the Waterlogged
+Trident-Hand
+the Barnacle
+
+[epithets.minecraft:husk]
+Sand-Skin
+the Dry
+Dune-Walker
+the Thirsty
+Cactus-Back
+
+[epithets.minecraft:stray]
+Frost-Rattle
+the Pale
+Snow-Bones
+Icicle
+the Shivering
+
+[epithets.minecraft:wither_skeleton]
+Coal-Bones
+the Black
+Soot-Grin
+the Charcoal
+Fortress-Born
+
+[epithets.minecraft:piglin_brute]
+Gold-Fist
+the Tusked
+Bastion-Born
+Snout
+the Hoarder
+
+[epithets.minecraft:pillager]
+Bolt-Caller
+the Raider
+Banner-Bearer
+the Outpost
+Village-Burner
+
+[epithets.minecraft:vindicator]
+Axe-Happy
+the Mansion-Born
+Door-Splitter
+the Chopper
+Grim-Brow
+
+[epithets.minecraft:bogged]
+Swamp-Rot
+the Mushroomed
+Bog-Bones
+the Damp
+Lily-Pad
+
+[epithets.minecraft:zombie_villager]
+the Ex-Farmer
+No-Trade
+the Unemployed
+the Librarian
+Hmmm
+
+[epithets.minecraft:skeleton]
+Rib-Rattler
+the Bleached
+Dry-Bones
+the Hollow
+Femur
+
+[epithets.minecraft:zombie]
+the Shambler
+Rot-Gut
+Green-Teeth
+the Moaner
+Slack-Jaw
+
+[epithets.minecraft:spider]
+Eight-Legs
+the Weaver
+Web-Spinner
+Wall-Crawler
+the Lurker
+
+[epithets.minecraft:cave_spider]
+the Tiny Terror
+Mine-Shaft
+Little Venom
+the Biter
+Cobweb-Queen
+
+[epithets.minecraft:witch]
+the Brewer
+Cauldron-Keeper
+Wart-Nose
+the Bottle-Thrower
+Hexmother
+the Sour Brew
+
+# Epithets a Brute may take when it comes back from the dead, by the scar it came back with.
+[epithets.scar.burned]
+the Charred
+Ash-Skin
+the Smoking
+Cinder-Face
+the Twice-Burned
+Soot-Hand
+the Scorched
+Black-Crust
+
+[epithets.scar.broken]
+Broke-Leg
+the Limper
+Crooked-Step
+the Dragger
+Splint-Shin
+the Hobbler
+Bent-Knee
+Three-Legs
+
+[epithets.scar.blasted]
+Half-Blown
+the Ringing
+Shrapnel-Gut
+the Patched
+Blast-Deaf
+One-Ear
+the Rattled
+Crater-Face
+
+[epithets.scar.pierced]
+Pin-Cushion
+the Quilled
+Arrow-Back
+the Feathered
+Hedgehog
+Shaft-Bearer
+the Bristled
+Splinter-Hide
+
+[epithets.scar.drowned]
+the Twice-Drowned
+Sodden
+the Dripping
+Silt-Lung
+the Bloated
+Brine-Breath
+the Soaked
+Puddle-Born
+
+[epithets.scar.cut]
+Stitch-Face
+the Sewn
+Seam-Jaw
+Scar-Cheek
+the Gashed
+Thread-Lip
+the Notched
+Split-Brow
+
+[epithets.scar.mauled]
+Wolf-Chewed
+the Gnawed
+Bite-Marks
+the Torn
+Kennel-Bait
+Fang-Bitten
+the Ragged
+Dog-Eared
+
+# Halves of made-up epithets ("Gravel-Tooth"), used once the written ones are taken.
+[epithets.first]
+Gravel
+Mud
+Bone
+Rust
+Moss
+Ash
+Grave
+Root
+Cobble
+Flint
+Soot
+Bog
+Marrow
+Grub
+Ditch
+Thorn
+Crow
+Slag
+Lichen
+Tallow
+Cinder
+Gristle
+Brine
+Wick
+
+[epithets.second]
+Tooth
+Hand
+Eye
+Belly
+Jaw
+Gut
+Knuckle
+Back
+Skull
+Foot
+Heart
+Nose
+Grin
+Brow
+Spine
+Claw
+Tongue
+Hide
+Elbow
+Fist
