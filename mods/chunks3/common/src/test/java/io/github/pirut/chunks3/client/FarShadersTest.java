@@ -203,4 +203,193 @@ class FarShadersTest {
         assertEquals(32, steep >> 6);
         assertTrue(FarMesher.normalCode(1000.0F, -1000.0F) != 0, "0 stays free for the face's own normal");
     }
+
+    /** A Distant Horizons terrain vertex shader in the form Iris's patcher leaves it. */
+    private static final String DH_VERTEX = """
+            #version 330 core
+            #extension GL_ARB_explicit_attrib_location : enable
+            uniform mat4 iris_ProjectionMatrix;
+            uniform mat4 iris_ModelViewMatrix;
+            in uvec4 vPosition;
+            in vec4 iris_color;
+            in uvec4 irisExtra;
+            vec3 _vert_position;
+            vec2 _vert_tex_light_coord;
+            int dhMaterialId;
+            vec4 _vert_color;
+            vec3 _vert_normal;
+            uniform vec3 modelOffset;
+            void _vert_init() {
+                uint meta = vPosition.a;
+                if (meta > 0u) { _vert_position = vec3(vPosition.xyz); }
+                _vert_color = iris_color;
+            }
+            vec4 getVertexPosition() { return vec4(modelOffset + _vert_position, 1.0); }
+            out vec4 tint;
+            void main() {
+                _vert_init();
+                tint = _vert_color;
+                gl_Position = iris_ProjectionMatrix * iris_ModelViewMatrix * getVertexPosition();
+            }
+            """;
+
+    private static final String DH_FRAGMENT = """
+            #version 430 core
+            in vec4 tint;
+            layout (location = 0) out vec4 iris_FragData0;
+            layout (location = 1) out vec4 iris_FragData1;
+            layout (location = 2) out vec4 iris_FragData2;
+            void main() {
+                if (tint.a < 0.1) discard;
+                iris_FragData0 = tint;
+                iris_FragData1 = vec4(1.0);
+                iris_FragData2 = vec4(0.0);
+            }
+            """;
+
+    @Test void aDistantHorizonsProgramTakesFarFacesAsItsVertices() {
+        FarShaders.PackPatch patch = FarShaders.dhPatch(DH_VERTEX, DH_FRAGMENT, 3);
+        assertTrue(patch.dh());
+        assertEquals(3, patch.outputs());
+        // The faces' own depth goes after the pack's three outputs.
+        assertEquals(3, patch.faceDepthLocation());
+        String vertex = FarShaders.dhVertex("#version 330 core\n", patch);
+        // Distant Horizons' own unpacking is gone, braces and all, and far terrain's stands in.
+        assertTrue(!vertex.contains("vPosition.a") && !vertex.contains("meta > 0u"), vertex);
+        assertTrue(vertex.contains("_vert_position = earth_dhPosition;") && vertex.contains("dhMaterialId = earth_dhMaterial;"), vertex);
+        assertTrue(vertex.contains("vec4 getVertexPosition()"), vertex);
+        // One main, which runs far terrain's then the pack's; extensions follow the version line.
+        assertEquals(1, count(vertex, "void main()"));
+        assertTrue(vertex.contains("void earth_main()") && vertex.contains("void earth_dhMain()"), vertex);
+        assertTrue(vertex.startsWith("#version 330 core\n#extension GL_ARB_explicit_attrib_location : enable\n"), vertex);
+        assertEquals(1, count(vertex, "#version"));
+    }
+
+    @Test void aDistantHorizonsFragmentShaderRunsAfterFarTerrainsOwnPart() {
+        FarShaders.PackPatch patch = FarShaders.dhPatch(DH_VERTEX, DH_FRAGMENT, 3);
+        String fragment = FarShaders.dhFragment("#version 330 core\n", patch, true, 0, false);
+        // The pack asks for a newer GLSL than far terrain's own, and gets it.
+        assertTrue(fragment.startsWith("#version 430 core\n#define EARTH_OWN_DEPTH\n"), fragment);
+        assertEquals(1, count(fragment, "#version"));
+        assertEquals(1, count(fragment, "void main()"));
+        assertTrue(fragment.contains("layout(location = 3) out float earth_faceDepth;"), fragment);
+        assertTrue(fragment.indexOf("void earth_dhBefore()") < fragment.indexOf("void earth_dhMain()"), fragment);
+        assertTrue(fragment.indexOf("earth_dhBefore();\n    earth_dhMain();") > fragment.indexOf("void earth_dhMain()"), fragment);
+    }
+
+    @Test void aVertexShaderIrisDidNotPatchForDistantHorizonsIsLeftAlone() {
+        assertNull(FarShaders.dhPatch("#version 330 core\nvoid main() { gl_Position = vec4(0.0); }\n", DH_FRAGMENT, 3));
+    }
+
+    @Test void nearFarTerrainUnderADistantHorizonsPackStopsAtTheBlocksReach() {
+        String near = FarShaders.dhNearFragment("#version 330 core\n");
+        assertEquals(1, count(near, "void main()"));
+        assertTrue(near.contains("if (length(earth_position.xz) >= earth_NearReach) discard;"), near);
+    }
+
+    /**
+     * Far terrain under a pack never curves or hazes: with {@code far.curvature} and
+     * {@code far.atmosphere} both on, every pack shader is built exactly as with both off.
+     */
+    @Test void packShadersLeaveOutTheCurveAndTheHazeWithBothOn() throws Exception {
+        ClassLoader fresh = new FreshPackage(FarShadersTest.class.getClassLoader());
+        Class<?> shaders = withCurveAndHaze(() -> Class.forName(FarShaders.class.getName(), true, fresh));
+        Class<?> patchType = Class.forName(FarShaders.PackPatch.class.getName(), true, fresh);
+        // The flags took: far terrain without a pack curves and hazes.
+        assertTrue(((String) field(shaders, "VERTEX")).contains("#define EARTH_CURVATURE\n"));
+        assertTrue(((String) field(shaders, "FRAGMENT")).contains("#define EARTH_ATMOSPHERE\n"));
+        String version = "#version 330 core\n", jitter = "vec2 earth_taaOffset() { return vec2(0.0); }\n";
+        Object patch = call(shaders, "dhPatch", types(String.class, String.class, int.class), DH_VERTEX, DH_FRAGMENT, 3);
+        FarShaders.PackPatch own = FarShaders.dhPatch(DH_VERTEX, DH_FRAGMENT, 3);
+        java.util.List<String[]> built = new java.util.ArrayList<>();
+        for (String taa : new String[] {null, jitter}) {
+            built.add(new String[] {call(shaders, "packVertex", types(String.class, String.class), version, taa), FarShaders.packVertex(version, taa)});
+        }
+        built.add(new String[] {call(shaders, "dhVertex", types(String.class, patchType), version, patch), FarShaders.dhVertex(version, own)});
+        built.add(new String[] {version + field(shaders, "PACK_FALLBACK"), version + FarShaders.PACK_FALLBACK});
+        built.add(new String[] {call(shaders, "dhNearFragment", types(String.class), version), FarShaders.dhNearFragment(version)});
+        for (int fade : new int[] {FarGpu.NO_FADE, FarGpu.FADE_IN}) {
+            built.add(new String[] {call(shaders, "packPrepassFragment", types(String.class, String.class, int.class), version, PHOTON_NORMAL, fade),
+                    FarShaders.packPrepassFragment(version, PHOTON_NORMAL, fade)});
+            built.add(new String[] {call(shaders, "packShadeFragment", types(String.class, String.class, int.class), version, PHOTON_NORMAL, fade),
+                    FarShaders.packShadeFragment(version, PHOTON_NORMAL, fade)});
+            for (boolean ground : new boolean[] {false, true}) {
+                built.add(new String[] {call(shaders, "packNearFragment", types(String.class, String.class, int.class, boolean.class), version, PHOTON_NORMAL, fade, ground),
+                        FarShaders.packNearFragment(version, PHOTON_NORMAL, fade, ground)});
+                for (boolean ownDepth : new boolean[] {false, true}) {
+                    built.add(new String[] {call(shaders, "packFragment", types(String.class, String.class, boolean.class, int.class, boolean.class),
+                            version, PHOTON_NORMAL, ownDepth, fade, ground), FarShaders.packFragment(version, PHOTON_NORMAL, ownDepth, fade, ground)});
+                    built.add(new String[] {call(shaders, "dhFragment", types(String.class, patchType, boolean.class, int.class, boolean.class),
+                            version, patch, ownDepth, fade, ground), FarShaders.dhFragment(version, own, ownDepth, fade, ground)});
+                }
+            }
+        }
+        for (String[] source : built) {
+            assertTrue(!source[0].contains("#define EARTH_CURVATURE") && !source[0].contains("const float earth_Flat")
+                    && !source[0].contains("#define EARTH_ATMOSPHERE"), source[0]);
+            assertEquals(source[1], source[0]);
+        }
+    }
+
+    private static Class<?>[] types(Class<?>... types) { return types; }
+
+    private static Object field(Class<?> type, String name) throws ReflectiveOperationException {
+        java.lang.reflect.Field field = type.getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T call(Class<?> type, String name, Class<?>[] types, Object... arguments) throws ReflectiveOperationException {
+        java.lang.reflect.Method method = type.getDeclaredMethod(name, types);
+        method.setAccessible(true);
+        return (T) method.invoke(null, arguments);
+    }
+
+    /** Runs {@code load} with {@code far.curvature} and {@code far.atmosphere} on, as they were read when a fresh FarShaders initialises. */
+    private static <T> T withCurveAndHaze(java.util.concurrent.Callable<T> load) throws Exception {
+        String[] flags = {"chunks3.far.curvature", "chunks3.far.atmosphere"};
+        String[] was = new String[flags.length];
+        for (int i = 0; i < flags.length; i++) was[i] = System.setProperty(flags[i], "true");
+        try { return load.call(); }
+        finally {
+            for (int i = 0; i < flags.length; i++) {
+                if (was[i] == null) System.clearProperty(flags[i]);
+                else System.setProperty(flags[i], was[i]);
+            }
+        }
+    }
+
+    /**
+     * Defines this package's classes afresh, so their flags are read again; everything else comes
+     * from the test's own loader. The whole package, as its classes reach each other's package-private parts.
+     */
+    private static final class FreshPackage extends ClassLoader {
+        private static final String PACKAGE = FarShaders.class.getPackageName() + ".";
+
+        FreshPackage(ClassLoader parent) { super(parent); }
+
+        @Override protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            if (!name.startsWith(PACKAGE) || name.indexOf('.', PACKAGE.length()) >= 0) return super.loadClass(name, resolve);
+            synchronized (getClassLoadingLock(name)) {
+                Class<?> loaded = findLoadedClass(name);
+                if (loaded != null) return loaded;
+                try (java.io.InputStream in = getParent().getResourceAsStream(name.replace('.', '/') + ".class")) {
+                    if (in == null) return super.loadClass(name, resolve);
+                    byte[] bytes = in.readAllBytes();
+                    Class<?> defined = defineClass(name, bytes, 0, bytes.length);
+                    if (resolve) resolveClass(defined);
+                    return defined;
+                } catch (java.io.IOException failure) {
+                    throw new ClassNotFoundException(name, failure);
+                }
+            }
+        }
+    }
+
+    private static int count(String text, String part) {
+        int count = 0;
+        for (int at = text.indexOf(part); at >= 0; at = text.indexOf(part, at + 1)) count++;
+        return count;
+    }
 }

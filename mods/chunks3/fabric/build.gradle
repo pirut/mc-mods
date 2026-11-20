@@ -2,6 +2,9 @@ plugins {
     id 'mcmods.fabric'
 }
 
+// 1.21.11 compiles mc12111/ (see src_root). Both trees go through the line preprocessor; on 1.21.1 it is a copy.
+apply from: '../preprocess.gradle'
+
 loom {
     mixin {
         // Fabric Loader 0.16's Mixin and MixinExtras need the refmap (see Earth Platform's Fabric notes).
@@ -14,6 +17,14 @@ dependencies {
     // The far renderer reads shader packs through Iris when it is installed; never bundled.
     modCompileOnly("maven.modrinth:iris:${iris_fabric_version}") { transitive = false }
     compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    // The Chunks3 page in Sodium's Video Settings, and Mod Menu's config button; used only when installed.
+    // 1.21.11 leaves both out until those builds are checked.
+    if (findProperty('sodium_fabric_version')?.toString()?.trim()) {
+        modCompileOnly("maven.modrinth:sodium:${sodium_fabric_version}") { transitive = false }
+    }
+    if (findProperty('modmenu_version')?.toString()?.trim()) {
+        modCompileOnly("maven.modrinth:modmenu:${modmenu_version}") { transitive = false }
+    }
 }
 
 // The engine's tests share common/src/test and run in the NeoForge project, where the mixins they check are

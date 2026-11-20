@@ -4,9 +4,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 
 /** /ccagent: is the server running, and the commands that connect Claude Code and Codex to it. */
@@ -24,9 +22,9 @@ final class AgentCommand {
 
     /** The token controls every computer, so only the singleplayer host or a level 4 op sees it. */
     private static boolean allowed(CommandSourceStack source) {
-        if (source.hasPermission(4)) return true;
+        if (McNames.isOwner(source)) return true;
         var player = source.getPlayer();
-        return player != null && source.getServer().isSingleplayerOwner(player.getGameProfile());
+        return player != null && McNames.isHost(source.getServer(), player);
     }
 
     /** Says why there's nothing to connect to, if the MCP server isn't running. */
@@ -78,12 +76,12 @@ final class AgentCommand {
 
     private static MutableComponent copyable(String label, String text) {
         return Component.literal(label).withStyle(style -> style.withColor(ChatFormatting.AQUA).withUnderlined(true)
-            .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, text))
-            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("Click to copy"))));
+            .withClickEvent(McChat.copy(text))
+            .withHoverEvent(McChat.tooltip(Component.literal("Click to copy"))));
     }
 
     private static MutableComponent link(String command) {
         return Component.literal(command).withStyle(style -> style.withColor(ChatFormatting.AQUA).withUnderlined(true)
-            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command)));
+            .withClickEvent(McChat.run(command)));
     }
 }

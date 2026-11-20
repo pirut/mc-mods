@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
-# Releases one mod: .github/scripts/release-mod.sh <folder in mods/>
+# Releases one mod: .github/scripts/release-mod.sh <folder in mods/> [<folder with its jars>]
 #
-# Makes the GitHub release <folder>-v<mod_version> with the mod's jars and the notes from its CHANGELOG.md, then
-# uploads the jars to Modrinth (when the mod has a modrinth_project_id and the MODRINTH_TOKEN secret is set) and to
-# CurseForge (when it has a curseforge_project_id and the CURSEFORGE_TOKEN secret is set).
+# Makes the GitHub release <folder>-v<mod_version> with the mod's jars (one per loader and Minecraft version)
+# and the notes from its CHANGELOG.md, then uploads the jars to Modrinth (when the mod has a
+# modrinth_project_id and the MODRINTH_TOKEN secret is set) and to CurseForge (when it has a
+# curseforge_project_id and the CURSEFORGE_TOKEN secret is set).
 # A version that is already on GitHub is not released again, but the store uploads still run: Modrinth skips a
 # version it already has. CurseForge can't be asked that, so it only gets the files when the GitHub release was
 # made in this run, or when CURSEFORGE_UPLOAD=1 (the "Upload to CurseForge too" box when run by hand).
-# Expects the jars to be built already (./gradlew :<folder>:build).
+# Expects the jars to be built already: the release workflow collects every Minecraft version's jars into one
+# folder; without one, the jars in mods/<folder>/*/build/*/libs are used.
+#
+# Modrinth version numbers stay <version> and <version>+fabric when a mod ships one Minecraft version, matching
+# versions already on the store. A mod that ships several Minecraft versions gets one Modrinth version per jar,
+# numbered <version>+<minecraft>-<loader>.
 set -euo pipefail
 
 mod=$1
+jars_dir=${2:-}
 dir="mods/$mod"
 [ -f "$dir/gradle.properties" ] || { echo "::error::No mod at $dir"; exit 1; }
 
@@ -21,7 +28,6 @@ prop() { # key [file...]: the last value wins, like Gradle's mod-over-root order
 id=$(prop mod_id "$dir/gradle.properties")
 name=$(prop mod_name "$dir/gradle.properties")
 version=$(prop mod_version "$dir/gradle.properties")
-mc=$(prop minecraft_version gradle.properties "$dir/gradle.properties")
 project=$(prop modrinth_project_id "$dir/gradle.properties")
 cf_project=$(prop curseforge_project_id "$dir/gradle.properties")
 required=$(prop modrinth_required "$dir/gradle.properties")
@@ -42,19 +48,36 @@ fi
 
 dist="$RUNNER_TEMP/dist-$mod"
 rm -rf "$dist" && mkdir -p "$dist"
-jars=()
-for loader in neoforge fabric; do
-  jar="$dir/$loader/build/libs/$id-$loader-$mc-$version.jar"
-  if [ -f "$jar" ]; then cp "$jar" "$dist/" && jars+=("$loader"); fi
+if [ -n "$jars_dir" ]; then
+  candidates=("$jars_dir"/*.jar)
+else
+  candidates=("$dir"/*/build/*/libs/*.jar)
+fi
+# Jars are named <mod_id>-<loader>-<minecraft>-<version>.jar.
+jars=() # "loader minecraft file" each
+for jar in "${candidates[@]}"; do
+  [ -f "$jar" ] || continue
+  base=$(basename "$jar")
+  case "$base" in *-sources.jar) continue ;; "$id-"*"-$version.jar") ;; *) continue ;; esac
+  rest=${base#"$id-"}; rest=${rest%"-$version.jar"}
+  loader=${rest%%-*}; mc=${rest#*-}
+  case "$loader" in neoforge|fabric) ;; *) continue ;; esac
+  cp "$jar" "$dist/" && jars+=("$loader $mc $base")
 done
 [ ${#jars[@]} -gt 0 ] || { echo "::error::No jars for $mod $version; build it first"; exit 1; }
 ( cd "$dist" && sha256sum *.jar > SHA256SUMS.txt )
+mcs=$(for j in "${jars[@]}"; do echo "${j#* }" | cut -d' ' -f1; done | sort -uV)
+mc_count=$(echo "$mcs" | wc -w)
 
 notes="$RUNNER_TEMP/release-notes-$mod.md"
 {
   cat "$RUNNER_TEMP/notes-$mod.md"
   echo
-  echo "For Minecraft $mc: $(for l in "${jars[@]}"; do printf '`%s` ' "$id-$l-$mc-$version.jar"; done)"
+  for m in $mcs; do
+    printf -- '- Minecraft %s: ' "$m"
+    for j in "${jars[@]}"; do read -r l jm f <<<"$j"; [ "$jm" = "$m" ] && printf '`%s` ' "$f"; done
+    echo
+  done
   echo
   echo '```'; cat "$dist/SHA256SUMS.txt"; echo '```'
 } > "$notes"
@@ -85,14 +108,14 @@ api=https://api.modrinth.com/v2
 # modrinth_required: comma-separated Modrinth project ids the mod needs on every loader.
 deps_common=$(jq -nc --arg r "$required" '$r | split(",") | map(select(length > 0) | {project_id: ., dependency_type: "required"})')
 
-upload() { # version-number title jar-file loaders-json dependencies-json
+upload() { # version-number title jar-file loaders-json dependencies-json game-versions-json
   status=$(curl -sS -o /dev/null -w '%{http_code}' -A "$agent" -H "Authorization: $MODRINTH_TOKEN" \
     "$api/project/$project/version/$1")
   if [ "$status" = 200 ]; then echo "$1 is already on Modrinth; nothing to upload."; return 0; fi
   jq -n --arg project "$project" --arg name "$2" --arg number "$1" --arg changelog "$changelog" \
-    --arg type "$type" --arg mc "$mc" --argjson loaders "$4" --argjson deps "$5" \
+    --arg type "$type" --argjson mc "$6" --argjson loaders "$4" --argjson deps "$5" \
     '{project_id: $project, name: $name, version_number: $number, changelog: $changelog,
-      version_type: $type, loaders: $loaders, game_versions: [$mc], dependencies: $deps,
+      version_type: $type, loaders: $loaders, game_versions: $mc, dependencies: $deps,
       featured: false, status: "listed", file_parts: ["jar"], primary_file: "jar"}' > "$RUNNER_TEMP/modrinth.json"
   curl -sS --fail-with-body -A "$agent" -H "Authorization: $MODRINTH_TOKEN" \
     -F "data=<$RUNNER_TEMP/modrinth.json;type=application/json" \
@@ -102,14 +125,35 @@ upload() { # version-number title jar-file loaders-json dependencies-json
   echo "Uploaded $1 to Modrinth (version id $(jq -r .id "$RUNNER_TEMP/modrinth-response.json"))"
 }
 
-for loader in "${jars[@]}"; do
-  jar="$id-$loader-$mc-$version.jar"
+# One Minecraft version keeps the historical Modrinth numbers (<version>, <version>+fabric) so a store retry
+# does not publish a second copy. Several Minecraft versions need one number per jar.
+for j in "${jars[@]}"; do
+  read -r loader m jar <<<"$j"
+  games=$(prop modrinth_game_versions "versions/$m.properties" "$dir/gradle.properties" "$dir/versions/$m.properties")
+  [ -n "$games" ] || games=$m
+  games_json=$(jq -nc --arg g "$games" '$g | split(",") | map(gsub("^ +| +$"; "")) | map(select(length > 0))')
+  if [ "$mc_count" -eq 1 ]; then
+    if [ "$loader" = neoforge ]; then
+      number=$version
+      title="$name $version"
+    else
+      number="$version+fabric"
+      title="$name $version for Fabric"
+    fi
+  else
+    number="$version+$m-$loader"
+    if [ "$loader" = neoforge ]; then
+      title="$name $version for NeoForge $m"
+    else
+      title="$name $version for Fabric $m"
+    fi
+  fi
   if [ "$loader" = neoforge ]; then
-    upload "$version" "$name $version" "$jar" '["neoforge"]' "$deps_common" || return 1
+    upload "$number" "$title" "$jar" '["neoforge"]' "$deps_common" "$games_json" || return 1
   else
     # Fabric API's Modrinth project id is P7dR8mSH.
     deps=$(jq -c '. + [{project_id: "P7dR8mSH", dependency_type: "required"}]' <<<"$deps_common")
-    upload "$version+fabric" "$name $version for Fabric" "$jar" '["fabric", "quilt"]' "$deps" || return 1
+    upload "$number" "$title" "$jar" '["fabric", "quilt"]' "$deps" "$games_json" || return 1
   fi
 done
 }
@@ -137,11 +181,10 @@ id_of() { # name type-slug-pattern: CurseForge's id for a game version, loader, 
      | map(select(.name == $n and ((.gameVersionTypeID as $g | $ids | index($g)) != null))) | .[0].id // empty' \
     "$RUNNER_TEMP/cf-versions.json"
 }
-local mcv neo fab quilt extras
-mcv=$(id_of "$mc" "^minecraft-") ; neo=$(id_of NeoForge '^modloader$'); fab=$(id_of Fabric '^modloader$'); quilt=$(id_of Quilt '^modloader$')
-[ -n "$mcv" ] && [ -n "$neo" ] && [ -n "$fab" ] || { echo "::error::CurseForge is missing the $mc, NeoForge or Fabric tag."; return 1; }
-# Java and side tags only help players filter; left off if CurseForge renames them.
-extras=$(for t in "Java 21:^java$" "Client:^environment$" "Server:^environment$"; do id_of "${t%%:*}" "${t#*:}"; done | jq -sc '.')
+local neo fab quilt client server extras
+neo=$(id_of NeoForge '^modloader$'); fab=$(id_of Fabric '^modloader$'); quilt=$(id_of Quilt '^modloader$')
+client=$(id_of Client '^environment$'); server=$(id_of Server '^environment$')
+[ -n "$neo" ] && [ -n "$fab" ] || { echo "::error::CurseForge is missing the NeoForge or Fabric tag."; return 1; }
 cf_upload() { # display-name jar game-version-ids-json relations-json
   jq -n --arg name "$1" --arg changelog "$changelog" --arg type "$type" \
     --argjson versions "$3" --argjson extras "$extras" --argjson relations "$4" \
@@ -158,12 +201,32 @@ cf_upload() { # display-name jar game-version-ids-json relations-json
     || { cat "$RUNNER_TEMP/curseforge-response.json"; echo; echo "::error::CurseForge upload of $2 failed."; return 1; }
   echo "Uploaded $2 to CurseForge as file $(jq -r .id "$RUNNER_TEMP/curseforge-response.json"); it goes live after CurseForge's review."
 }
-for loader in "${jars[@]}"; do
-  jar="$id-$loader-$mc-$version.jar"
-  if [ "$loader" = neoforge ]; then
-    cf_upload "$name $version (NeoForge)" "$jar" "[$mcv, $neo]" '[]' || return 1
+for j in "${jars[@]}"; do
+  read -r loader m jar <<<"$j"
+  mcv=$(id_of "$m" "^minecraft-")
+  [ -n "$mcv" ] || { echo "::error::CurseForge is missing the $m tag."; return 1; }
+  java_name=$(prop java_version "versions/$m.properties" "$dir/versions/$m.properties")
+  case "$java_name" in
+    ''|21) java_name='Java 21' ;;
+    25) java_name='Java 25' ;;
+    Java\ *) ;;
+    *) java_name="Java $java_name" ;;
+  esac
+  java_id=$(id_of "$java_name" '^java$')
+  # Java and side tags only help players filter; left off if CurseForge renames them.
+  extras=$(jq -nc --argjson j "${java_id:-null}" --argjson c "${client:-null}" --argjson s "${server:-null}" \
+    '[$j, $c, $s] | map(select(. != null))')
+  if [ "$mc_count" -eq 1 ]; then
+    neo_title="$name $version (NeoForge)"
+    fab_title="$name $version (Fabric)"
   else
-    cf_upload "$name $version (Fabric)" "$jar" "$(jq -nc --argjson q "${quilt:-null}" "[$mcv, $fab, \$q] | map(select(. != null))")" \
+    neo_title="$name $version for Minecraft $m (NeoForge)"
+    fab_title="$name $version for Minecraft $m (Fabric)"
+  fi
+  if [ "$loader" = neoforge ]; then
+    cf_upload "$neo_title" "$jar" "[$mcv, $neo]" '[]' || return 1
+  else
+    cf_upload "$fab_title" "$jar" "$(jq -nc --argjson q "${quilt:-null}" "[$mcv, $fab, \$q] | map(select(. != null))")" \
       '[{"slug": "fabric-api", "type": "requiredDependency"}]' || return 1
   fi
 done

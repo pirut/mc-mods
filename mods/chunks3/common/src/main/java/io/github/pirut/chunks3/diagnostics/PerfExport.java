@@ -31,7 +31,10 @@ public final class PerfExport {
             """;
     private PerfExport() {}
 
-    /** Writes {@code exports/earth-performance-<utc>.zip} under the log folder and keeps the newest five. */
+    /** The folder the local performance log is kept in, under the game folder: {@code chunks3/perf}. */
+    public static Path directory(Path gameDirectory) { return gameDirectory.resolve(io.github.pirut.chunks3.Cubic.MOD_ID).resolve("perf"); }
+
+    /** Writes {@code exports/chunks3-performance-<utc>.zip} under the log folder and keeps the newest five. */
     public static Path export(Path perfDirectory, Instant now) throws IOException {
         List<Path> logs;
         try (var paths = Files.list(perfDirectory)) {
@@ -40,7 +43,7 @@ public final class PerfExport {
         } catch (NoSuchFileException none) { logs = List.of(); }
         if (logs.isEmpty()) throw new NoSuchFileException(perfDirectory.toString(), null, "no performance log yet");
         Path exports = Files.createDirectories(perfDirectory.resolve("exports"));
-        Path zip = exports.resolve("earth-performance-" + NAME.format(now) + ".zip");
+        Path zip = exports.resolve("chunks3-performance-" + NAME.format(now) + ".zip");
         try (OutputStream file = Files.newOutputStream(zip); ZipOutputStream out = new ZipOutputStream(file)) {
             out.putNextEntry(new ZipEntry("README.txt")); out.write(README.getBytes(StandardCharsets.UTF_8)); out.closeEntry();
             for (Path log : logs) {
@@ -50,7 +53,7 @@ public final class PerfExport {
             }
         }
         try (var paths = Files.list(exports)) {
-            var old = paths.filter(p -> p.getFileName().toString().matches("earth-performance-[0-9-]+\\.zip"))
+            var old = paths.filter(p -> p.getFileName().toString().matches("chunks3-performance-[0-9-]+\\.zip"))
                     .sorted(Comparator.comparing((Path p) -> p.getFileName().toString()).reversed()).skip(KEEP).toList();
             for (Path p : old) Files.deleteIfExists(p);
         }

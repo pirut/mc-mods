@@ -1,6 +1,9 @@
 // What every loader project of a mod shares. Applied by mcmods.neoforge and mcmods.fabric; a mod never applies it
 // itself. The project is mods/<mod>/<loader>, and its parent (mods/<mod>) holds gradle.properties with mod_id,
 // mod_name, mod_version, mod_group, mod_description and anything else the mod's metadata files use.
+//
+// A build is for one Minecraft version (settings.gradle picks it and merges its properties into every project).
+// Everything it makes goes in build/<minecraft>/, so builds for different versions never mix.
 
 plugins {
     id 'java'
@@ -11,9 +14,11 @@ def loader = project.name
 
 version = mod_version
 group = mod_group
+layout.buildDirectory = layout.projectDirectory.dir("build/${minecraft_version}")
 
+def javaVersion = (findProperty('java_version') ?: '21').toString() as int
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    toolchain.languageVersion = JavaLanguageVersion.of(javaVersion)
     withSourcesJar()
 }
 
@@ -36,15 +41,57 @@ repositories {
 }
 
 // Code and assets shared by the loaders live in mods/<mod>/common and go into every loader's jar.
-def common = new File(modDir, 'common/src/main')
-if (common.exists()) {
+// src_root (in versions/<mc>.properties) replaces that tree, and the loader's own sources, for one Minecraft
+// version. Chunks3 uses it so 1.21.11 compiles its port without overwriting the 1.21.1 Cubic world sources.
+def srcRootProp = (findProperty('src_root') ?: '').toString().trim()
+def common = new File(srcRootProp ? new File(modDir, srcRootProp) : modDir, 'common/src/main')
+if (srcRootProp) {
+    def root = new File(modDir, srcRootProp)
+    def javaDirs = [new File(root, 'common/src/main/java'), new File(root, "${loader}/src/main/java")].findAll { it.isDirectory() }
+    def resDirs = [new File(root, 'common/src/main/resources'), new File(root, "${loader}/src/main/resources")].findAll { it.isDirectory() }
+    if (javaDirs.isEmpty()) throw new GradleException("src_root ${root} has no Java sources for ${loader}")
+    sourceSets.main.java.setSrcDirs(javaDirs)
+    sourceSets.main.resources.setSrcDirs(resDirs)
+} else if (common.exists()) {
     sourceSets.main {
         java.srcDir new File(common, 'java')
         resources.srcDir new File(common, 'resources')
     }
 }
-def commonTest = new File(modDir, 'common/src/test/java')
-if (commonTest.exists()) sourceSets.test.java.srcDir commonTest
+
+// Code that differs between Minecraft versions: extra_src lists more source folders for this version, relative to
+// the mod folder, usually set in mods/<mod>/versions/<mc>.properties. A folder under common/ goes into every
+// loader's jar; one under neoforge/ or fabric/ only into that loader's. A folder named java or resources is added
+// as it is; any other folder adds its java/ and resources/ (so common/src/mc1.21.11 adds
+// common/src/mc1.21.11/java and common/src/mc1.21.11/resources). exclude_src lists Ant patterns (such as
+// **/FooMixin.java) to leave out of the sources and resources for this version.
+def csv = { key -> (findProperty(key) ?: '').toString().split(',').collect { it.trim() }.findAll() }
+csv('extra_src').each { path ->
+    def dir = new File(modDir, path)
+    def first = path.replace('\\', '/').split('/')[0]
+    if (first in ['neoforge', 'fabric'] && first != loader) return
+    if (!dir.isDirectory()) throw new GradleException("extra_src: ${dir} is not a folder")
+    sourceSets.main {
+        if (dir.name == 'java') java.srcDir dir
+        else if (dir.name == 'resources') resources.srcDir dir
+        else {
+            java.srcDir new File(dir, 'java')
+            resources.srcDir new File(dir, 'resources')
+        }
+    }
+}
+csv('exclude_src').each { pattern ->
+    sourceSets.main {
+        java.exclude pattern
+        resources.exclude pattern
+    }
+}
+def testBase = srcRootProp ? new File(modDir, srcRootProp) : modDir
+def commonTest = new File(testBase, 'common/src/test/java')
+if (commonTest.exists()) {
+    if (srcRootProp) sourceSets.test.java.setSrcDirs([commonTest])
+    else sourceSets.test.java.srcDir commonTest
+}
 
 dependencies {
     testImplementation platform('org.junit:junit-bom:5.11.4')
@@ -59,7 +106,7 @@ tasks.named('test', Test) {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-    options.release = 21
+    options.release = javaVersion
 }
 
 // License texts go into the jar's META-INF. A mod with its own COPYING / COPYING.LESSER / LICENSE files uses
@@ -74,14 +121,9 @@ tasks.named('jar', Jar) {
             'Implementation-Vendor': findProperty('mod_authors') ?: '')
 }
 
-// ${...} in neoforge.mods.toml and fabric.mod.json is filled from gradle.properties: the repo's shared values,
-// then the mod's own (which win).
-def readProps = { File f ->
-    def p = new Properties()
-    if (f.exists()) f.withReader('UTF-8') { p.load(it) }
-    p.findAll { k, v -> !k.startsWith('org.gradle.') }
-}
-def metadata = readProps(rootProject.file('gradle.properties')) + readProps(new File(modDir, 'gradle.properties'))
+// ${...} in neoforge.mods.toml and fabric.mod.json is filled from the properties settings.gradle merged for this
+// Minecraft version: the repo's, versions/<mc>.properties, the mod's gradle.properties, the mod's versions/<mc>.properties.
+def metadata = new TreeMap(mcmodsProperties)
 metadata.mod_version = mod_version
 // The same values for the loader plugins' dependencies (a mod's own gradle.properties isn't a property of its
 // loader projects: the repo's shared value would win there).
