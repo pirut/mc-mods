@@ -51,6 +51,14 @@ public final class BloodFeud {
         return config;
     }
 
+    /** Toggles automatic pack camps/towns live and persists it to config/bloodfeud.properties. */
+    public static void setBuildCamps(boolean enabled) {
+        config.buildCamps = enabled;
+        config.save();
+        Live live = Live.current();
+        if (live != null) live.onBuildCampsChanged(enabled);
+    }
+
     public static ResourceLocation id(String path) {
         return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
     }

@@ -9,6 +9,7 @@ import io.github.pirut.bloodfeud.feud.Memory;
 import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.Relation;
 import io.github.pirut.bloodfeud.feud.Scar;
+import io.github.pirut.bloodfeud.feud.SettlementTier;
 import io.github.pirut.bloodfeud.feud.Trait;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -134,6 +135,15 @@ public final class FeudData extends SavedData {
         t.putLong("formedAt", p.formedAt);
         t.putLong("lastAwake", p.lastAwake);
         t.putInt("playerKills", p.playerKills);
+        t.putString("tier", (p.tier == null ? SettlementTier.CAMP : p.tier).key);
+        t.putInt("builtTier", p.builtTier);
+        t.putBoolean("siteSet", p.siteSet);
+        if (p.siteSet) {
+            t.putInt("siteX", p.siteX);
+            t.putInt("siteY", p.siteY);
+            t.putInt("siteZ", p.siteZ);
+            t.putInt("siteFacing", p.siteFacing);
+        }
         ListTag met = new ListTag();
         for (UUID u : p.met) met.add(StringTag.valueOf(u.toString()));
         t.put("met", met);
@@ -212,6 +222,8 @@ public final class FeudData extends SavedData {
                 BloodFeud.LOG.warn("Skipped a Brute that couldn't be read: {}", e.toString());
             }
         }
+        f.campsEnabled = BloodFeud.config().buildCamps;
+        List<Pack> legacyPacks = new ArrayList<>();
         for (Tag raw : tag.getList("packs", Tag.TAG_COMPOUND)) {
             try {
                 CompoundTag t = (CompoundTag) raw;
@@ -224,6 +236,22 @@ public final class FeudData extends SavedData {
                 p.grunts = t.getInt("grunts");
                 p.lastAwake = t.getLong("lastAwake");
                 p.playerKills = t.getInt("playerKills");
+                if (t.contains("tier")) {
+                    SettlementTier parsed = SettlementTier.byKey(t.getString("tier"));
+                    p.tier = parsed != null ? parsed : SettlementTier.CAMP;
+                    p.builtTier = Math.max(0, Math.min(SettlementTier.TOWN.level, t.getInt("builtTier")));
+                    p.siteSet = t.getBoolean("siteSet");
+                    if (p.siteSet) {
+                        p.siteX = t.getInt("siteX");
+                        p.siteY = t.getInt("siteY");
+                        p.siteZ = t.getInt("siteZ");
+                        p.siteFacing = Math.floorMod(t.getInt("siteFacing"), 4);
+                    }
+                } else {
+                    p.builtTier = 0;
+                    p.siteSet = false;
+                    legacyPacks.add(p);
+                }
                 for (Tag s : t.getList("met", Tag.TAG_STRING)) p.met.add(UUID.fromString(s.getAsString()));
                 for (Tag c : t.getList("chronicle", Tag.TAG_COMPOUND)) {
                     p.remember(((CompoundTag) c).getLong("t"), ((CompoundTag) c).getString("s"));
@@ -232,6 +260,9 @@ public final class FeudData extends SavedData {
             } catch (RuntimeException e) {
                 BloodFeud.LOG.warn("Skipped a pack that couldn't be read: {}", e.toString());
             }
+        }
+        for (Pack p : legacyPacks) {
+            p.tier = SettlementTier.forPack(f.members(p).size(), p.grunts, f.strength(p), !f.vassals(p).isEmpty());
         }
         return d;
     }

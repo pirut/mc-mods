@@ -31,7 +31,7 @@ public final class Feud {
     public static final int MEET_RANGE = 500;
     /** A pack that wakes up after sleeping plays out at most this many of the nights it missed. */
     public static final int CATCH_UP_NIGHTS = 5;
-    public static final int MAX_GRUNTS = 16;
+    public static final int MAX_GRUNTS = 24;
     public static final int MAX_MEMBERS = 5;
     /** A Brute that has come back this many times stays dead next time. */
     public static final int MAX_RETURNS = 3;
@@ -41,6 +41,8 @@ public final class Feud {
     /** The time of the call being played out, for pack chronicles. */
     private long clock;
     public long lastNight;
+    /** When false, packs do not automatically advance settlement tiers or emit camp news. */
+    public boolean campsEnabled = true;
     public int maxPacks = 64;
     public int maxBrutes = 256;
 
@@ -288,6 +290,7 @@ public final class Feud {
             if (!packs.containsKey(p.id) || !awake(p, players)) continue;
             int nights = (int) Math.max(1, Math.min(CATCH_UP_NIGHTS, (now - p.lastAwake) / DAY));
             for (int i = 0; i < nights; i++) grow(p, now);
+            advanceSettlement(p);
             p.lastAwake = now;
             challenge(p, now);
         }
@@ -430,6 +433,7 @@ public final class Feud {
                 boss.x, boss.z, now);
         p.boss = boss.id;
         p.grunts = Math.min(MAX_GRUNTS, grunts);
+        p.tier = SettlementTier.CAMP;
         boss.pack = p.id;
         for (Map.Entry<UUID, Relation> e : boss.relations.entrySet()) if (e.getValue().met) p.met.add(e.getKey());
         packs.put(p.id, p);
@@ -444,6 +448,62 @@ public final class Feud {
             Brute b = rise(type, p.family, p.dimension, p.homeX, p.homeZ, null, null, null, p.id, now, false);
             tell(News.Kind.GREW, "A new Brute has risen in " + p.title() + ": " + b.fullName() + ".", b);
         }
+    }
+
+    /**
+     * Checks whether a pack has grown enough to ratchet its settlement tier upward (never shrinks automatically).
+     * Does nothing while {@link #campsEnabled} is false.
+     */
+    public boolean advanceSettlement(Pack p) {
+        if (!campsEnabled || p == null) return false;
+        if (p.tier == null) p.tier = SettlementTier.CAMP;
+        SettlementTier target = SettlementTier.forPack(members(p).size(), p.grunts, strength(p), !vassals(p).isEmpty());
+        if (target.level <= p.tier.level) return false;
+        p.tier = target;
+        tellAt(p, News.Kind.SETTLED, settlementNews(p, target));
+        return true;
+    }
+
+    /**
+     * Operator helper: ratchets a pack to at least {@code target} tier and ensures its living roster of Brutes
+     * and grunts fits that tier so command-spawned settlements immediately have a gang running them.
+     */
+    public SettlementTier upgradeSettlement(Pack p, SettlementTier target, long now) {
+        clock = now;
+        if (target == null || target == SettlementTier.NONE) target = SettlementTier.CAMP;
+        if (p.tier == null) p.tier = SettlementTier.CAMP;
+        boolean raised = target.level > p.tier.level;
+        if (raised) p.tier = target;
+        int needBrutes = Math.min(MAX_MEMBERS, Math.max(1, p.tier.minBrutes));
+        int needGrunts = Math.min(MAX_GRUNTS, p.tier.minGrunts);
+        Brute boss = brute(p.boss);
+        String type = boss != null ? boss.entityType : p.family.defaultType;
+        while (members(p).size() < needBrutes) {
+            Brute b = rise(type, p.family, p.dimension, p.campX(), p.campZ(), null, null, null, p.id, now, false);
+            if (p.boss == null) p.boss = b.id;
+        }
+        p.grunts = Math.max(p.grunts, needGrunts);
+        boss = brute(p.boss);
+        if (boss != null && boss.alive) {
+            int minBossLevel = switch (p.tier) {
+                case TOWN -> 10;
+                case STRONGHOLD -> 7;
+                case OUTPOST -> 4;
+                default -> 2;
+            };
+            if (boss.level < minBossLevel) boss.level = minBossLevel;
+        }
+        if (raised) tellAt(p, News.Kind.SETTLED, settlementNews(p, p.tier));
+        return p.tier;
+    }
+
+    public static String settlementNews(Pack p, SettlementTier tier) {
+        return switch (tier) {
+            case OUTPOST -> cap(p.title()) + " has fortified its camp into an outpost.";
+            case STRONGHOLD -> cap(p.title()) + " has raised a stronghold.";
+            case TOWN -> cap(p.title()) + " now runs a full town.";
+            default -> cap(p.title()) + " has pitched camp.";
+        };
     }
 
     private void challenge(Pack p, long now) {
@@ -543,6 +603,7 @@ public final class Feud {
         tell(News.Kind.SWALLOWED, cap(loser.title()) + " now kneels to " + kingName + ".", kb);
         if (crowned && kb != null) tell(News.Kind.CROWNED, kb.fullName() + " is now King of " + king.family.title
                 + " around " + king.place + ".", kb);
+        advanceSettlement(king);
     }
 
     // ---------------------------------------------------------------- deaths, leaving and keeping it small
@@ -660,10 +721,10 @@ public final class Feud {
 
     private void tellAt(Pack p, News.Kind kind, String text) {
         p.remember(clock, text);
-        news.add(new News(kind, text, p.dimension, p.homeX, p.homeZ, List.of()));
+        news.add(new News(kind, text, p.dimension, p.campX(), p.campZ(), List.of()));
     }
 
-    static String cap(String s) {
+    public static String cap(String s) {
         return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 }

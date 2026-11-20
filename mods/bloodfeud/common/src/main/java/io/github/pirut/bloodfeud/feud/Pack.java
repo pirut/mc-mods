@@ -23,6 +23,17 @@ public final class Pack {
     /** The last time it had a night with a player nearby. */
     public long lastAwake;
     public int playerKills;
+    /** Settlement tier this pack has unlocked (ratchets upward as the pack grows). */
+    public SettlementTier tier = SettlementTier.CAMP;
+    /** Highest tier actually built in the world (0 = not yet built). */
+    public int builtTier = 0;
+    /** True once a concrete build site has been chosen in the world. */
+    public boolean siteSet;
+    public int siteX, siteY, siteZ;
+    /** Cardinal facing (0..3) of the settlement's main gate. */
+    public int siteFacing;
+    /** Server game-time tick before which automatic site search will not retry. */
+    public long siteRetryAt;
     /** Players who have seen it. */
     public final Set<UUID> met = new HashSet<>();
 
@@ -50,6 +61,24 @@ public final class Pack {
         this.lastAwake = formedAt;
     }
 
+    public int campX() {
+        return siteSet ? siteX : homeX;
+    }
+
+    public int campZ() {
+        return siteSet ? siteZ : homeZ;
+    }
+
+    /**
+     * Settlement tier to display in UI/commands. When automatic camps are disabled, packs that never built
+     * a camp return {@link SettlementTier#NONE} so unbuilt labels are omitted; packs with an existing camp
+     * still show their built tier.
+     */
+    public SettlementTier displayTier(boolean campsEnabled) {
+        if (campsEnabled) return tier == null ? SettlementTier.CAMP : tier;
+        return builtTier > 0 ? SettlementTier.byLevel(builtTier) : SettlementTier.NONE;
+    }
+
     public String title() {
         return "the " + place + " " + switch (family) {
             case SPIDERS -> "Nest";
@@ -60,10 +89,10 @@ public final class Pack {
 
     public double distanceTo(String dim, double x, double z) {
         if (!dimension.equals(dim)) return Double.POSITIVE_INFINITY;
-        return Math.hypot(homeX - x, homeZ - z);
+        return Math.hypot(campX() - x, campZ() - z);
     }
 
     public double distanceTo(Pack other) {
-        return distanceTo(other.dimension, other.homeX, other.homeZ);
+        return distanceTo(other.dimension, other.campX(), other.campZ());
     }
 }
