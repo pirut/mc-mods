@@ -1,8 +1,12 @@
 # Chunks3
 
-Cubic chunks for Minecraft 1.21.1, on NeoForge and Fabric. A dimension's blocks live in 16-block cubes from
+Cubic chunks for Minecraft, on NeoForge and Fabric. A dimension's blocks live in 16-block cubes from
 Y -16,384 to 16,383 (32,768 blocks of height), with vanilla gameplay working on top (mining, building, light, mobs,
 redstone, structures, portals) and a distant terrain renderer that draws to the horizon.
+
+1.21.1 is the tree in `common/` and the loader folders: the Cubic world type below. 1.21.11 is a separate tree in
+`mc12111/` (the engine port from before that world type) and does not add Cubic on the Create World screen.
+Keeping the trees apart means the 1.21.1 world type and the 1.21.11 port can land in either order.
 
 ## The Cubic world type
 

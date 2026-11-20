@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.2.0-alpha.1
 
-- A **Cubic** world type on the Create World screen, on NeoForge and Fabric. Before, Chunks3 on its own made
+- Minecraft 1.21.11 on NeoForge (21.11) and Fabric, alongside 1.21.1. The 1.21.11 jar is built from `mc12111/`,
+  the engine port from before the Cubic world type, so the two can merge in either order without one wiping the
+  other out. **The Cubic world type is in the 1.21.1 jar only.** It is not on the 1.21.11 Create World screen.
+- On 1.21.11 the near cubes and the far water draw through the game's GPU device and its terrain pipelines, the
+  cubes' block entities draw with the game's own, and fog is pushed out from the game's fog buffer.
+- On 1.21.11 the mixins into other mods (Sodium, Iris, Create, maps and the rest) are left out until each is
+  checked against that mod's 1.21.11 build, so shader packs are not drawn with there yet. The debug screen lines
+  are not ported yet either.
+- On 1.21.1, a **Cubic** world type on the Create World screen, on NeoForge and Fabric. Before, Chunks3 on its own made
   every new world a vanilla one, and the far terrain never ran, since no dimension was cubic unless another mod
   registered one. A Cubic world's overworld is cubic: vanilla's terrain, sea and biomes at vanilla's heights from
   the seed, with the ground going on down past Y -64 to a bedrock floor at Y -4,096

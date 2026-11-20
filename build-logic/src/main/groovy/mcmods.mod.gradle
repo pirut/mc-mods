@@ -41,8 +41,18 @@ repositories {
 }
 
 // Code and assets shared by the loaders live in mods/<mod>/common and go into every loader's jar.
-def common = new File(modDir, 'common/src/main')
-if (common.exists()) {
+// src_root (in versions/<mc>.properties) replaces that tree, and the loader's own sources, for one Minecraft
+// version. Chunks3 uses it so 1.21.11 compiles its port without overwriting the 1.21.1 Cubic world sources.
+def srcRootProp = (findProperty('src_root') ?: '').toString().trim()
+def common = new File(srcRootProp ? new File(modDir, srcRootProp) : modDir, 'common/src/main')
+if (srcRootProp) {
+    def root = new File(modDir, srcRootProp)
+    def javaDirs = [new File(root, 'common/src/main/java'), new File(root, "${loader}/src/main/java")].findAll { it.isDirectory() }
+    def resDirs = [new File(root, 'common/src/main/resources'), new File(root, "${loader}/src/main/resources")].findAll { it.isDirectory() }
+    if (javaDirs.isEmpty()) throw new GradleException("src_root ${root} has no Java sources for ${loader}")
+    sourceSets.main.java.setSrcDirs(javaDirs)
+    sourceSets.main.resources.setSrcDirs(resDirs)
+} else if (common.exists()) {
     sourceSets.main {
         java.srcDir new File(common, 'java')
         resources.srcDir new File(common, 'resources')
@@ -76,8 +86,12 @@ csv('exclude_src').each { pattern ->
         resources.exclude pattern
     }
 }
-def commonTest = new File(modDir, 'common/src/test/java')
-if (commonTest.exists()) sourceSets.test.java.srcDir commonTest
+def testBase = srcRootProp ? new File(modDir, srcRootProp) : modDir
+def commonTest = new File(testBase, 'common/src/test/java')
+if (commonTest.exists()) {
+    if (srcRootProp) sourceSets.test.java.setSrcDirs([commonTest])
+    else sourceSets.test.java.srcDir commonTest
+}
 
 dependencies {
     testImplementation platform('org.junit:junit-bom:5.11.4')

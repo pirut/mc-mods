@@ -2,22 +2,33 @@ plugins {
     id 'mcmods.neoforge'
 }
 
-configurations { sodiumJar { transitive = false } }
-dependencies { sodiumJar "maven.modrinth:sodium:${sodium_neoforge_version}" }
+// 1.21.11 compiles mc12111/ (see src_root). Both trees go through the line preprocessor; on 1.21.1 it is a copy.
+apply from: '../preprocess.gradle'
 
-def sodiumApiJar = layout.buildDirectory.file('sodium-api/sodium-mod.jar')
-def extractSodiumApi = tasks.register('extractSodiumApi') {
-    def outer = configurations.sodiumJar
-    inputs.files(outer)
-    outputs.file(sodiumApiJar)
-    doLast {
-        def out = sodiumApiJar.get().asFile
-        out.parentFile.mkdirs()
-        new java.util.zip.ZipFile(outer.singleFile).withCloseable { zip ->
-            def inner = zip.entries().find { it.name ==~ /META-INF\/jarjar\/net\.caffeinemc\.sodium-neoforge-.*-mod\.jar/ }
-            if (inner == null) throw new GradleException('The Sodium jar has no nested mod jar to compile the Sodium options page against.')
-            zip.getInputStream(inner).withCloseable { input -> out.withOutputStream { it << input } }
+def sodiumVersion = findProperty('sodium_neoforge_version')?.toString()?.trim()
+if (sodiumVersion) {
+    configurations { sodiumJar { transitive = false } }
+    dependencies { sodiumJar "maven.modrinth:sodium:${sodiumVersion}" }
+
+    def sodiumApiJar = layout.buildDirectory.file('sodium-api/sodium-mod.jar')
+    def extractSodiumApi = tasks.register('extractSodiumApi') {
+        def outer = configurations.sodiumJar
+        inputs.files(outer)
+        outputs.file(sodiumApiJar)
+        doLast {
+            def out = sodiumApiJar.get().asFile
+            out.parentFile.mkdirs()
+            new java.util.zip.ZipFile(outer.singleFile).withCloseable { zip ->
+                def inner = zip.entries().find { it.name ==~ /META-INF\/jarjar\/net\.caffeinemc\.sodium-neoforge-.*-mod\.jar/ }
+                if (inner == null) throw new GradleException('The Sodium jar has no nested mod jar to compile the Sodium options page against.')
+                zip.getInputStream(inner).withCloseable { input -> out.withOutputStream { it << input } }
+            }
         }
+    }
+    dependencies {
+        // The Chunks3 page in Sodium's Video Settings. NeoForge's Sodium jar nests the mod's classes in a jar of its own,
+        // which the page compiles against; never bundled. 1.21.11 leaves this out until that build is checked.
+        compileOnly files(sodiumApiJar) { builtBy extractSodiumApi }
     }
 }
 
@@ -25,9 +36,6 @@ dependencies {
     // The far renderer reads shader packs through Iris when it is installed; never bundled.
     compileOnly("maven.modrinth:iris:${iris_neoforge_version}") { transitive = false }
     compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
-    // The Chunks3 page in Sodium's Video Settings. NeoForge's Sodium jar nests the mod's classes in a jar of its own,
-    // which the page compiles against; never bundled.
-    compileOnly files(sodiumApiJar) { builtBy extractSodiumApi }
 }
 
 // The engine's tests (in common/src/test) need Minecraft and the engine's mixins applied, so they run here as
