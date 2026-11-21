@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-alpha.4
+
+- **Growing gang camps and towns.** Packs now build physical settlements at their home and expand them as they grow: **Camp -> Outpost -> Stronghold -> Town** (crowning a King unlocks a Town). Each of the six mob families builds in its own vanilla block palette, with tents, watchtowers, boss halls, fortified walls, gatehouses, tavern, jail, war forge, smuggler stalls, loot stashes, and garrison patrols. Settlements build incrementally only in loaded chunks and protect player builds and containers.
+- **Ruined settlements and recovery.** All four tiers have ruined forms (**Ruined Camp / Outpost / Stronghold / Town**) when a pack's numbers are beaten down or when a pack is wiped out, and packs automatically repair their home if they rebuild.
+- **Toggleable.** Set `buildCamps=false` in `config/bloodfeud.properties` or run `/bloodfeud camps off` in-game to return to classic Blood Feud without physical settlements.
+- **Operator camp commands.** Spawn, upgrade, or ruin camps on demand with `/bloodfeud camp <family> [camp|outpost|stronghold|town] [ruined]`, `/bloodfeud camp upgrade`, `/bloodfeud camp ruin`, and `/bloodfeud camps [on|off]`.
+- Needs Pirut Lib 0.1.0-alpha.3.
+
 ## 0.1.0-alpha.3
 
 - **Scars you can see on the body.** With Blood Feud on your client, a Brute that came back from death wears its
