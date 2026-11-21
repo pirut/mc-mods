@@ -1,29 +1,40 @@
 name: Release
 
-# Each mod releases on its own, as the tag <folder>-v<mod_version> (for example cc-agent-v0.5.1), with its jars
-# and the notes from its CHANGELOG.md section. Only the mods being released are built.
+# Each mod releases on its own as <folder>-v<version> (for example cc-agent-v0.5.2), with its jars
+# and the notes from its CHANGELOG.md section. Only the tagged/selected mods are built.
 #
-# - Push to main: every mod whose current mod_version has no release yet. So bumping mod_version and adding a
-#   '## <version>' section to the mod's CHANGELOG.md releases it on merge.
-# - Push a tag <folder>-v<version> by hand: that mod (the version must match its gradle.properties).
-# - Run this workflow from the Actions tab with a mod folder: that mod's current version. This also uploads a
-#   version that is already on GitHub to the stores (a first upload, or a retry of a failed one).
-#
-# Mods with a modrinth_project_id in their gradle.properties are also uploaded to Modrinth. That needs the
-# MODRINTH_TOKEN secret (a Modrinth personal access token with "Create versions"). Mods with a
-# curseforge_project_id (the number under About Project on the CurseForge page) are also uploaded to CurseForge.
-# That needs the CURSEFORGE_TOKEN secret (CurseForge > Account settings > API tokens). Modrinth skips versions it
-# already has; CurseForge can't tell, so a run by hand uploads there only with "Upload to CurseForge too" ticked.
+# - Merged PR into main with a `release*` label (`release`, `release:patch`, `release:minor`,
+#   `release:major`, `release:alpha`, `release:beta`) and one or more `mod:<folder>` labels:
+#   computes target versions, updates gradle.properties & CHANGELOG.md, builds only the tagged mods,
+#   commits & pushes the bump to main, creates GitHub Releases + tags, uploads to Modrinth/CurseForge,
+#   and comments a summary on the PR. Merging a PR without a `release*` label does not release.
+# - Push a tag <folder>-v<version> by hand: releases that mod (version must match gradle.properties).
+# - Run this workflow from the Actions tab with a mod folder (and optional bump mode / CurseForge upload):
+#   builds and releases that mod, or retries a store upload for an existing GitHub release.
 
 on:
+  pull_request_target:
+    types: [closed]
   push:
-    branches: [main]
     tags: ['*-v*']
   workflow_dispatch:
     inputs:
       mod:
         description: Mod folder in mods/ (for example cc-agent)
         required: true
+        type: string
+      bump:
+        description: Version bump mode before building and releasing
+        type: choice
+        default: none
+        options:
+          - none
+          - auto
+          - patch
+          - minor
+          - major
+          - alpha
+          - beta
       curseforge:
         description: Upload to CurseForge too. Leave it unticked if CurseForge already has this version, or it gets the files twice.
         type: boolean
@@ -31,6 +42,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: release
@@ -38,38 +50,85 @@ concurrency:
 
 jobs:
   release:
+    if: github.event_name != 'pull_request_target' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && 'main' || github.ref }}
+          fetch-depth: 0
 
       - name: Pick the mods to release
         id: pick
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_MOD: ${{ inputs.mod }}
+          INPUT_BUMP: ${{ inputs.bump }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
         run: |
+          set -euo pipefail
           mods=()
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+          bump_mode="none"
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ]; then
+            release_labels=()
+            while IFS= read -r lbl; do
+              [ -n "$lbl" ] && release_labels+=("$lbl")
+            done < <(jq -r '[.[].name | select(test("^release(:(patch|minor|major|alpha|beta))?$"))] | unique | .[]' <<<"$PR_LABELS_JSON")
+
+            if [ "${#release_labels[@]}" -eq 0 ]; then
+              echo "mods=" >> "$GITHUB_OUTPUT"
+              echo "bump_mode=none" >> "$GITHUB_OUTPUT"
+              echo "No release label on PR #$PR_NUMBER; skipping release."
+              exit 0
+            fi
+
+            if [ "${#release_labels[@]}" -gt 1 ]; then
+              echo "::error::Conflicting release labels on PR #$PR_NUMBER: ${release_labels[*]}. Keep only one release* label."
+              exit 1
+            fi
+
+            while IFS= read -r m; do
+              [ -n "$m" ] && mods+=("$m")
+            done < <(jq -r '[.[].name | select(startswith("mod:")) | sub("^mod:"; "") | select(length > 0)] | unique | sort_by([(. != "pirutlib"), .]) | .[]' <<<"$PR_LABELS_JSON")
+
+            if [ "${#mods[@]}" -eq 0 ]; then
+              echo "::error::Release label '${release_labels[0]}' is set on PR #$PR_NUMBER, but no 'mod:<folder>' label was found."
+              exit 1
+            fi
+
+            if [ "${release_labels[0]}" = "release" ]; then
+              bump_mode="auto"
+            else
+              bump_mode="${release_labels[0]#release:}"
+            fi
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             mods=("$INPUT_MOD")
-          elif [ "$GITHUB_REF_TYPE" = tag ]; then
-            mod=${GITHUB_REF_NAME%-v*}; version=${GITHUB_REF_NAME##*-v}
-            have=$(grep '^mod_version=' "mods/$mod/gradle.properties" | cut -d= -f2)
+            bump_mode="${INPUT_BUMP:-none}"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            mod="${GITHUB_REF_NAME%-v*}"
+            version="${GITHUB_REF_NAME##*-v}"
+            if [ ! -f "mods/$mod/gradle.properties" ]; then
+              echo "::error::No mod folder mods/$mod for tag $GITHUB_REF_NAME"
+              exit 1
+            fi
+            have="$(grep -m1 '^mod_version=' "mods/$mod/gradle.properties" | cut -d= -f2- | tr -d '\r')"
             if [ "$have" != "$version" ]; then
-              echo "::error::Tag $GITHUB_REF_NAME says $version, but mods/$mod/gradle.properties has $have"; exit 1
+              echo "::error::Tag $GITHUB_REF_NAME says $version, but mods/$mod/gradle.properties has $have"
+              exit 1
             fi
             mods=("$mod")
-          else
-            for d in mods/*/; do
-              mod=$(basename "$d"); [ -f "$d/gradle.properties" ] || continue
-              version=$(grep '^mod_version=' "$d/gradle.properties" | cut -d= -f2)
-              gh release view "$mod-v$version" >/dev/null 2>&1 || mods+=("$mod")
-            done
+            bump_mode="none"
           fi
+
           for m in "${mods[@]}"; do
             [ -f "mods/$m/gradle.properties" ] || { echo "::error::No mod folder mods/$m"; exit 1; }
           done
+
           echo "mods=${mods[*]}" >> "$GITHUB_OUTPUT"
-          echo "Releasing: ${mods[*]:-nothing}"
+          echo "bump_mode=$bump_mode" >> "$GITHUB_OUTPUT"
+          echo "Releasing: ${mods[*]:-nothing} (bump: $bump_mode)"
 
       - uses: actions/setup-java@v4
         if: steps.pick.outputs.mods != ''
@@ -80,18 +139,173 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         if: steps.pick.outputs.mods != ''
 
+      - name: Prepare versions and changelogs
+        id: prepare
+        if: steps.pick.outputs.mods != '' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_dispatch' && steps.pick.outputs.bump_mode != 'none'))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODS: ${{ steps.pick.outputs.mods }}
+          BUMP_MODE: ${{ steps.pick.outputs.bump_mode }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          mod_list=()
+          ver_list=()
+          pair_list=()
+
+          for m in $MODS; do
+            cur_ver="$(grep -m1 '^mod_version=' "mods/$m/gradle.properties" | cut -d= -f2- | tr -d '\r')"
+            target_ver="$(.github/scripts/bump-version.sh "$m" "$cur_ver" "$BUMP_MODE")"
+            echo "$m: $cur_ver -> $target_ver (mode: $BUMP_MODE)"
+            .github/scripts/prepare-release.sh "$m" "$target_ver"
+            mod_list+=("$m")
+            ver_list+=("$target_ver")
+            pair_list+=("$m $target_ver")
+          done
+
+          if [ "${#mod_list[@]}" -eq 1 ]; then
+            commit_msg="release(${mod_list[0]}): ${ver_list[0]}"
+          else
+            mods_csv="$(IFS=,; echo "${mod_list[*]}")"
+            pairs_csv="$(printf '%s, ' "${pair_list[@]}")"
+            pairs_csv="${pairs_csv%, }"
+            commit_msg="release($mods_csv): $pairs_csv"
+          fi
+
+          echo "commit_msg=$commit_msg" >> "$GITHUB_OUTPUT"
+
       - name: Build
+        id: build
         if: steps.pick.outputs.mods != ''
-        run: ./gradlew --console=plain $(for m in ${{ steps.pick.outputs.mods }}; do echo ":$m:build"; done)
+        env:
+          MODS: ${{ steps.pick.outputs.mods }}
+        run: |
+          set -euo pipefail
+          tasks=()
+          for m in $MODS; do
+            tasks+=(":$m:build")
+          done
+          ./gradlew --console=plain "${tasks[@]}"
+
+      - name: Commit and push version bump
+        id: commit
+        if: steps.pick.outputs.mods != '' && (github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch')
+        env:
+          MODS: ${{ steps.pick.outputs.mods }}
+          COMMIT_MSG: ${{ steps.prepare.outputs.commit_msg }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain -- mods/)" ]; then
+            echo "No version or changelog changes to commit."
+            exit 0
+          fi
+
+          for m in $MODS; do
+            git add -- "mods/$m/gradle.properties"
+            if [ -f "mods/$m/CHANGELOG.md" ]; then
+              git add -- "mods/$m/CHANGELOG.md"
+            fi
+          done
+
+          if git diff --cached --quiet; then
+            echo "No staged changes under mods/."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "${COMMIT_MSG:-release: bump versions}"
+
+          target_branch="main"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "${GITHUB_REF_NAME:-}" ]; then
+            target_branch="$GITHUB_REF_NAME"
+          fi
+
+          pushed=0
+          for attempt in 1 2 3; do
+            git pull --rebase origin "$target_branch"
+            if git push origin "HEAD:$target_branch"; then
+              pushed=1
+              break
+            fi
+            echo "Push attempt $attempt failed; retrying..."
+            sleep 2
+          done
+
+          if [ "$pushed" -ne 1 ]; then
+            echo "::error::Failed to push version bump commit to $target_branch after 3 attempts."
+            exit 1
+          fi
 
       - name: Release
+        id: release
         if: steps.pick.outputs.mods != ''
         env:
           GH_TOKEN: ${{ github.token }}
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
           CURSEFORGE_UPLOAD: ${{ inputs.curseforge && '1' || '' }}
+          MODS: ${{ steps.pick.outputs.mods }}
+          RELEASE_SUMMARY_FILE: ${{ runner.temp }}/release-summary.md
         run: |
+          set -euo pipefail
+          : > "$RELEASE_SUMMARY_FILE"
+          export RELEASE_TARGET="$(git rev-parse HEAD)"
           failed=0
-          for m in ${{ steps.pick.outputs.mods }}; do .github/scripts/release-mod.sh "$m" || failed=1; done
-          exit $failed
+          for m in $MODS; do
+            .github/scripts/release-mod.sh "$m" || failed=1
+          done
+          exit "$failed"
+
+      - name: Publish release summary
+        if: always() && steps.pick.outputs.mods != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MODS: ${{ steps.pick.outputs.mods }}
+          PREPARE_OUTCOME: ${{ steps.prepare.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
+          RELEASE_OUTCOME: ${{ steps.release.outcome }}
+          RELEASE_SUMMARY_FILE: ${{ runner.temp }}/release-summary.md
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          summary_file="${RUNNER_TEMP}/final-summary.md"
+
+          {
+            if [ "$RELEASE_OUTCOME" = "success" ]; then
+              echo "### Release summary"
+            elif [ "$BUILD_OUTCOME" = "failure" ]; then
+              echo "### Release failed: build error"
+              echo
+              echo "Building \`$MODS\` failed, so no version bump was committed to \`main\`. See the [workflow run]($run_url)."
+            elif [ "$PREPARE_OUTCOME" = "failure" ]; then
+              echo "### Release failed: version preparation error"
+              echo
+              echo "Preparing versions/changelogs for \`$MODS\` failed. See the [workflow run]($run_url)."
+            elif [ "$COMMIT_OUTCOME" = "failure" ]; then
+              echo "### Release failed: push error"
+              echo
+              echo "Pushing the version bump commit failed. See the [workflow run]($run_url)."
+            else
+              echo "### Release completed with errors"
+              echo
+              echo "One or more release or store upload steps failed. See the [workflow run]($run_url) for details."
+            fi
+
+            if [ -s "$RELEASE_SUMMARY_FILE" ]; then
+              echo
+              echo "| Mod | Version | GitHub Release | Modrinth | CurseForge |"
+              echo "| --- | --- | --- | --- | --- |"
+              cat "$RELEASE_SUMMARY_FILE"
+            fi
+          } > "$summary_file"
+
+          cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ] && [ -n "${PR_NUMBER:-}" ]; then
+            gh pr comment "$PR_NUMBER" --body-file "$summary_file"
+          fi

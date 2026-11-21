@@ -55,15 +55,27 @@ Copy [`template/`](template) to `mods/<name>` and follow its README. Gradle pick
 
 ## Releasing
 
-Each mod is tagged on its own as `<folder>-v<version>`, for example `cc-agent-v0.5.1`, and only that mod is
-built and released.
+Each mod is tagged on its own as `<folder>-v<version>`, for example `cc-agent-v0.5.2`, and only the tagged
+mod(s) are built and released. Merging a PR without a `release*` label does not publish a release.
 
-1. Bump `mod_version` in the mod's `gradle.properties`.
-2. Add a `## <version>` section to its `CHANGELOG.md`. It becomes the release notes.
-3. Merge to `main`. The Release workflow releases every mod whose version has no release yet.
+1. **Mod labels (`mod:<folder>`):** automatically applied when a PR touches files under `mods/<folder>/` (and
+   freely editable if you want to add or remove a mod).
+2. **Release label:** add one label to ship on merge to `main`:
+   - `release` — keeps `mod_version` if already bumped and unreleased; otherwise bumps the next prerelease or patch.
+   - `release:patch` — bumps `X.Y.Z` to `X.Y.(Z+1)`, or graduates a prerelease (`0.1.0-alpha.3` → `0.1.0`).
+   - `release:minor` / `release:major` — bumps to `X.(Y+1).0` / `(X+1).0.0`.
+   - `release:alpha` / `release:beta` — bumps to the next `-alpha.N` / `-beta.N` prerelease.
+3. **Preview & notes:** a sticky comment on the PR previews the computed target version, changelog source, and
+   publish targets. Release notes come from an existing `## <version>` section in `mods/<mod>/CHANGELOG.md`,
+   falling back to an optional `## Release Notes` (or `### Release Notes`) section in the PR description, or
+   `- <PR title> (#<number>)`.
+4. **Merge to `main`:** the Release workflow updates `gradle.properties` and `CHANGELOG.md`, builds only the
+   tagged mod(s) first, commits and pushes the bump to `main`, creates the tag and GitHub Release, uploads to
+   any configured stores, and posts a release summary on the PR.
 
-You can also push a tag `<folder>-v<version>` yourself, or run the Release workflow from the Actions tab with
-the mod's folder name (this also retries a failed upload).
+You can also push a `<folder>-v<version>` tag by hand, or run the Release workflow from the Actions tab with
+a mod folder and optional bump mode (which also retries a failed store upload). To sync the repository labels
+after adding a new mod, run `.github/scripts/sync-labels.sh`.
 
 Every release goes to GitHub with the jars and their SHA-256 sums. A mod with a `modrinth_project_id` in its
 `gradle.properties` is also uploaded to Modrinth (the NeoForge jar as `<version>`, the Fabric jar as
