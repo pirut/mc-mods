@@ -42,6 +42,30 @@ show gear, so they get a tougher hide instead of armor and caps.
   family swallows it, and its Boss becomes a **King**. Kill a King and its packs split apart again.
 - Go near a pack's home and it comes out to meet you: the Boss, a couple of its Brutes and some grunts.
 
+## Growing camps to towns
+
+As a pack grows stronger, it claims ground at its home and builds out in four tiers:
+
+1. **Camp** — a central campfire, banner totem, pitched wool tents in the pack's colors, and a Camp Stash chest.
+2. **Outpost** — packed paths, a palisade wall with an arched gate, a two-story watchtower, a Boss Pavilion with a
+   Boss Stash, and a family-styled work area (prisoner cages, archery range, cauldron shack, webbed brood den, soul
+   brazier shrine, or bone pit).
+3. **Stronghold** — fortified stone walls with battlements, four corner guard towers, a main gatehouse, an enclosed
+   gabled Boss Hall, barracks, war forge, and training yards.
+4. **Town** — a full gang-run town with outer walls, four gatehouses, lamp-lit avenues, a multi-story King's Hall
+   flying vassal banners and holding the King's Treasury, a war monument square, tavern, town jail, blacksmith,
+   smuggler market stalls, and gang houses. Crowning a King unlocks a Town right away.
+
+If a pack's numbers drop below its settlement tier's threshold — from player raids, rival wars, losing its Boss or
+King, or being wiped out completely — its Camp, Outpost, Stronghold, or Town falls into **ruins** (extinguished
+campfires, collapsed roofs and walls, cracked/mossy family masonry, tattered banners, rubble, and cobwebs). If the
+pack later rebuilds its strength back to its threshold, it restores its ruined settlement.
+
+Every family builds in its own vanilla block palette, foundations adapt to hills, builds stream in gradually with no
+lag or chunk force-loading, and automatic placement avoids player-built bases and world spawn. Turn automatic pack
+settlements off or back on anytime with `buildCamps=false` in `config/bloodfeud.properties` or `/bloodfeud camps off`
+and `/bloodfeud camps on`.
+
 ## Relics
 
 Kill a Boss, a King or a Brute of level 10 or more and it drops its **relic**: a weapon named after it ("Vosk's
@@ -110,8 +134,9 @@ far-away pack no one has met fades away.
   rewrites itself each time you open it.
 - `/bloodfeud mapitem`: a Map of the Feuds item, with each pack home you know marked by a banner in its color and a
   red X on each Brute hunting you.
-- Operators: `/bloodfeud rise <family>`, `/bloodfeud scar <scar> <name>`, `/bloodfeud night`, `/bloodfeud all`,
-  `/bloodfeud forget everything`.
+- Operators: `/bloodfeud rise <family>`, `/bloodfeud camp <family> [camp|outpost|stronghold|town] [ruined]`,
+  `/bloodfeud camp upgrade`, `/bloodfeud camp ruin`, `/bloodfeud camps [on|off]`, `/bloodfeud scar <scar> <name>`, `/bloodfeud night`,
+  `/bloodfeud all`, `/bloodfeud forget everything`.
 
 ## Server only (screens optional)
 

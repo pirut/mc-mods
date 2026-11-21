@@ -1,5 +1,6 @@
 package io.github.pirut.bloodfeud.game;
 
+import io.github.pirut.bloodfeud.BloodFeud;
 import io.github.pirut.bloodfeud.feud.Brute;
 import io.github.pirut.bloodfeud.feud.Feud;
 import io.github.pirut.bloodfeud.feud.Pack;
@@ -53,10 +54,13 @@ public final class FeudMap {
         List<Pack> packs = new ArrayList<>();
         for (Pack pk : f.packs.values()) if (pk.met.contains(me) && pk.dimension.equals(dim)) packs.add(pk);
         packs.sort(Comparator.comparingDouble(pk -> pk.distanceTo(dim, p.getX(), p.getZ())));
+        boolean campsOn = BloodFeud.config().buildCamps;
         for (Pack pk : packs) {
             Brute boss = f.brute(pk.boss);
+            String tierTitle = pk.displayTierTitle(campsOn);
+            String tierTag = tierTitle.isEmpty() ? "" : " (" + tierTitle + ")";
             String who = boss == null ? "" : ", " + boss.name + (f.top(pk) == pk && !f.vassals(pk).isEmpty() ? " the King" : "");
-            marks.add(new Mark("pack:" + pk.id, pk.homeX, pk.homeZ, cap(pk.title()) + who, pk.color, false));
+            marks.add(new Mark("pack:" + pk.id, pk.campX(), pk.campZ(), cap(pk.title()) + tierTag + who, pk.color, false));
         }
         for (Brute br : f.brutes.values()) {
             Relation r = br.relations.get(me);

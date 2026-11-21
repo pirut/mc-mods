@@ -23,6 +23,31 @@ public final class Pack {
     /** The last time it had a night with a player nearby. */
     public long lastAwake;
     public int playerKills;
+    /** Peak settlement tier this pack has built/unlocked (remains intact footprint even when ruined). */
+    public SettlementTier tier = SettlementTier.CAMP;
+    /** Highest tier actually built in the world (0 = not yet built). */
+    public int builtTier = 0;
+    /** True when the pack's numbers have dropped below its current tier's threshold and the settlement is in ruins. */
+    public boolean ruined;
+    /** True when the blocks currently built in the world at this site are in the ruined state. */
+    public boolean builtRuined;
+    /** True once a concrete build site has been chosen in the world. */
+    public boolean siteSet;
+    public int siteX, siteY, siteZ;
+    /** Cardinal facing (0..3) of the settlement's main gate. */
+    public int siteFacing;
+    /** Server game-time tick before which automatic site search will not retry. */
+    public long siteRetryAt;
+    /** Cursor into the spiral site-search candidate list so capped attempts make progress across retries. */
+    public int siteSearchOffset;
+    /** True when the pack's faction banners changed (swallowed, freed, king death) and need world re-bannering. */
+    public boolean bannersDirty;
+    /** True once a tier-0 build/ruin job has placed at least one block at the site; cleared when builtTier > 0 or site resets. */
+    public boolean buildStarted;
+    /** Blueprint zones skipped during build/upgrade (player-blocked or abyss), excluded from ownership and future ruin/repair. */
+    public final Set<String> skippedZones = new HashSet<>();
+    /** Ring-zone relative columns (CampBlueprint.colKey(rx, rz)) skipped during build/upgrade, excluded from ownership and future ruin/repair. */
+    public final Set<Long> skippedColumns = new HashSet<>();
     /** Players who have seen it. */
     public final Set<UUID> met = new HashSet<>();
 
@@ -50,6 +75,51 @@ public final class Pack {
         this.lastAwake = formedAt;
     }
 
+    public int campX() {
+        return siteSet ? siteX : homeX;
+    }
+
+    public int campZ() {
+        return siteSet ? siteZ : homeZ;
+    }
+
+    /**
+     * Settlement tier to display in UI/commands. When automatic camps are disabled, packs that never built
+     * a camp return {@link SettlementTier#NONE} so unbuilt labels are omitted; packs with an existing camp
+     * still show their built tier.
+     */
+    public SettlementTier displayTier(boolean campsEnabled) {
+        if (campsEnabled) return tier == null ? SettlementTier.CAMP : tier;
+        return builtTier > 0 ? SettlementTier.byLevel(builtTier) : SettlementTier.NONE;
+    }
+
+    /** Automatic world-build action needed for this pack based on logical tier/ruin state vs built state. */
+    public enum AutoBuildAction { NONE, BUILD, RUIN, REPAIR }
+
+    /**
+     * Pure decision helper used by {@code CampBuilder.checkAutoBuilds} to pick the next automatic job.
+     * Never requests tier expansion while ruined, and never re-queues ruination once the built site is already ruined.
+     */
+    public AutoBuildAction autoBuildAction() {
+        SettlementTier target = tier == null ? SettlementTier.CAMP : tier;
+        if (target == SettlementTier.NONE) return AutoBuildAction.NONE;
+        boolean needsTierBuild = !ruined && builtTier < target.level;
+        boolean needsRuin = ruined && (builtTier == 0 || !builtRuined);
+        boolean needsRepair = !ruined && builtRuined && builtTier > 0;
+        if (needsRuin) return AutoBuildAction.RUIN;
+        if (needsRepair) return AutoBuildAction.REPAIR;
+        if (needsTierBuild) return AutoBuildAction.BUILD;
+        return AutoBuildAction.NONE;
+    }
+
+    /** Human-readable settlement label (e.g. "Town", "Ruined Town", "Ruined Camp"), or empty when omitted. */
+    public String displayTierTitle(boolean campsEnabled) {
+        SettlementTier t = displayTier(campsEnabled);
+        if (t == SettlementTier.NONE) return "";
+        boolean showRuined = campsEnabled ? ruined : (builtTier > 0 && (builtRuined || ruined));
+        return t.title(showRuined);
+    }
+
     public String title() {
         return "the " + place + " " + switch (family) {
             case SPIDERS -> "Nest";
@@ -60,10 +130,10 @@ public final class Pack {
 
     public double distanceTo(String dim, double x, double z) {
         if (!dimension.equals(dim)) return Double.POSITIVE_INFINITY;
-        return Math.hypot(homeX - x, homeZ - z);
+        return Math.hypot(campX() - x, campZ() - z);
     }
 
     public double distanceTo(Pack other) {
-        return distanceTo(other.dimension, other.homeX, other.homeZ);
+        return distanceTo(other.dimension, other.campX(), other.campZ());
     }
 }

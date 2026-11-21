@@ -189,10 +189,12 @@ public final class Ledger {
         DyeColor dye = DyeColor.byId(pk.color);
         b.line(Component.literal("■ ").withStyle(s -> s.withColor(dye.getTextColor()))
                 .append(text(cap(pk.title().substring(4)), INK).withStyle(ChatFormatting.BOLD)));
-        b.line(text(cap(pk.family.title), FADED));
-        String dist = pk.dimension.equals(Live.dim(p.level())) ? FeudCommand.where(p.getX(), p.getZ(), pk.homeX, pk.homeZ)
+        String tierTitle = pk.displayTierTitle(BloodFeud.config().buildCamps);
+        String tierSuffix = tierTitle.isEmpty() ? "" : " · " + tierTitle;
+        b.line(text(cap(pk.family.title) + tierSuffix, FADED));
+        String dist = pk.dimension.equals(Live.dim(p.level())) ? FeudCommand.where(p.getX(), p.getZ(), pk.campX(), pk.campZ())
                 : "in another dimension";
-        b.para(text("Home: " + pk.place + ", " + dist + " (" + pk.homeX + ", " + pk.homeZ + ")", INK));
+        b.para(text("Home: " + pk.place + ", " + dist + " (" + pk.campX() + ", " + pk.campZ() + ")", INK));
         b.line(text("Formed day " + day(pk.formedAt), FADED));
         Pack top = f.top(pk);
         if (top != pk) {

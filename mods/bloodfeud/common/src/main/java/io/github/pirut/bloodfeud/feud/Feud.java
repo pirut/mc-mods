@@ -31,7 +31,8 @@ public final class Feud {
     public static final int MEET_RANGE = 500;
     /** A pack that wakes up after sleeping plays out at most this many of the nights it missed. */
     public static final int CATCH_UP_NIGHTS = 5;
-    public static final int MAX_GRUNTS = 16;
+    public static final int MAX_GRUNTS = 24;
+    public static final int CLASSIC_MAX_GRUNTS = 16;
     public static final int MAX_MEMBERS = 5;
     /** A Brute that has come back this many times stays dead next time. */
     public static final int MAX_RETURNS = 3;
@@ -41,10 +42,58 @@ public final class Feud {
     /** The time of the call being played out, for pack chronicles. */
     private long clock;
     public long lastNight;
+    /** When false, packs do not automatically advance settlement tiers or emit camp news. */
+    public boolean campsEnabled = true;
+
+    /** Maximum grunts per pack: 24 with settlements enabled, classic 16 when disabled. */
+    public int maxGrunts() {
+        return campsEnabled ? MAX_GRUNTS : CLASSIC_MAX_GRUNTS;
+    }
     public int maxPacks = 64;
     public int maxBrutes = 256;
 
     private final Random random;
+    /** Built settlement left behind by a disbanded pack, waiting to be crumbled into ruins in the world. */
+    public record AbandonedSite(UUID packId, Family family, int color, String dimension,
+                                int siteX, int siteY, int siteZ, int siteFacing, int builtTier,
+                                List<Integer> vassalColors, Set<String> skippedZones, Set<Long> skippedColumns) {
+        public AbandonedSite {
+            vassalColors = vassalColors == null ? List.of() : List.copyOf(vassalColors);
+            skippedZones = skippedZones == null ? Set.of() : Set.copyOf(skippedZones);
+            skippedColumns = skippedColumns == null ? Set.of() : Set.copyOf(skippedColumns);
+        }
+    }
+
+    public static final int MAX_ABANDONED_SITES = 64;
+    public final List<AbandonedSite> abandonedSites = new ArrayList<>();
+
+    /**
+     * Records or updates an abandoned built settlement waiting for automatic ruination.
+     * If an entry for the same pack already exists (e.g. from disbanding mid-upgrade), merges the higher tier,
+     * vassal banner colors, and skipped-zone sets.
+     */
+    public void recordAbandonedSite(AbandonedSite site) {
+        if (site == null || site.builtTier() <= 0) return;
+        for (int i = 0; i < abandonedSites.size(); i++) {
+            AbandonedSite cur = abandonedSites.get(i);
+            if (cur.packId().equals(site.packId())) {
+                int mergedTier = Math.max(cur.builtTier(), site.builtTier());
+                List<Integer> mergedVassals = !site.vassalColors().isEmpty() ? site.vassalColors() : cur.vassalColors();
+                Set<String> mergedZones = new HashSet<>(cur.skippedZones());
+                mergedZones.addAll(site.skippedZones());
+                Set<Long> mergedCols = new HashSet<>(cur.skippedColumns());
+                mergedCols.addAll(site.skippedColumns());
+                abandonedSites.set(i, new AbandonedSite(
+                        cur.packId(), cur.family(), cur.color(), cur.dimension(),
+                        cur.siteX(), cur.siteY(), cur.siteZ(), cur.siteFacing(), mergedTier,
+                        mergedVassals, mergedZones, mergedCols));
+                return;
+            }
+        }
+        abandonedSites.add(site);
+        while (abandonedSites.size() > MAX_ABANDONED_SITES) abandonedSites.remove(0);
+    }
+
     private final List<News> news = new ArrayList<>();
 
     /** Where a player is right now. */
@@ -228,7 +277,7 @@ public final class Feud {
         Pack p = packOf(b);
         if (p != null) {
             p.playerKills++;
-            p.grunts = Math.min(MAX_GRUNTS, p.grunts + 2);
+            p.grunts = Math.min(maxGrunts(), p.grunts + 2);
         }
     }
 
@@ -251,6 +300,14 @@ public final class Feud {
         boolean fin = !deathless && (finalBlow || b.timesReturned >= MAX_RETURNS);
         die(b, cause, player, fin, now);
         return fin;
+    }
+
+    /** Records that a pack lost a grunt in the world and re-checks whether its settlement falls into ruin. */
+    public void gruntKilled(Pack p, long now) {
+        if (p == null) return;
+        clock = now;
+        p.grunts = Math.max(0, p.grunts - 1);
+        updateSettlement(p);
     }
 
     /** The player ran from a fight with this Brute. It gets a little stronger for driving them off. */
@@ -288,10 +345,14 @@ public final class Feud {
             if (!packs.containsKey(p.id) || !awake(p, players)) continue;
             int nights = (int) Math.max(1, Math.min(CATCH_UP_NIGHTS, (now - p.lastAwake) / DAY));
             for (int i = 0; i < nights; i++) grow(p, now);
+            updateSettlement(p);
             p.lastAwake = now;
             challenge(p, now);
         }
         raids(now, players);
+        for (Pack p : new ArrayList<>(packs.values())) {
+            if (packs.containsKey(p.id) && awake(p, players)) updateSettlement(p);
+        }
         trim(now, players);
     }
 
@@ -429,7 +490,8 @@ public final class Feud {
         Pack p = new Pack(new UUID(random.nextLong(), random.nextLong()), boss.family, boss.dimension, place, color,
                 boss.x, boss.z, now);
         p.boss = boss.id;
-        p.grunts = Math.min(MAX_GRUNTS, grunts);
+        p.grunts = Math.min(maxGrunts(), grunts);
+        p.tier = SettlementTier.CAMP;
         boss.pack = p.id;
         for (Map.Entry<UUID, Relation> e : boss.relations.entrySet()) if (e.getValue().met) p.met.add(e.getKey());
         packs.put(p.id, p);
@@ -437,13 +499,140 @@ public final class Feud {
     }
 
     private void grow(Pack p, long now) {
-        p.grunts = Math.min(MAX_GRUNTS, p.grunts + 1 + random.nextInt(2));
+        p.grunts = Math.min(maxGrunts(), p.grunts + 1 + random.nextInt(2));
         if (p.grunts >= 4 && members(p).size() < MAX_MEMBERS && random.nextDouble() < 0.15) {
             Brute boss = brute(p.boss);
             String type = boss != null ? boss.entityType : p.family.defaultType;
             Brute b = rise(type, p.family, p.dimension, p.homeX, p.homeZ, null, null, null, p.id, now, false);
             tell(News.Kind.GREW, "A new Brute has risen in " + p.title() + ": " + b.fullName() + ".", b);
         }
+    }
+
+    /** Compatibility alias for {@link #updateSettlement(Pack)}. */
+    public boolean advanceSettlement(Pack p) {
+        return updateSettlement(p);
+    }
+
+    /**
+     * Re-evaluates a pack's settlement against its current living roster, grunts, strength, and King rank:
+     * advances {@code p.tier} upward when it grows past a threshold, marks {@code p.ruined = true} when its
+     * numbers fall below its current tier's threshold, and restores {@code p.ruined = false} once it recovers.
+     * Does nothing while {@link #campsEnabled} is false.
+     */
+    public boolean updateSettlement(Pack p) {
+        if (!campsEnabled || p == null) return false;
+        if (p.tier == null || p.tier == SettlementTier.NONE) p.tier = SettlementTier.CAMP;
+        int living = members(p).size();
+        double str = strength(p);
+        boolean king = !vassals(p).isEmpty();
+        SettlementTier sustained = SettlementTier.forPack(living, p.grunts, str, king);
+        if (sustained.level > p.tier.level) {
+            p.tier = sustained;
+            p.ruined = false;
+            tellAt(p, News.Kind.SETTLED, settlementNews(p, sustained));
+            return true;
+        }
+        if (!p.ruined) {
+            if (!p.tier.sustains(living, p.grunts, str, king)) {
+                p.ruined = true;
+                tellAt(p, News.Kind.SETTLED, ruinedNews(p, p.tier));
+                return true;
+            }
+            return false;
+        }
+        if (sustained.level >= p.tier.level) {
+            p.ruined = false;
+            tellAt(p, News.Kind.SETTLED, rebuiltNews(p, p.tier));
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Operator helper: ratchets a pack to at least {@code target} tier, clears any ruined state, and ensures
+     * its living roster of Brutes and grunts fits that tier so command-spawned settlements have a gang running them.
+     */
+    public SettlementTier upgradeSettlement(Pack p, SettlementTier target, long now) {
+        clock = now;
+        if (target == null || target == SettlementTier.NONE) target = SettlementTier.CAMP;
+        if (p.tier == null || p.tier == SettlementTier.NONE) p.tier = SettlementTier.CAMP;
+        boolean raised = target.level > p.tier.level;
+        boolean restored = p.ruined;
+        if (raised) p.tier = target;
+        p.ruined = false;
+        int needBrutes = Math.min(MAX_MEMBERS, Math.max(1, p.tier.minBrutes));
+        int needGrunts = Math.min(maxGrunts(), p.tier.minGrunts + 4);
+        Brute boss = brute(p.boss);
+        String type = boss != null ? boss.entityType : p.family.defaultType;
+        while (members(p).size() < needBrutes) {
+            Brute b = rise(type, p.family, p.dimension, p.campX(), p.campZ(), null, null, null, p.id, now, false);
+            if (p.boss == null) p.boss = b.id;
+        }
+        p.grunts = Math.max(p.grunts, needGrunts);
+        boss = brute(p.boss);
+        if (boss != null && boss.alive) {
+            int minBossLevel = switch (p.tier) {
+                case TOWN -> 10;
+                case STRONGHOLD -> 7;
+                case OUTPOST -> 4;
+                default -> 2;
+            };
+            if (boss.level < minBossLevel) boss.level = minBossLevel;
+        }
+        if (raised) tellAt(p, News.Kind.SETTLED, settlementNews(p, p.tier));
+        else if (restored) tellAt(p, News.Kind.SETTLED, rebuiltNews(p, p.tier));
+        return p.tier;
+    }
+
+    /**
+     * Operator helper: puts a pack's settlement (at {@code target} tier) into ruins and trims its numbers
+     * below that tier's threshold so the ruins persist until the pack recovers.
+     */
+    public SettlementTier ruinSettlement(Pack p, SettlementTier target, long now) {
+        clock = now;
+        if (target == null || target == SettlementTier.NONE) {
+            target = (p.tier == null || p.tier == SettlementTier.NONE) ? SettlementTier.CAMP : p.tier;
+        }
+        if (p.tier == null || target.level > p.tier.level) p.tier = target;
+        List<Pack> detached = vassals(p);
+        if (!detached.isEmpty()) {
+            for (Pack v : detached) {
+                v.liege = null;
+                v.bannersDirty = true;
+            }
+            p.bannersDirty = true;
+        }
+        p.grunts = p.tier == SettlementTier.CAMP ? 0 : Math.min(p.grunts, Math.max(1, p.tier.minGrunts / 4));
+        // If high-level Brutes would still sustain the tier via raw strength, zero grunts so it stays ruined
+        int living = members(p).size();
+        double str = strength(p);
+        if (p.tier.sustains(living, p.grunts, str, false)
+                || SettlementTier.forPack(living, p.grunts, str, false).level >= p.tier.level) {
+            p.grunts = 0;
+        }
+        boolean newlyRuined = !p.ruined;
+        p.ruined = true;
+        if (newlyRuined) tellAt(p, News.Kind.SETTLED, ruinedNews(p, p.tier));
+        return p.tier;
+    }
+
+    public static String settlementNews(Pack p, SettlementTier tier) {
+        return switch (tier) {
+            case OUTPOST -> cap(p.title()) + " has fortified its camp into an outpost.";
+            case STRONGHOLD -> cap(p.title()) + " has raised a stronghold.";
+            case TOWN -> cap(p.title()) + " now runs a full town.";
+            default -> cap(p.title()) + " has pitched camp.";
+        };
+    }
+
+    public static String ruinedNews(Pack p, SettlementTier tier) {
+        SettlementTier t = tier == null || tier == SettlementTier.NONE ? SettlementTier.CAMP : tier;
+        return "With its numbers broken, " + p.title() + "'s " + t.key + " has fallen into ruin.";
+    }
+
+    public static String rebuiltNews(Pack p, SettlementTier tier) {
+        SettlementTier t = tier == null || tier == SettlementTier.NONE ? SettlementTier.CAMP : tier;
+        return cap(p.title()) + " has rebuilt its ruined " + t.key + ".";
     }
 
     private void challenge(Pack p, long now) {
@@ -536,13 +725,21 @@ public final class Feud {
         Pack king = top(winner);
         if (king == top(loser)) return;
         boolean crowned = vassals(king).isEmpty();
-        for (Pack v : vassals(loser)) v.liege = king.id;
+        Pack oldLiege = loser.liege == null ? null : pack(loser.liege);
+        if (oldLiege != null && oldLiege != king) oldLiege.bannersDirty = true;
+        for (Pack v : vassals(loser)) {
+            v.liege = king.id;
+            v.bannersDirty = true;
+        }
         loser.liege = king.id;
+        loser.bannersDirty = true;
+        king.bannersDirty = true;
         Brute kb = brute(king.boss);
         String kingName = kb != null ? kb.fullName() : cap(king.title());
         tell(News.Kind.SWALLOWED, cap(loser.title()) + " now kneels to " + kingName + ".", kb);
         if (crowned && kb != null) tell(News.Kind.CROWNED, kb.fullName() + " is now King of " + king.family.title
                 + " around " + king.place + ".", kb);
+        advanceSettlement(king);
     }
 
     // ---------------------------------------------------------------- deaths, leaving and keeping it small
@@ -555,19 +752,27 @@ public final class Feud {
         b.killedBy = killer;
         Pack p = packOf(b);
         if (p != null && b.id.equals(p.boss)) succession(p, now);
+        if (p != null && packs.containsKey(p.id)) updateSettlement(p);
     }
 
     private void leavePack(Brute b, long now) {
         Pack p = packOf(b);
         b.pack = null;
         if (p != null && b.id.equals(p.boss)) succession(p, now);
+        if (p != null && packs.containsKey(p.id)) updateSettlement(p);
     }
 
     /** The Boss is gone: the strongest Brute takes over, or the pack breaks up. A King's packs go their own way. */
     private void succession(Pack p, long now) {
         List<Pack> vassals = vassals(p);
+        List<Integer> prevVassalColors = new ArrayList<>(vassals.size());
         if (!vassals.isEmpty()) {
-            for (Pack v : vassals) v.liege = null;
+            for (Pack v : vassals) {
+                prevVassalColors.add(v.color);
+                v.liege = null;
+                v.bannersDirty = true;
+            }
+            p.bannersDirty = true;
             tellAt(p, News.Kind.SPLIT, "With its King gone, " + p.title() + " has lost its hold: " + vassals.size()
                     + (vassals.size() == 1 ? " pack goes" : " packs go") + " its own way.");
         }
@@ -585,12 +790,32 @@ public final class Feud {
         if (old != null && !old.alive && !old.finalDeath) {
             return; // the pack waits a while for its Boss to come back
         }
-        disband(p, true);
+        disband(p, true, prevVassalColors);
     }
 
     private void disband(Pack p, boolean announce) {
+        List<Integer> vassalColors = new ArrayList<>();
+        for (Pack v : vassals(p)) vassalColors.add(v.color);
+        disband(p, announce, vassalColors);
+    }
+
+    private void disband(Pack p, boolean announce, List<Integer> vassalColors) {
+        if (campsEnabled && p.siteSet && p.builtTier > 0 && !p.builtRuined) {
+            recordAbandonedSite(new AbandonedSite(p.id, p.family, p.color, p.dimension,
+                    p.siteX, p.siteY, p.siteZ, p.siteFacing, p.builtTier,
+                    vassalColors, p.skippedZones, p.skippedColumns));
+        }
         packs.remove(p.id);
-        for (Pack v : packs.values()) if (p.id.equals(v.liege)) v.liege = null;
+        if (p.liege != null) {
+            Pack liege = pack(p.liege);
+            if (liege != null) liege.bannersDirty = true;
+        }
+        for (Pack v : packs.values()) {
+            if (p.id.equals(v.liege)) {
+                v.liege = null;
+                v.bannersDirty = true;
+            }
+        }
         for (Brute b : brutes.values()) if (p.id.equals(b.pack)) b.pack = null;
         if (announce) tellAt(p, News.Kind.SPLIT, cap(p.title()) + " has scattered.");
     }
@@ -660,10 +885,10 @@ public final class Feud {
 
     private void tellAt(Pack p, News.Kind kind, String text) {
         p.remember(clock, text);
-        news.add(new News(kind, text, p.dimension, p.homeX, p.homeZ, List.of()));
+        news.add(new News(kind, text, p.dimension, p.campX(), p.campZ(), List.of()));
     }
 
-    static String cap(String s) {
+    public static String cap(String s) {
         return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 }

@@ -14,5 +14,5 @@ import java.util.UUID;
  * @param brutes   the Brutes it is about
  */
 public record News(Kind kind, String text, String dimension, int x, int z, List<UUID> brutes) {
-    public enum Kind { ROSE, FORMED, JOINED, GREW, CHALLENGE, RAID, SWALLOWED, CROWNED, SPLIT, RETURNED, HUNTING, FADED }
+    public enum Kind { ROSE, FORMED, JOINED, GREW, SETTLED, CHALLENGE, RAID, SWALLOWED, CROWNED, SPLIT, RETURNED, HUNTING, FADED }
 }

@@ -13,6 +13,10 @@ import io.github.pirut.bloodfeud.feud.PlaceNames;
 import io.github.pirut.bloodfeud.feud.Rank;
 import io.github.pirut.bloodfeud.feud.Relation;
 import io.github.pirut.bloodfeud.feud.Scar;
+import io.github.pirut.bloodfeud.feud.SettlementTier;
+import io.github.pirut.bloodfeud.game.camp.CampBlueprint;
+import io.github.pirut.bloodfeud.game.camp.CampBuilder;
+import io.github.pirut.bloodfeud.game.camp.SiteFinder;
 import io.github.pirut.bloodfeud.feud.Trait;
 import io.github.pirut.lib.Spots;
 import io.github.pirut.lib.Titles;
@@ -94,6 +98,7 @@ public final class Live {
     final MinecraftServer server;
     final Random random = new Random();
     private final FeudData data;
+    private final CampBuilder campBuilder = new CampBuilder();
 
     /** A Brute out in the world as a real mob. */
     static final class Active {
@@ -141,6 +146,7 @@ public final class Live {
     private Live(MinecraftServer server) {
         this.server = server;
         this.data = FeudData.get(server);
+        this.data.feud.campsEnabled = BloodFeud.config().buildCamps;
     }
 
     public static Live get(MinecraftServer server) {
@@ -154,8 +160,17 @@ public final class Live {
     }
 
     public static void stopped() {
-        if (instance != null) for (Active a : instance.active.values()) a.bar.removeAllPlayers();
+        if (instance != null) {
+            for (Active a : instance.active.values()) a.bar.removeAllPlayers();
+            instance.campBuilder.clearAll();
+        }
         instance = null;
+    }
+
+    /** Called live when buildCamps is toggled on or off. */
+    public void onBuildCampsChanged(boolean enabled) {
+        data.feud.campsEnabled = enabled;
+        if (!enabled) campBuilder.cancelAutomatic();
     }
 
     public Feud feud() {
@@ -226,7 +241,10 @@ public final class Live {
         gruntLevel.remove(mob.getUUID());
         if (owner != null) {
             Pack p = data.feud.pack(owner);
-            if (p != null) p.grunts = Math.max(0, p.grunts - 1);
+            if (p != null) {
+                data.feud.gruntKilled(p, now());
+                announce(data.feud.drainNews());
+            }
             data.changed();
         }
         marked.remove(mob.getUUID());
@@ -355,6 +373,7 @@ public final class Live {
             if (forGood) io.github.pirut.bloodfeud.feud.Talk.book().forget(b.id);
         }
         announce(f.drainNews());
+        flushDirtyBanners();
         data.changed();
     }
 
@@ -379,6 +398,8 @@ public final class Live {
 
     public void tick() {
         long gt = gameTime();
+        campBuilder.tick(server, data, gt);
+        if (gt % 40 == 17) campBuilder.checkAutoBuilds(server, data, gt);
         long nightIndex = Math.floorDiv(now() - 13000, Feud.DAY);
         if (lastNightIndex == Long.MIN_VALUE) lastNightIndex = nightIndex;
         else if (nightIndex != lastNightIndex) {
@@ -413,6 +434,7 @@ public final class Live {
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             if (!p.isSpectator()) spots.add(new Feud.PlayerSpot(p.getUUID(), dim(p.level()), p.getBlockX(), p.getBlockZ()));
         }
+        f.campsEnabled = BloodFeud.config().buildCamps;
         f.night(now, spots, this::placeName);
         passOnLoot();
         for (Active a : new ArrayList<>(active.values())) {
@@ -420,8 +442,24 @@ public final class Live {
             if (b == null || !b.alive) removeActive(a.brute, true);
             else refresh(a, b);
         }
-        announce(f.drainNews());
+        List<News> news = f.drainNews();
+        flushDirtyBanners();
+        announce(news);
         data.changed();
+    }
+
+    /** Immediately re-banners any loaded built settlement marked dirty; unloaded ones retry via CampBuilder. */
+    private void flushDirtyBanners() {
+        Feud f = data.feud;
+        boolean dirtied = false;
+        for (Pack pk : f.packs.values()) {
+            if (!pk.bannersDirty || !pk.siteSet || pk.builtTier <= 0 || campBuilder.isBuilding(pk.id)) continue;
+            if (campBuilder.rebanner(level(pk.dimension), f, pk)) {
+                pk.bannersDirty = false;
+                dirtied = true;
+            }
+        }
+        if (dirtied) data.changed();
     }
 
     /**
@@ -535,11 +573,15 @@ public final class Live {
         }
         a.bar.setProgress(Math.max(0, Math.min(1, mob.getHealth() / mob.getMaxHealth())));
         bark(a, b, mob, level);
-        if (b.pack == null || !b.id.equals(data.feud.pack(b.pack) == null ? null : data.feud.pack(b.pack).boss)) {
+        Pack pk = b.pack == null ? null : data.feud.pack(b.pack);
+        if (pk == null || !b.id.equals(pk.boss)) {
             b.x = mob.getBlockX();
             b.z = mob.getBlockZ();
         }
-        if (nearest > WITHDRAW_RANGE) {
+        int withdrawRange = (pk != null && pk.builtTier > 0 && pk.siteSet)
+                ? Math.max(WITHDRAW_RANGE, packEncounterRange(pk) + 24)
+                : WITHDRAW_RANGE;
+        if (nearest > withdrawRange) {
             if (a.farSince < 0) a.farSince = gt;
             else if (gt - a.farSince > 400) {
                 withdraw(a, b, mob, gt);
@@ -548,6 +590,7 @@ public final class Live {
         } else {
             a.farSince = -1;
         }
+        enforceSettlementLeash(mob, pk);
         Effects.tick(this, a, b, mob, level);
     }
 
@@ -602,14 +645,36 @@ public final class Live {
         }
         for (Iterator<Map.Entry<UUID, UUID>> it = grunts.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<UUID, UUID> g = it.next();
-            if (owners.contains(g.getValue())) continue;
             ServerLevel level = server.getLevel(gruntLevel.getOrDefault(g.getKey(), net.minecraft.world.level.Level.OVERWORLD));
+            if (owners.contains(g.getValue())) {
+                Pack pk = data.feud.pack(g.getValue());
+                if (pk != null && pk.builtTier > 0 && pk.siteSet && level != null
+                        && level.getEntity(g.getKey()) instanceof Mob mob && mob.isAlive()) {
+                    enforceSettlementLeash(mob, pk);
+                }
+                continue;
+            }
             Entity e = level == null ? null : level.getEntity(g.getKey());
             it.remove();
             gruntLevel.remove(g.getKey());
             if (e == null || e.isRemoved()) continue;
             if (level.getNearestPlayer(e, 48) == null) e.discard();
             else e.removeTag(TAG_GRUNT); // a player is still fighting it: it's just a mob now
+        }
+    }
+
+    /** Actively calls wandering garrison mobs back to their built settlement when they chase too far afield. */
+    private static void enforceSettlementLeash(Mob mob, Pack pk) {
+        if (pk == null || pk.builtTier <= 0 || !pk.siteSet) return;
+        SettlementTier built = SettlementTier.byLevel(pk.builtTier);
+        double dist = Math.hypot(mob.getX() - (pk.siteX + 0.5), mob.getZ() - (pk.siteZ + 0.5));
+        LivingEntity target = mob.getTarget();
+        boolean hasNearTarget = target != null && target.isAlive() && mob.distanceTo(target) <= 24.0;
+        double softLeash = built.radius + 32.0;
+        double hardLeash = built.radius + 52.0;
+        if (dist > hardLeash || (dist > softLeash && !hasNearTarget)) {
+            mob.setTarget(null);
+            mob.getNavigation().moveTo(pk.siteX + 0.5, pk.siteY + 1, pk.siteZ + 0.5, 1.0);
         }
     }
 
@@ -642,10 +707,11 @@ public final class Live {
             return;
         }
         Pack near = null;
-        double best = PACK_ENCOUNTER_RANGE;
+        double best = Double.MAX_VALUE;
         for (Pack pk : f.packs.values()) {
+            double range = packEncounterRange(pk);
             double d = pk.distanceTo(dim, p.getX(), p.getZ());
-            if (d <= best && !resting(pk.id, gt) && !packOut(pk)) {
+            if (d <= range && d < best && !resting(pk.id, gt) && !packOut(pk)) {
                 near = pk;
                 best = d;
             }
@@ -679,55 +745,130 @@ public final class Live {
         return false;
     }
 
-    /** A pack comes out to meet a player near its home: the Boss, a couple of its Brutes, and some grunts. */
+    private static int packEncounterRange(Pack pk) {
+        SettlementTier t = pk.builtTier > 0 ? SettlementTier.byLevel(pk.builtTier)
+                : pk.displayTier(BloodFeud.config().buildCamps);
+        return switch (t) {
+            case TOWN -> 128;
+            case STRONGHOLD -> 108;
+            case OUTPOST -> 92;
+            default -> PACK_ENCOUNTER_RANGE;
+        };
+    }
+
+    /** A pack comes out to meet a player near its home, or mans its camp/outpost/stronghold/town garrison. */
     public void spawnPack(ServerLevel level, Pack pack, ServerPlayer player) {
         Feud f = data.feud;
-        pack.met.add(player.getUUID());
-        Vec3 at = player.position();
-        double dx = pack.homeX - at.x, dz = pack.homeZ - at.z, d = Math.hypot(dx, dz);
-        BlockPos center = d <= 36 ? BlockPos.containing(pack.homeX, player.getY(), pack.homeZ)
-                : BlockPos.containing(at.x + dx / d * 28, player.getY(), at.z + dz / d * 28);
+        if (player != null) pack.met.add(player.getUUID());
+        boolean hasSettlement = pack.builtTier > 0 && pack.siteSet;
+        SettlementTier tier = hasSettlement ? SettlementTier.byLevel(pack.builtTier)
+                : pack.displayTier(BloodFeud.config().buildCamps);
+
+        int maxBrutes = switch (tier) {
+            case TOWN -> 5;
+            case STRONGHOLD -> 4;
+            case OUTPOST -> 3;
+            default -> 3;
+        };
+        int gruntCount = switch (tier) {
+            case TOWN -> 8 + random.nextInt(5);
+            case STRONGHOLD -> 6 + random.nextInt(4);
+            case OUTPOST -> 4 + random.nextInt(3);
+            default -> 2 + random.nextInt(3);
+        };
+        int g = Math.min(pack.grunts, gruntCount);
+
+        BlockPos origin = hasSettlement ? new BlockPos(pack.siteX, pack.siteY, pack.siteZ) : null;
+        CampBlueprint.Anchors anchors = hasSettlement ? CampBlueprint.spawnAnchors(pack.siteFacing, tier) : null;
+        int tetherRadius = hasSettlement ? tier.radius + 16 : 0;
+
+        BlockPos center;
+        if (hasSettlement) {
+            center = origin;
+        } else if (player != null) {
+            Vec3 at = player.position();
+            double dx = pack.campX() - at.x, dz = pack.campZ() - at.z, d = Math.hypot(dx, dz);
+            center = d <= 36 ? BlockPos.containing(pack.campX(), player.getY(), pack.campZ())
+                    : BlockPos.containing(at.x + dx / d * 28, player.getY(), at.z + dz / d * 28);
+        } else {
+            center = new BlockPos(pack.campX(), level.getSeaLevel(), pack.campZ());
+        }
+
         List<Brute> members = f.members(pack);
         Mob bossMob = null;
         Brute boss = null;
         int out = 0;
+        int guardIdx = 0;
         for (Brute b : members) {
-            if (out >= 3 || isActive(b) || active.size() >= BloodFeud.config().maxActiveBrutes) continue;
-            Mob mob = spawnBrute(level, b, center, 0, 8);
+            if (out >= maxBrutes || isActive(b) || active.size() >= BloodFeud.config().maxActiveBrutes) continue;
+            BlockPos spawnAnchor = center;
+            int minR = 0, maxR = 8;
+            if (hasSettlement && anchors != null) {
+                if (b.id.equals(pack.boss)) {
+                    CampBlueprint.Spot s = anchors.bossSpot();
+                    spawnAnchor = origin.offset(s.rx(), s.ry(), s.rz());
+                    maxR = 3;
+                } else if (!anchors.guardSpots().isEmpty()) {
+                    CampBlueprint.Spot s = anchors.guardSpots().get(guardIdx++ % anchors.guardSpots().size());
+                    spawnAnchor = origin.offset(s.rx(), s.ry(), s.rz());
+                    maxR = 4;
+                }
+            }
+            Mob mob = spawnBrute(level, b, spawnAnchor, minR, maxR, hasSettlement);
+            if (mob == null && hasSettlement) mob = spawnBrute(level, b, origin, 1, Math.min(12, tier.radius), false);
             if (mob == null) continue;
-            b.relation(player.getUUID()).met = true;
+            if (hasSettlement) mob.restrictTo(origin, tetherRadius);
+            if (player != null) b.relation(player.getUUID()).met = true;
             out++;
             if (b.id.equals(pack.boss)) {
                 bossMob = mob;
                 boss = b;
             }
         }
-        int g = Math.min(pack.grunts, 2 + random.nextInt(3));
         Brute leader = boss != null ? boss : members.isEmpty() ? null : members.get(0);
-        for (int i = 0; i < g; i++) spawnGrunt(level, pack, leader == null ? pack.family.defaultType : leader.entityType, center, pack.id);
-        if (bossMob != null) introduce(player, bossMob, boss, false);
-        else if (out > 0) {
-            Brute first = members.get(0);
-            Active a = active.get(first.id);
-            Entity e = a == null ? null : level.getEntity(a.entity);
-            if (e instanceof Mob m) introduce(player, m, first, false);
-        }
-        if (out > 1 || g > 0) {
-            StringBuilder with = new StringBuilder();
-            for (Brute b : members) {
-                if (b == boss || !isActive(b)) continue;
-                if (!with.isEmpty()) with.append(", ");
-                with.append(b.name).append(" (level ").append(b.level).append(")");
+        String gruntType = leader == null ? pack.family.defaultType : leader.entityType;
+        for (int i = 0; i < g; i++) {
+            BlockPos gAnchor = center;
+            if (hasSettlement && anchors != null) {
+                List<CampBlueprint.Spot> pool = (i % 2 == 0 && !anchors.guardSpots().isEmpty())
+                        ? anchors.guardSpots() : anchors.patrolSpots();
+                if (!pool.isEmpty()) {
+                    CampBlueprint.Spot s = pool.get(i % pool.size());
+                    gAnchor = origin.offset(s.rx(), s.ry(), s.rz());
+                }
             }
-            if (g > 0) with.append(with.isEmpty() ? "" : " and ").append(g).append(g == 1 ? " grunt" : " grunts");
-            player.sendSystemMessage(Component.literal("With it: " + with).withStyle(ChatFormatting.GRAY));
+            Mob grunt = spawnGrunt(level, pack, gruntType, gAnchor, pack.id, hasSettlement);
+            if (grunt != null && hasSettlement) grunt.restrictTo(origin, tetherRadius);
+        }
+        if (player != null) {
+            if (bossMob != null) introduce(player, bossMob, boss, false);
+            else if (out > 0) {
+                Brute first = members.get(0);
+                Active a = active.get(first.id);
+                Entity e = a == null ? null : level.getEntity(a.entity);
+                if (e instanceof Mob m) introduce(player, m, first, false);
+            }
+            if (out > 1 || g > 0) {
+                StringBuilder with = new StringBuilder();
+                for (Brute b : members) {
+                    if (b == boss || !isActive(b)) continue;
+                    if (!with.isEmpty()) with.append(", ");
+                    with.append(b.name).append(" (level ").append(b.level).append(")");
+                }
+                if (g > 0) with.append(with.isEmpty() ? "" : " and ").append(g).append(g == 1 ? " grunt" : " grunts");
+                player.sendSystemMessage(Component.literal("With it: " + with).withStyle(ChatFormatting.GRAY));
+            }
         }
         data.changed();
     }
 
     /** Spawns a Brute as a real mob somewhere between {@code min} and {@code max} blocks from {@code near}. */
     public Mob spawnBrute(ServerLevel level, Brute b, BlockPos near, int min, int max) {
-        BlockPos pos = findSpot(level, near, min, max);
+        return spawnBrute(level, b, near, min, max, false);
+    }
+
+    private Mob spawnBrute(ServerLevel level, Brute b, BlockPos near, int min, int max, boolean preferAnchor) {
+        BlockPos pos = preferAnchor ? findSettlementSpot(level, near, min, max) : findSpot(level, near, min, max);
         if (pos == null) return null;
         EntityType<?> type = EntityType.byString(b.entityType).orElse(null);
         if (type == null) type = EntityType.byString(b.family.defaultType).orElse(EntityType.ZOMBIE);
@@ -743,16 +884,16 @@ public final class Live {
         level.addFreshEntity(mob);
         if (b.traits.contains(Trait.PACKCALLER)) {
             Pack p = data.feud.packOf(b);
-            for (int i = 0; i < 3; i++) spawnGrunt(level, p, b.entityType, pos, p != null ? p.id : b.id);
+            for (int i = 0; i < 3; i++) spawnGrunt(level, p, b.entityType, pos, p != null ? p.id : b.id, false);
         }
         return mob;
     }
 
-    private void spawnGrunt(ServerLevel level, Pack pack, String entityType, BlockPos near, UUID owner) {
-        BlockPos pos = findSpot(level, near, 1, 8);
-        if (pos == null) return;
+    private Mob spawnGrunt(ServerLevel level, Pack pack, String entityType, BlockPos near, UUID owner, boolean preferAnchor) {
+        BlockPos pos = preferAnchor ? findSettlementSpot(level, near, 1, 8) : findSpot(level, near, 1, 8);
+        if (pos == null) return null;
         EntityType<?> type = EntityType.byString(entityType).orElse(EntityType.ZOMBIE);
-        if (!(type.create(level) instanceof Mob mob)) return;
+        if (!(type.create(level) instanceof Mob mob)) return null;
         mob.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, random.nextFloat() * 360, 0);
         mob.finalizeSpawn(level, level.getCurrentDifficultyAt(pos), MobSpawnType.EVENT, null);
         mob.addTag(TAG_GRUNT);
@@ -765,6 +906,22 @@ public final class Live {
         grunts.put(mob.getUUID(), owner);
         gruntLevel.put(mob.getUUID(), level.dimension());
         level.addFreshEntity(mob);
+        return mob;
+    }
+
+    /** Checks local standability right around a settlement anchor first so Bosses/guards spawn inside halls, not on roofs. */
+    private BlockPos findSettlementSpot(ServerLevel level, BlockPos anchor, int fallbackMin, int fallbackMax) {
+        int[][] offsets = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
+        for (int[] off : offsets) {
+            int x = anchor.getX() + off[0];
+            int z = anchor.getZ() + off[1];
+            if (!level.hasChunk(x >> 4, z >> 4)) continue;
+            for (int dy : new int[]{0, 1, -1, 2}) {
+                BlockPos candidate = new BlockPos(x, anchor.getY() + dy, z);
+                if (Spots.standable(level, candidate, false)) return candidate;
+            }
+        }
+        return findSpot(level, anchor, fallbackMin, fallbackMax);
     }
 
     private BlockPos findSpot(ServerLevel level, BlockPos near, int min, int max) {
@@ -1202,10 +1359,198 @@ public final class Live {
         return b;
     }
 
+    /** Ops only: creates a pack ahead of the player, queues its intact or ruined settlement build, and populates its garrison. */
+    public Pack spawnCommandCamp(ServerPlayer player, Family family, SettlementTier tier, boolean ruined,
+                                 java.util.function.Consumer<Pack> onDone) {
+        ServerLevel level = player.serverLevel();
+        SettlementTier target = tier == null || tier == SettlementTier.NONE ? SettlementTier.CAMP : tier;
+        SiteFinder.Site site = SiteFinder.findCommandSite(level, player, target);
+        if (site == null) return null;
+        BlockPos origin = site.origin();
+        UUID playerId = player.getUUID();
+        Feud f = data.feud;
+        Brute boss = f.rise(family.defaultType, family, dim(level), origin.getX(), origin.getZ(),
+                playerId, Memory.Kind.SAW_KILLS, null, null, now());
+        Pack pack = f.form(boss, this::placeName, now(), ruined ? 0 : target.minGrunts);
+        pack.siteSet = true;
+        pack.siteX = origin.getX();
+        pack.siteY = origin.getY();
+        pack.siteZ = origin.getZ();
+        pack.siteFacing = site.facing();
+        pack.met.add(playerId);
+        if (ruined) {
+            f.ruinSettlement(pack, target, now());
+        } else {
+            f.upgradeSettlement(pack, target, now());
+        }
+        f.drainNews();
+        data.changed();
+
+        Runnable done = () -> {
+            rested.remove(pack.id);
+            ServerPlayer online = server.getPlayerList().getPlayer(playerId);
+            spawnPack(level, pack, online != null && online.level() == level ? online : null);
+            if (onDone != null) onDone.accept(pack);
+        };
+        if (ruined) {
+            campBuilder.queueRuin(level, f, pack, target.level, false, gameTime(), done);
+        } else {
+            campBuilder.queueBuild(level, f, pack, 0, target.level, false, gameTime(), done);
+        }
+        return pack;
+    }
+
+    public record UpgradeResult(boolean ok, String error, Pack pack, SettlementTier target,
+                                List<String> skippedZones, int skippedRingColumns) {
+    }
+
+    /** Ops only: upgrades (or repairs if ruined) the nearest pack within 256 blocks and queues in-place work. */
+    public UpgradeResult upgradeNearestCamp(ServerPlayer player, java.util.function.Consumer<Pack> onDone) {
+        ServerLevel level = player.serverLevel();
+        String dim = dim(level);
+        Feud f = data.feud;
+        Pack nearest = nearestPack(f, dim, player.getX(), player.getZ(), 256.0);
+        if (nearest == null) {
+            return new UpgradeResult(false, "No pack within 256 blocks to upgrade.", null, null, List.of(), 0);
+        }
+        if (campBuilder.isBuilding(nearest.id)) {
+            return new UpgradeResult(false, "That pack's settlement is already under construction.", nearest, null, List.of(), 0);
+        }
+        int currentBuilt = nearest.builtTier;
+        boolean wasRuined = nearest.ruined || nearest.builtRuined;
+        if (currentBuilt >= SettlementTier.TOWN.level && !wasRuined) {
+            return new UpgradeResult(false, Feud.cap(nearest.title()) + " already runs a full Town.", nearest, SettlementTier.TOWN, List.of(), 0);
+        }
+        SettlementTier target;
+        if (wasRuined) {
+            target = currentBuilt > 0 ? SettlementTier.byLevel(currentBuilt)
+                    : (nearest.tier == null || nearest.tier == SettlementTier.NONE ? SettlementTier.CAMP : nearest.tier);
+        } else {
+            target = SettlementTier.byLevel(Math.min(SettlementTier.TOWN.level, currentBuilt + 1));
+        }
+        boolean assignedSite = false;
+        if (!nearest.siteSet) {
+            SiteFinder.Site site = SiteFinder.findAutoSite(level, nearest, target);
+            if (site == null) site = SiteFinder.findCommandSite(level, player, target);
+            if (site == null) {
+                return new UpgradeResult(false, "No dry, solid ground nearby to build " + Feud.cap(nearest.title()) + ".", nearest, target, List.of(), 0);
+            }
+            nearest.siteSet = true;
+            nearest.siteX = site.origin().getX();
+            nearest.siteY = site.origin().getY();
+            nearest.siteZ = site.origin().getZ();
+            nearest.siteFacing = site.facing();
+            assignedSite = true;
+        }
+
+        UUID playerId = player.getUUID();
+        Pack pack = nearest;
+        Runnable done = () -> {
+            rested.remove(pack.id);
+            ServerPlayer online = server.getPlayerList().getPlayer(playerId);
+            spawnPack(level, pack, online != null && online.level() == level ? online : null);
+            if (onDone != null) onDone.accept(pack);
+        };
+        CampBuilder.QueueResult qr = (wasRuined && currentBuilt > 0)
+                ? campBuilder.queueRepair(level, f, pack, target.level, false, gameTime(), done)
+                : campBuilder.queueBuild(level, f, pack, currentBuilt, target.level, false, gameTime(), done);
+        if (!qr.queued()) {
+            if (assignedSite) {
+                nearest.siteSet = false;
+                nearest.buildStarted = false;
+                nearest.skippedZones.clear();
+                nearest.skippedColumns.clear();
+            }
+            return new UpgradeResult(false, "Cannot upgrade " + Feud.cap(pack.title())
+                    + ": expansion area is blocked by player builds or terrain.", pack, target,
+                    qr.skippedZones(), qr.skippedRingColumns());
+        }
+
+        pack.met.add(playerId);
+        f.upgradeSettlement(pack, target, now());
+        f.drainNews();
+        data.changed();
+        return new UpgradeResult(true, "", pack, target, qr.skippedZones(), qr.skippedRingColumns());
+    }
+
+    /** Ops only: turns the nearest pack's settlement within 256 blocks into ruins in-place (or builds ruins if unbuilt). */
+    public UpgradeResult ruinNearestCamp(ServerPlayer player, java.util.function.Consumer<Pack> onDone) {
+        ServerLevel level = player.serverLevel();
+        String dim = dim(level);
+        Feud f = data.feud;
+        Pack nearest = nearestPack(f, dim, player.getX(), player.getZ(), 256.0);
+        if (nearest == null) {
+            return new UpgradeResult(false, "No pack within 256 blocks to ruin.", null, null, List.of(), 0);
+        }
+        if (campBuilder.isBuilding(nearest.id)) {
+            return new UpgradeResult(false, "That pack's settlement is already under construction.", nearest, null, List.of(), 0);
+        }
+        if (nearest.ruined && nearest.builtRuined && nearest.builtTier > 0) {
+            SettlementTier t = SettlementTier.byLevel(nearest.builtTier);
+            return new UpgradeResult(false, Feud.cap(nearest.title()) + "'s " + t.key + " is already in ruins.", nearest, t, List.of(), 0);
+        }
+        SettlementTier target = nearest.builtTier > 0 ? SettlementTier.byLevel(nearest.builtTier)
+                : (nearest.tier == null || nearest.tier == SettlementTier.NONE ? SettlementTier.CAMP : nearest.tier);
+        boolean assignedSite = false;
+        if (!nearest.siteSet) {
+            SiteFinder.Site site = SiteFinder.findAutoSite(level, nearest, target);
+            if (site == null) site = SiteFinder.findCommandSite(level, player, target);
+            if (site == null) {
+                return new UpgradeResult(false, "No dry, solid ground nearby to ruin " + Feud.cap(nearest.title()) + ".", nearest, target, List.of(), 0);
+            }
+            nearest.siteSet = true;
+            nearest.siteX = site.origin().getX();
+            nearest.siteY = site.origin().getY();
+            nearest.siteZ = site.origin().getZ();
+            nearest.siteFacing = site.facing();
+            assignedSite = true;
+        }
+
+        UUID playerId = player.getUUID();
+        Pack pack = nearest;
+        CampBuilder.QueueResult qr = campBuilder.queueRuin(level, f, pack, target.level, List.of(), false, gameTime(), () -> {
+            flushDirtyBanners();
+            if (onDone != null) onDone.accept(pack);
+        });
+        if (!qr.queued()) {
+            if (assignedSite) {
+                nearest.siteSet = false;
+                nearest.buildStarted = false;
+                nearest.skippedZones.clear();
+                nearest.skippedColumns.clear();
+            }
+            return new UpgradeResult(false, "Cannot ruin " + Feud.cap(pack.title())
+                    + ": area is blocked or nothing to ruin.", pack, target,
+                    qr.skippedZones(), qr.skippedRingColumns());
+        }
+
+        pack.met.add(playerId);
+        f.ruinSettlement(pack, target, now());
+        f.drainNews();
+        flushDirtyBanners();
+        data.changed();
+        return new UpgradeResult(true, "", pack, target, qr.skippedZones(), qr.skippedRingColumns());
+    }
+
+    private static Pack nearestPack(Feud f, String dim, double x, double z, double maxDist) {
+        Pack nearest = null;
+        double best = maxDist;
+        for (Pack pk : f.packs.values()) {
+            double d = pk.distanceTo(dim, x, z);
+            if (d <= best) {
+                nearest = pk;
+                best = d;
+            }
+        }
+        return nearest;
+    }
+
     public void forgetAll() {
         for (UUID id : new ArrayList<>(active.keySet())) removeActive(id, true);
+        campBuilder.clearAll();
         data.feud.brutes.clear();
         data.feud.packs.clear();
+        data.feud.abandonedSites.clear();
         data.stolen.clear();
         marked.clear();
         data.changed();

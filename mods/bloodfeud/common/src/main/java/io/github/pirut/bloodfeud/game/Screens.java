@@ -7,6 +7,7 @@ import io.github.pirut.bloodfeud.feud.Memory;
 import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.Relation;
 import io.github.pirut.bloodfeud.feud.Scar;
+import io.github.pirut.bloodfeud.feud.SettlementTier;
 import io.github.pirut.bloodfeud.feud.Trait;
 import io.github.pirut.lib.Net;
 import net.minecraft.core.BlockPos;
@@ -78,10 +79,10 @@ public final class Screens {
             if (!pk.met.contains(me)) continue;
             packs.add(pack(f, pk, me));
             if (pk.dimension.equals(dim)) {
-                minX = Math.min(minX, pk.homeX);
-                maxX = Math.max(maxX, pk.homeX);
-                minZ = Math.min(minZ, pk.homeZ);
-                maxZ = Math.max(maxZ, pk.homeZ);
+                minX = Math.min(minX, pk.campX());
+                maxX = Math.max(maxX, pk.campX());
+                minZ = Math.min(minZ, pk.campZ());
+                maxZ = Math.max(maxZ, pk.campZ());
             }
         }
         t.put("packs", packs);
@@ -111,8 +112,14 @@ public final class Screens {
         t.putString("familyTitle", cap(pk.family.title));
         t.putString("place", pk.place);
         t.putInt("color", pk.color);
-        t.putInt("x", pk.homeX);
-        t.putInt("z", pk.homeZ);
+        t.putInt("x", pk.campX());
+        t.putInt("z", pk.campZ());
+        boolean campsOn = BloodFeud.config().buildCamps;
+        SettlementTier displayTier = pk.displayTier(campsOn);
+        t.putString("tier", displayTier.key);
+        t.putString("tierTitle", pk.displayTierTitle(campsOn));
+        t.putInt("builtTier", pk.builtTier);
+        t.putBoolean("ruined", displayTier != SettlementTier.NONE && (campsOn ? pk.ruined : (pk.builtTier > 0 && (pk.builtRuined || pk.ruined))));
         t.putString("dim", pk.dimension);
         t.putLong("formed", day(pk.formedAt));
         t.putInt("grunts", pk.grunts);
