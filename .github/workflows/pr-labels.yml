@@ -1,0 +1,293 @@
+name: PR Labels & Release Preview
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: pr-labels-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Auto-label changed mods
+        if: contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          files_json="$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" | jq -s 'add // []')"
+
+          touched_folders=()
+          while IFS= read -r folder; do
+            [ -n "$folder" ] && touched_folders+=("$folder")
+          done < <(jq -r '[.[].filename | select(startswith("mods/")) | split("/")[1] | select(length > 0)] | unique | .[]' <<<"$files_json")
+
+          if [ "${#touched_folders[@]}" -eq 0 ]; then
+            echo "No files under mods/ changed."
+            exit 0
+          fi
+
+          current_labels_json="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/labels" | jq -s 'add // [] | [.[].name]')"
+          to_add=()
+
+          for folder in "${touched_folders[@]}"; do
+            has_props=0
+            if [ -f "mods/$folder/gradle.properties" ]; then
+              has_props=1
+            elif jq -e --arg p "mods/$folder/gradle.properties" 'any(.[]; .filename == $p and .status != "removed")' <<<"$files_json" >/dev/null; then
+              has_props=1
+            fi
+            [ "$has_props" -eq 1 ] || continue
+
+            label="mod:$folder"
+            encoded_label="$(jq -rn --arg s "$label" '$s | @uri')"
+            if ! gh api "repos/$REPO/labels/$encoded_label" >/dev/null 2>&1; then
+              props_raw=""
+              if [ -f "mods/$folder/gradle.properties" ]; then
+                props_raw="$(cat "mods/$folder/gradle.properties")"
+              else
+                props_raw="$(gh api "repos/$REPO/contents/mods/$folder/gradle.properties?ref=$PR_HEAD_SHA" -H "Accept: application/vnd.github.raw" 2>/dev/null || true)"
+                if [ -z "$props_raw" ] && [ -n "${PR_HEAD_REPO:-}" ] && [ "$PR_HEAD_REPO" != "$REPO" ]; then
+                  props_raw="$(gh api "repos/$PR_HEAD_REPO/contents/mods/$folder/gradle.properties?ref=$PR_HEAD_SHA" -H "Accept: application/vnd.github.raw" 2>/dev/null || true)"
+                fi
+              fi
+              mod_name="$(printf '%s\n' "$props_raw" | grep -m1 '^mod_name=' | cut -d= -f2- | tr -d '\r' || true)"
+              [ -n "$mod_name" ] || mod_name="$folder"
+              gh label create "$label" --repo "$REPO" --color "1d76db" \
+                --description "Changes to $mod_name (mods/$folder)" --force
+            fi
+
+            if ! jq -e --arg l "$label" 'index($l) != null' <<<"$current_labels_json" >/dev/null; then
+              to_add+=("$label")
+            fi
+          done
+
+          if [ "${#to_add[@]}" -gt 0 ]; then
+            printf '%s\n' "${to_add[@]}" | jq -R . | jq -s '{labels: .}' | \
+              gh api -X POST "repos/$REPO/issues/$PR_NUMBER/labels" --input - >/dev/null
+            echo "Added labels: ${to_add[*]}"
+          else
+            echo "All applicable mod:* labels already applied."
+          fi
+
+      - name: Validate labels and update release preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          marker="<!-- mc-mods-release-preview -->"
+
+          labels_json="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/labels" | jq -s 'add // [] | [.[].name]')"
+          comment_id="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" | jq -s -r --arg m "$marker" 'add // [] | map(select((.body // "") | contains($m))) | .[0].id // empty')"
+
+          upsert_comment() {
+            local body=$1
+            if [ -n "$comment_id" ]; then
+              jq -n --arg body "$body" '{body: $body}' | \
+                gh api -X PATCH "repos/$REPO/issues/comments/$comment_id" --input - >/dev/null
+            else
+              jq -n --arg body "$body" '{body: $body}' | \
+                gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" --input - >/dev/null
+            fi
+          }
+
+          release_labels=()
+          while IFS= read -r lbl; do
+            [ -n "$lbl" ] && release_labels+=("$lbl")
+          done < <(jq -r '[.[] | select(test("^release(:(patch|minor|major|alpha|beta))?$"))] | unique | .[]' <<<"$labels_json")
+
+          mod_labels=()
+          while IFS= read -r m; do
+            [ -n "$m" ] && mod_labels+=("$m")
+          done < <(jq -r '[.[] | select(startswith("mod:")) | sub("^mod:"; "") | select(length > 0)] | unique | sort_by([(. != "pirutlib"), .]) | .[]' <<<"$labels_json")
+
+          if [ "${#release_labels[@]}" -eq 0 ]; then
+            if [ -n "$comment_id" ]; then
+              upsert_comment "$(printf '%s\nNo release label set — merging this PR will not publish a release.\n' "$marker")"
+            fi
+            exit 0
+          fi
+
+          if [ "${#release_labels[@]}" -gt 1 ]; then
+            conflict_list="$(printf '`%s`, ' "${release_labels[@]}")"
+            conflict_list="${conflict_list%, }"
+            body="$(printf '%s\n### Release label conflict\n\nThis PR has multiple release labels: %s.\n\nKeep only one `release*` label before merging.\n' "$marker" "$conflict_list")"
+            upsert_comment "$body"
+            echo "::error::Conflicting release labels on PR #$PR_NUMBER: ${release_labels[*]}"
+            exit 1
+          fi
+
+          release_label="${release_labels[0]}"
+
+          if [ "${#mod_labels[@]}" -eq 0 ]; then
+            body="$(printf '%s\n### Missing mod label\n\n`%s` is set, but no `mod:<folder>` label is applied.\n\nAdd one or more `mod:<folder>` labels (for example `mod:cc-agent`) to select which mod(s) to release on merge.\n' "$marker" "$release_label")"
+            upsert_comment "$body"
+            echo "::error::Release label '$release_label' set without any 'mod:<folder>' label on PR #$PR_NUMBER."
+            exit 1
+          fi
+
+          if [ "$release_label" = "release" ]; then
+            bump_mode="auto"
+          else
+            bump_mode="${release_label#release:}"
+          fi
+
+          fetch_pr_file() {
+            local path=$1
+            if gh api "repos/$REPO/contents/$path?ref=$PR_HEAD_SHA" -H "Accept: application/vnd.github.raw" 2>/dev/null; then
+              return 0
+            fi
+            if [ -n "${PR_HEAD_REPO:-}" ] && [ "$PR_HEAD_REPO" != "$REPO" ]; then
+              if gh api "repos/$PR_HEAD_REPO/contents/$path?ref=$PR_HEAD_SHA" -H "Accept: application/vnd.github.raw" 2>/dev/null; then
+                return 0
+              fi
+            fi
+            if [ -f "$path" ]; then
+              cat "$path"
+              return 0
+            fi
+            return 1
+          }
+
+          prop_from_text() {
+            local key=$1 text=$2
+            printf '%s\n' "$text" | grep -m1 "^$key=" | cut -d= -f2- | tr -d '\r' || true
+          }
+
+          rows=""
+          errors=()
+
+          for m in "${mod_labels[@]}"; do
+            if ! props_text="$(fetch_pr_file "mods/$m/gradle.properties")"; then
+              errors+=("No \`mods/$m/gradle.properties\` found for label \`mod:$m\`.")
+              continue
+            fi
+
+            mod_name="$(prop_from_text mod_name "$props_text")"
+            [ -n "$mod_name" ] || mod_name="$m"
+            cur_ver="$(prop_from_text mod_version "$props_text")"
+            mr_id="$(prop_from_text modrinth_project_id "$props_text")"
+            cf_id="$(prop_from_text curseforge_project_id "$props_text")"
+
+            if ! target_ver="$(.github/scripts/bump-version.sh "$m" "$cur_ver" "$bump_mode" 2>"$RUNNER_TEMP/bump-err.txt")"; then
+              err_msg="$(cat "$RUNNER_TEMP/bump-err.txt")"
+              errors+=("\`$m\`: $err_msg")
+              continue
+            fi
+
+            changelog_text="$(fetch_pr_file "mods/$m/CHANGELOG.md" || true)"
+            CHANGELOG_TEXT="$changelog_text" TARGET_VER="$target_ver" python3 - <<'PY' > "$RUNNER_TEMP/notes-source.txt"
+          import os, re
+
+          changelog = os.environ.get("CHANGELOG_TEXT", "").replace("\r\n", "\n")
+          target = os.environ.get("TARGET_VER", "")
+          pr_body = os.environ.get("PR_BODY", "").replace("\r\n", "\n")
+
+          lines = changelog.split("\n")
+          heading = f"## {target}"
+          for i, line in enumerate(lines):
+              if line == heading:
+                  end = len(lines)
+                  for j in range(i + 1, len(lines)):
+                      if lines[j].startswith("## "):
+                          end = j
+                          break
+                  if "\n".join(lines[i + 1 : end]).strip():
+                      print("Custom in CHANGELOG.md")
+                      raise SystemExit(0)
+                  break
+
+          in_fence = False
+          fence_char = ""
+          fence_len = 0
+          capturing = False
+          capture_level = 0
+          collected = []
+          heading_target = re.compile(r"^(#{2,3})[ \t]+release[ \t]+notes[ \t]*#*$", re.IGNORECASE)
+          any_heading = re.compile(r"^(#{1,6})(?:[ \t]+.*|[ \t]*)$")
+          fence_re = re.compile(r"^[ \t]*(\x60{3,}|~{3,})")
+
+          for line in pr_body.split("\n"):
+              fm = fence_re.match(line)
+              if fm:
+                  marker = fm.group(1)
+                  if not in_fence:
+                      in_fence = True
+                      fence_char = marker[0]
+                      fence_len = len(marker)
+                  elif marker[0] == fence_char and len(marker) >= fence_len:
+                      in_fence = False
+                      fence_char = ""
+                      fence_len = 0
+                  if capturing:
+                      collected.append(line)
+                  continue
+              if not in_fence:
+                  if not capturing:
+                      tm = heading_target.match(line.strip())
+                      if tm:
+                          capturing = True
+                          capture_level = len(tm.group(1))
+                          continue
+                  else:
+                      hm = any_heading.match(line)
+                      if hm and len(hm.group(1)) <= capture_level:
+                          break
+                      collected.append(line)
+              elif capturing:
+                  collected.append(line)
+
+          if "\n".join(collected).strip():
+              print("From PR Release Notes")
+          else:
+              print("Auto from PR title")
+          PY
+            notes_source="$(cat "$RUNNER_TEMP/notes-source.txt")"
+
+            targets="GitHub"
+            [ -n "$mr_id" ] && targets="$targets, Modrinth"
+            [ -n "$cf_id" ] && targets="$targets, CurseForge"
+
+            rows="${rows}$(printf '| `%s` (%s) | `%s` | `%s` | %s | %s |' "$m" "$mod_name" "$cur_ver" "$target_ver" "$notes_source" "$targets")"$'\n'
+          done
+
+          if [ "${#errors[@]}" -gt 0 ]; then
+            err_bullets="$(printf -- '- %s\n' "${errors[@]}")"
+            body="$(printf '%s\n### Release preview error (`%s`)\n\n%s\n' "$marker" "$release_label" "$err_bullets")"
+            upsert_comment "$body"
+            echo "::error::Release preview validation failed on PR #$PR_NUMBER."
+            exit 1
+          fi
+
+          base_note=""
+          if [ "${PR_BASE_REF:-main}" != "main" ]; then
+            base_note="$(printf '\n\n> Note: Base branch is `%s`; automatic releases only run when merged into `main`.' "$PR_BASE_REF")"
+          fi
+
+          body="$(printf '%s\n### Release preview (`%s`)\n\nMerging this PR into `main` will build and release:\n\n| Mod | Current | Target | Changelog | Targets |\n| --- | --- | --- | --- | --- |\n%s\n> Add a `## Release Notes` section to this PR description (or edit `mods/<mod>/CHANGELOG.md`) to customize the notes. Remove the `release*` label to merge without releasing.%s\n' \
+            "$marker" "$release_label" "$rows" "$base_note")"
+          upsert_comment "$body"
