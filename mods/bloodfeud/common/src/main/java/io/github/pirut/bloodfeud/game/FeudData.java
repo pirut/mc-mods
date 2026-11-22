@@ -31,7 +31,8 @@ import java.util.UUID;
 /** Every Brute and pack, saved with the world (data/bloodfeud.dat in the overworld's folder). */
 public final class FeudData extends SavedData {
     private static final String NAME = "bloodfeud";
-    private static final int VERSION = 1;
+    /** 2: settlements on the Earth are only recorded once their blocks were really written. */
+    private static final int VERSION = 2;
 
     public final Feud feud = new Feud(new Random());
     /** Items Brutes have taken from players, dropped when the Brute dies. */
@@ -295,6 +296,7 @@ public final class FeudData extends SavedData {
                     p.buildStarted = t.getBoolean("buildStarted");
                     for (Tag s : t.getList("skippedZones", Tag.TAG_STRING)) p.skippedZones.add(s.getAsString());
                     for (long c : t.getLongArray("skippedColumns")) p.skippedColumns.add(c);
+                    if (unverifiedOnEarth(tag, p.dimension)) forgetSite(p);
                 } else {
                     p.builtTier = 0;
                     p.siteSet = false;
@@ -318,7 +320,7 @@ public final class FeudData extends SavedData {
             try {
                 CompoundTag st = (CompoundTag) raw;
                 Family fam = Family.byKey(st.getString("family"));
-                if (fam == null || !st.hasUUID("id")) continue;
+                if (fam == null || !st.hasUUID("id") || unverifiedOnEarth(tag, st.getString("dimension"))) continue;
                 int bt = Math.max(1, Math.min(SettlementTier.TOWN.level, st.getInt("builtTier")));
                 List<Integer> vc = new ArrayList<>();
                 for (int c : st.getIntArray("vassalColors")) vc.add(c);
@@ -335,6 +337,25 @@ public final class FeudData extends SavedData {
             }
         }
         return d;
+    }
+
+    /**
+     * Up to 0.1.0-alpha.5 a settlement on the Earth could be recorded as built without a block being placed. Keeping
+     * that record would treat whatever a player has since built there as the pack's own, to clear or overwrite.
+     */
+    private static boolean unverifiedOnEarth(CompoundTag saved, String dimension) {
+        return saved.getInt("version") < 2 && Earth.is(dimension);
+    }
+
+    /** The pack looks for a new site. Whatever does stand at the old one is now protected like a player's build. */
+    private static void forgetSite(Pack p) {
+        p.siteSet = false;
+        p.builtTier = 0;
+        p.builtRuined = false;
+        p.buildStarted = false;
+        p.bannersDirty = false;
+        p.skippedZones.clear();
+        p.skippedColumns.clear();
     }
 
     private static ListTag strings(List<String> values) {

@@ -3,6 +3,7 @@ package io.github.pirut.bloodfeud.game.camp;
 import io.github.pirut.bloodfeud.BloodFeud;
 import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.SettlementTier;
+import io.github.pirut.bloodfeud.game.Earth;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -37,15 +38,23 @@ import java.util.Set;
 
 /**
  * Finds safe terrain sites for pack settlements, guards against overwriting player builds using a strict
- * natural/replaceable allowlist, and never force-loads chunks during automatic placement.
+ * natural/replaceable allowlist, and never force-loads chunks during automatic placement. On the Earth a block
+ * whose cube isn't loaded always counts as protected, never as empty.
  */
 public final class SiteFinder {
-    private static final int MAX_CLIFF_SPREAD = 8;
+    static final int MAX_CLIFF_SPREAD = 8;
+    static final int CORE_RADIUS = 9;
+    /** Everything a settlement reads or writes around its origin, with room for the neighbours each write updates. */
+    static final int SITE_SIDE_MARGIN = CampBlueprint.FOOTPRINT_MARGIN + 2;
+    static final int SITE_DOWN = 20;
+    static final int SITE_UP = 24;
+    /** How far below a column's top to look for ground on the Earth, whose world floor is 16 km down. */
+    private static final int EARTH_SURFACE_REACH = 256;
     public static final int MAX_SPIRAL_RADIUS = CampBlueprint.MAX_SEARCH_SPIRAL_RADIUS;
     private static final int SPIRAL_STEP = 6;
     private static final int MAX_CANDIDATES_PER_ATTEMPT = 8;
 
-    private static final List<int[]> SPIRAL_OFFSETS = buildSpiralOffsets();
+    static final List<int[]> SPIRAL_OFFSETS = buildSpiralOffsets();
 
     public record Site(BlockPos origin, int facing) {
     }
@@ -83,6 +92,22 @@ public final class SiteFinder {
             }
         }
         return true;
+    }
+
+    /**
+     * Whether a whole settlement site can be read and written on this tick. In a normal dimension that is its
+     * chunks. On the Earth it is also its cubes, which this asks for when they aren't there.
+     */
+    public static boolean isSiteReady(ServerLevel level, BlockPos origin, int radius) {
+        if (!isFootprintLoaded(level, origin.getX(), origin.getZ(), radius)) return false;
+        int reach = radius + SITE_SIDE_MARGIN;
+        return Earth.ready(level, origin.getX() - reach, origin.getY() - SITE_DOWN, origin.getZ() - reach,
+                origin.getX() + reach, origin.getY() + SITE_UP, origin.getZ() + reach);
+    }
+
+    /** True when a site on the Earth has to wait for its cubes. Never true in other dimensions. */
+    public static boolean isWaitingForGround(ServerLevel level, BlockPos origin, int radius) {
+        return Earth.is(level) && !isSiteReady(level, origin, radius);
     }
 
     /** Checks whether every chunk overlapping a square footprint around (cx, cz) plus margin is loaded. */
@@ -130,7 +155,7 @@ public final class SiteFinder {
         return null;
     }
 
-    private static Site evaluateAutoCandidate(ServerLevel level, int cx, int cz, int radius, int facing) {
+    static Site evaluateAutoCandidate(ServerLevel level, int cx, int cz, int radius, int facing) {
         if (tooCloseToWorldSpawn(level, cx, cz)) return null;
         if (!isFootprintLoaded(level, cx, cz, radius)) return null;
 
@@ -138,13 +163,9 @@ public final class SiteFinder {
         if (y == null) return null;
 
         // 1. Inner core terrain stability (reject water/lava and steep cliffs > 8 blocks spread)
-        int coreR = Math.min(radius, 9);
+        int coreR = Math.min(radius, CORE_RADIUS);
         int minY = y, maxY = y;
-        int[][] coreSamples = {
-                {-coreR, 0}, {coreR, 0}, {0, -coreR}, {0, coreR},
-                {-coreR / 2, -coreR / 2}, {coreR / 2, -coreR / 2}, {-coreR / 2, coreR / 2}, {coreR / 2, coreR / 2}
-        };
-        for (int[] s : coreSamples) {
+        for (int[] s : coreSamples(coreR)) {
             Integer sy = findSurfaceY(level, cx + s[0], cz + s[1]);
             if (sy == null) return null;
             minY = Math.min(minY, sy);
@@ -155,11 +176,7 @@ public final class SiteFinder {
         // 2. Full-radius outer ring terrain sampling (reject deep drops/water outside core so foundations never float)
         if (radius > coreR) {
             int maxDrop = CampBuilder.MAX_FOUNDATION_DEPTH - 2;
-            int[][] outerSamples = {
-                    {-radius, 0}, {radius, 0}, {0, -radius}, {0, radius},
-                    {-radius, -radius}, {radius, -radius}, {-radius, radius}, {radius, radius}
-            };
-            for (int[] s : outerSamples) {
+            for (int[] s : outerSamples(radius)) {
                 Integer sy = findSurfaceY(level, cx + s[0], cz + s[1]);
                 if (sy == null) return null;
                 if (Math.abs(sy - y) > maxDrop) return null;
@@ -176,9 +193,25 @@ public final class SiteFinder {
         return new Site(origin, facing);
     }
 
+    static int[][] coreSamples(int r) {
+        return new int[][]{
+                {-r, 0}, {r, 0}, {0, -r}, {0, r},
+                {-r / 2, -r / 2}, {r / 2, -r / 2}, {-r / 2, r / 2}, {r / 2, r / 2}
+        };
+    }
+
+    static int[][] outerSamples(int r) {
+        return new int[][]{
+                {-r, 0}, {r, 0}, {0, -r}, {0, r},
+                {-r, -r}, {r, -r}, {-r, r}, {r, r}
+        };
+    }
+
     private static boolean tooCloseToWorldSpawn(ServerLevel level, int x, int z) {
-        if (!level.dimension().equals(Level.OVERWORLD)) return false;
-        BlockPos spawn = level.getSharedSpawnPos();
+        boolean earth = Earth.is(level);
+        if (!earth && !level.dimension().equals(Level.OVERWORLD)) return false;
+        BlockPos spawn = earth ? Earth.arrival(level) : level.getSharedSpawnPos();
+        if (spawn == null) return true;
         int safe = Math.max(0, BloodFeud.config().spawnSafeRadius) + 32;
         return Math.hypot(x - spawn.getX(), z - spawn.getZ()) < safe;
     }
@@ -236,8 +269,11 @@ public final class SiteFinder {
      */
     public static Integer findSurfaceY(ServerLevel level, int x, int z) {
         if (!isChunkReady(level, x >> 4, z >> 4)) return null;
-        int minY = level.getMinBuildHeight() + 2;
-        int maxY = level.getMaxBuildHeight() - 18;
+        boolean earth = Earth.is(level);
+        // getHeight on the Earth downloads map data on this thread unless the column is already known.
+        if (earth && !Earth.knowsHeight(level, x, z)) return null;
+        int minY = Earth.bottom(level) + 2;
+        int maxY = Earth.top(level) - 18;
 
         if (level.dimensionType().hasCeiling()) {
             BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -263,7 +299,9 @@ public final class SiteFinder {
         int topY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
         if (topY < minY || topY >= maxY) return null;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        for (int y = topY; y >= minY; y--) {
+        int floor = earth ? Math.max(minY, topY - EARTH_SURFACE_REACH) : minY;
+        for (int y = topY; y >= floor; y--) {
+            if (earth && !Earth.isLoaded(level, pos.set(x, y, z))) return null;
             BlockState state = level.getBlockState(pos.set(x, y, z));
             if (!state.getFluidState().isEmpty()) return null;
             if (state.isAir() || state.canBeReplaced() || isTreeOrFoliage(state)) {
@@ -272,6 +310,7 @@ public final class SiteFinder {
             if (state.blocksMotion()) {
                 int surface = y + 1;
                 if (surface <= minY || surface >= maxY) return null;
+                if (earth && !Earth.isLoaded(level, pos.set(x, surface, z))) return null;
                 if (!level.getFluidState(pos.set(x, surface, z)).isEmpty()) return null;
                 return surface;
             }
@@ -297,8 +336,8 @@ public final class SiteFinder {
                                                 Set<CampBlueprint.Spot> ownedContainers) {
         int minX = origin.getX() + box.minX();
         int maxX = origin.getX() + box.maxX();
-        int minY = Math.max(level.getMinBuildHeight() + 1, origin.getY() + Math.min(-2, box.minY()));
-        int maxY = Math.min(level.getMaxBuildHeight() - 1, origin.getY() + Math.max(6, box.maxY()));
+        int minY = Math.max(Earth.bottom(level) + 1, origin.getY() + Math.min(-2, box.minY()));
+        int maxY = Math.min(Earth.top(level) - 1, origin.getY() + Math.max(6, box.maxY()));
         int minZ = origin.getZ() + box.minZ();
         int maxZ = origin.getZ() + box.maxZ();
 
@@ -325,8 +364,8 @@ public final class SiteFinder {
         int wx = origin.getX() + rx;
         int wz = origin.getZ() + rz;
         if (!isChunkReady(level, wx >> 4, wz >> 4)) return true;
-        int minY = Math.max(level.getMinBuildHeight() + 1, origin.getY() + Math.min(-2, relMinY));
-        int maxY = Math.min(level.getMaxBuildHeight() - 1, origin.getY() + Math.max(6, relMaxY));
+        int minY = Math.max(Earth.bottom(level) + 1, origin.getY() + Math.min(-2, relMinY));
+        int maxY = Math.min(Earth.top(level) - 1, origin.getY() + Math.max(6, relMaxY));
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int y = minY; y <= maxY; y++) {
             if (isPlayerBlockAt(level, origin, pos.set(wx, y, wz), ownedPositions, ownedContainers)) {
@@ -354,11 +393,13 @@ public final class SiteFinder {
                 {midX, minZ}, {midX, maxZ}, {minX, midZ}, {maxX, midZ},
                 {midX, midZ}
         };
-        int minBuild = level.getMinBuildHeight() + 1;
+        int minBuild = Earth.bottom(level) + 1;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int[] s : samples) {
             int wx = s[0], wz = s[1];
             if (!isChunkReady(level, wx >> 4, wz >> 4)) return true;
+            if (!Earth.isLoaded(level, pos.set(wx, origin.getY() - 1, wz))
+                    || !Earth.isLoaded(level, pos.set(wx, origin.getY() - 2, wz))) return true;
             if (level.getFluidState(pos.set(wx, origin.getY() - 1, wz)).is(FluidTags.LAVA)
                     || level.getFluidState(pos.set(wx, origin.getY() - 2, wz)).is(FluidTags.LAVA)) {
                 return true;
@@ -366,7 +407,7 @@ public final class SiteFinder {
             boolean solidFound = false;
             for (int depth = 0; depth <= maxFoundationDepth; depth++) {
                 int y = origin.getY() - 1 - depth;
-                if (y <= minBuild) break;
+                if (y <= minBuild || !Earth.isLoaded(level, pos.set(wx, y, wz))) break;
                 BlockState state = level.getBlockState(pos.set(wx, y, wz));
                 if (state.blocksMotion() && state.getFluidState().isEmpty() && !state.canBeReplaced()) {
                     solidFound = true;
@@ -384,8 +425,8 @@ public final class SiteFinder {
                                          Set<CampBlueprint.Spot> ownedContainers) {
         int cx = origin.getX(), cy = origin.getY(), cz = origin.getZ();
         if (!areBoundsLoaded(level, cx - radius, cz - radius, cx + radius, cz + radius)) return true;
-        int minY = Math.max(level.getMinBuildHeight() + 1, cy - 3);
-        int maxY = Math.min(level.getMaxBuildHeight() - 1, cy + 10);
+        int minY = Math.max(Earth.bottom(level) + 1, cy - 3);
+        int maxY = Math.min(Earth.top(level) - 1, cy + 10);
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
@@ -401,8 +442,8 @@ public final class SiteFinder {
 
     private static boolean hasPlayerBuildSparse(ServerLevel level, BlockPos origin, int radius) {
         int cx = origin.getX(), cy = origin.getY(), cz = origin.getZ();
-        int minY = Math.max(level.getMinBuildHeight() + 1, cy - 1);
-        int maxY = Math.min(level.getMaxBuildHeight() - 1, cy + 6);
+        int minY = Math.max(Earth.bottom(level) + 1, cy - 1);
+        int maxY = Math.min(Earth.top(level) - 1, cy + 6);
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int dx = -radius; dx <= radius; dx += 4) {
             for (int dz = -radius; dz <= radius; dz += 4) {
@@ -424,6 +465,7 @@ public final class SiteFinder {
     public static boolean isPlayerBlockAt(ServerLevel level, BlockPos origin, BlockPos pos,
                                           Set<CampBlueprint.Spot> ownedPositions,
                                           Set<CampBlueprint.Spot> ownedContainers) {
+        if (!Earth.isLoaded(level, pos)) return true; // it would read as void air, which is replaceable
         BlockState state = level.getBlockState(pos);
         if (isIndestructibleBlock(state)) return true;
         CampBlueprint.Spot rel = new CampBlueprint.Spot(

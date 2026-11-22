@@ -179,7 +179,8 @@ public final class Effects {
     static void tick(Live live, Live.Active a, Brute b, Mob mob, ServerLevel level) {
         long gt = live.gameTime();
         if (b.traits.contains(Trait.NIGHT_STALKER)) {
-            boolean dark = level.getMaxLocalRawBrightness(mob.blockPosition()) < 8;
+            // The light of an unloaded cube is worked out from map data, on this thread.
+            boolean dark = Earth.isLoaded(level, mob.blockPosition()) && level.getMaxLocalRawBrightness(mob.blockPosition()) < 8;
             boolean close = level.getNearestPlayer(mob, 6) != null;
             if (dark && !close) mob.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, 40, 0, false, false));
             else if (mob.hasEffect(MobEffects.INVISIBILITY)) {
@@ -267,16 +268,26 @@ public final class Effects {
     }
 
     private static BlockPos ringingBell(ServerLevel level, BlockPos at) {
+        if (Earth.is(level)) {
+            for (BlockEntity be : Earth.blockEntitiesAround(level, at)) {
+                if (rings(be, at)) return be.getBlockPos();
+            }
+            return null;
+        }
         int cx = at.getX() >> 4, cz = at.getZ() >> 4;
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 if (!level.hasChunk(cx + dx, cz + dz)) continue;
                 LevelChunk chunk = level.getChunk(cx + dx, cz + dz);
                 for (BlockEntity be : chunk.getBlockEntities().values()) {
-                    if (be instanceof BellBlockEntity bell && bell.shaking && be.getBlockPos().distSqr(at) < 24 * 24) return be.getBlockPos();
+                    if (rings(be, at)) return be.getBlockPos();
                 }
             }
         }
         return null;
+    }
+
+    private static boolean rings(BlockEntity be, BlockPos at) {
+        return be instanceof BellBlockEntity bell && bell.shaking && be.getBlockPos().distSqr(at) < 24 * 24;
     }
 }
