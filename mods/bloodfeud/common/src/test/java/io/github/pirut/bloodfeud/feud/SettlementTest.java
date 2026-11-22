@@ -475,7 +475,8 @@ class SettlementTest {
         for (int vd : viewDistances) {
             int prev = -1;
             for (SettlementTier tier : tiers) {
-                int expected = Math.max(tier.radius + 96, Math.max(2, vd) * 16 + tier.radius + 16);
+                int expected = Math.max(tier.radius + 96,
+                        (Math.max(2, vd) + 2) * 16 + tier.radius + CampBlueprint.FOOTPRINT_MARGIN);
                 int actual = CampBlueprint.standoffDistance(vd, tier.radius);
                 assertEquals(expected, actual, "standoffDistance(" + vd + ", " + tier.key + ")");
                 assertTrue(actual >= tier.radius + 96, "must respect minimum radius+96 floor");
@@ -486,13 +487,13 @@ class SettlementTest {
 
         // Low view distances clamp to radius + 96 floor
         assertEquals(SettlementTier.CAMP.radius + 96, CampBlueprint.standoffDistance(2, SettlementTier.CAMP.radius));
-        assertEquals(SettlementTier.TOWN.radius + 96, CampBlueprint.standoffDistance(4, SettlementTier.TOWN.radius));
-        // Standard 10-chunk view distance: 10 * 16 + radius + 16 = 176 + radius
-        assertEquals(183, CampBlueprint.standoffDistance(10, SettlementTier.CAMP.radius));
-        assertEquals(205, CampBlueprint.standoffDistance(10, SettlementTier.TOWN.radius));
-        // High 16-chunk view distance: 16 * 16 + radius + 16 = 272 + radius
-        assertEquals(279, CampBlueprint.standoffDistance(16, SettlementTier.CAMP.radius));
-        assertEquals(301, CampBlueprint.standoffDistance(16, SettlementTier.TOWN.radius));
+        assertEquals(SettlementTier.TOWN.radius + 96, CampBlueprint.standoffDistance(3, SettlementTier.TOWN.radius));
+        // Standard 10-chunk view distance: (10 + 2) * 16 + radius + FOOTPRINT_MARGIN = 195 + radius
+        assertEquals(202, CampBlueprint.standoffDistance(10, SettlementTier.CAMP.radius));
+        assertEquals(224, CampBlueprint.standoffDistance(10, SettlementTier.TOWN.radius));
+        // High 16-chunk view distance: (16 + 2) * 16 + radius + FOOTPRINT_MARGIN = 291 + radius
+        assertEquals(298, CampBlueprint.standoffDistance(16, SettlementTier.CAMP.radius));
+        assertEquals(320, CampBlueprint.standoffDistance(16, SettlementTier.TOWN.radius));
     }
 
     @Test
@@ -515,18 +516,73 @@ class SettlementTest {
     }
 
     @Test
+    void chunkTrackingViewCatchesDiagonalAndChunkBoundaryOverlap() {
+        int campR = SettlementTier.CAMP.radius; // 7
+
+        // Regression: camp at (0, 0), player at diagonal (130, 130) (chunk 8, 8) at view distance 10.
+        // hypot(130, 130) ~= 183.85 > 183 (old radial check), yet Minecraft 1.21.1 ChunkTrackingView tracks chunk (0, 0).
+        assertTrue(CampBlueprint.isFootprintTrackedByChunkView(0, 0, campR, 8, 8, 10),
+                "ChunkTrackingView at chunk (8,8) vd=10 must track camp (0,0) footprint");
+        assertFalse(CampBlueprint.isPlayerClearOfFootprint(0, 0, campR, 130.0, 130.0, 10),
+                "player at diagonal (130,130) must NOT be considered clear at vd=10");
+
+        // Even beyond the updated radial standoff (202 blocks), diagonal chunk-tracking overlap must still block:
+        // player at (143.9, 143.9) is in chunk (8,8) (dist 203.5 > 202), and (143.9, 159.9) is in chunk (8,9) (dist 215.1 > 202).
+        assertTrue(CampBlueprint.isOutsideStandoff(0, 0, 143.9, 143.9, CampBlueprint.standoffDistance(10, campR)));
+        assertTrue(CampBlueprint.isFootprintTrackedByChunkView(0, 0, campR, 8, 8, 10));
+        assertFalse(CampBlueprint.isPlayerClearOfFootprint(0, 0, campR, 143.9, 143.9, 10));
+
+        assertTrue(CampBlueprint.isOutsideStandoff(0, 0, 143.9, 159.9, CampBlueprint.standoffDistance(10, campR)));
+        assertTrue(CampBlueprint.isFootprintTrackedByChunkView(0, 0, campR, 8, 9, 10),
+                "chunk (8,9) still tracks chunk (0,0) at vd=10: dx=7, dz=8 -> 7^2 + 7^2 = 98 < 100");
+        assertFalse(CampBlueprint.isPlayerClearOfFootprint(0, 0, campR, 143.9, 159.9, 10));
+
+        // Chunk (9,9) at (144.0, 144.0) is outside both standoff (203.6 > 202) and ChunkTrackingView (8^2 + 7^2 = 113 >= 100).
+        assertFalse(CampBlueprint.isFootprintTrackedByChunkView(0, 0, campR, 9, 9, 10));
+        assertTrue(CampBlueprint.isPlayerClearOfFootprint(0, 0, campR, 144.0, 144.0, 10));
+
+        // Cardinal chunk-boundary edge case: camp at (6, 0) has maxX = 6 + 7 + 3 = 16 -> maxCx = 1.
+        // At vd=10, ChunkTrackingView tracks up to chunk 1 + 11 = 12 (x <= 207.99), and releases at chunk 13 (x >= 208).
+        assertTrue(CampBlueprint.isFootprintTrackedByChunkView(6, 0, campR, 12, 0, 10));
+        assertFalse(CampBlueprint.isPlayerClearOfFootprint(6, 0, campR, 207.9, 0.0, 10));
+        assertFalse(CampBlueprint.isFootprintTrackedByChunkView(6, 0, campR, 13, 0, 10));
+        assertTrue(CampBlueprint.isPlayerClearOfFootprint(6, 0, campR, 208.1, 0.0, 10));
+
+        // Negative-coordinate chunk-boundary edge case: camp at (-1, -1) spans chunks [-1..0].
+        // Chunk (-9, -9) tracks chunk (-1, -1) (dx=7, dz=7 -> 85 < 100); chunk (-10, -10) does not (113 >= 100).
+        assertTrue(CampBlueprint.isFootprintTrackedByChunkView(-1, -1, campR, -9, -9, 10));
+        assertFalse(CampBlueprint.isPlayerClearOfFootprint(-1, -1, campR, -144.0, -144.0, 10));
+        assertFalse(CampBlueprint.isFootprintTrackedByChunkView(-1, -1, campR, -10, -10, 10));
+        assertTrue(CampBlueprint.isPlayerClearOfFootprint(-1, -1, campR, -145.0, -145.0, 10));
+
+        // Larger tier (Town, radius 29): footprint reaches chunk (2, 2), which chunk (10, 10) tracks at vd=10.
+        int townR = SettlementTier.TOWN.radius;
+        assertTrue(CampBlueprint.isFootprintTrackedByChunkView(0, 0, townR, 10, 10, 10));
+        assertFalse(CampBlueprint.isPlayerClearOfFootprint(0, 0, townR, 168.0, 168.0, 10));
+        assertFalse(CampBlueprint.isFootprintTrackedByChunkView(0, 0, townR, 11, 11, 10));
+        assertTrue(CampBlueprint.isPlayerClearOfFootprint(0, 0, townR, 176.0, 176.0, 10));
+
+        // Low view distance (vd=2): radial radius+96 floor still blocks even when chunks are not tracked.
+        assertFalse(CampBlueprint.isFootprintTrackedByChunkView(0, 0, campR, 5, 0, 2));
+        assertFalse(CampBlueprint.isPlayerClearOfFootprint(0, 0, campR, 88.0, 0.0, 2),
+                "must still enforce radius+96 floor at low view distance");
+        assertTrue(CampBlueprint.isPlayerClearOfFootprint(0, 0, campR, 104.0, 0.0, 2));
+    }
+
+    @Test
     void ticketCoverageCoversEveryFootprintChunkWithFullStatusMargin() {
         SettlementTier[] tiers = {
                 SettlementTier.CAMP, SettlementTier.OUTPOST, SettlementTier.STRONGHOLD, SettlementTier.TOWN
         };
         int[][] coords = {
-                {0, 0}, {7, 7}, {15, 15}, {16, 16},
+                {0, 0}, {7, 7}, {12, 12}, {15, 15}, {16, 16},
                 {-1, -1}, {-16, -16}, {-17, 31}, {1234, -5678}
         };
 
         for (SettlementTier tier : tiers) {
             int[] radii = {tier.radius, CampBlueprint.searchFootprintRadius(tier)};
             for (int radius : radii) {
+                int maxAllowed = (radius == tier.radius) ? 4 : 6;
                 for (int[] c : coords) {
                     int cx = c[0], cz = c[1];
                     int[] bounds = CampBlueprint.footprintChunkBounds(cx, cz, radius);
@@ -546,10 +602,74 @@ class SettlementTest {
                     }
                     assertEquals(Math.max(1, maxDistSeen + 1), ticketRadius,
                             "ticketRadius must tightly equal maxChebyshevDist + 1");
-                    assertTrue(ticketRadius <= 5,
-                            "off-screen ticket radius should stay modest (<= 5) for " + tier.key + " r=" + radius);
+                    assertTrue(ticketRadius <= maxAllowed,
+                            "off-screen ticket radius should stay modest (<= " + maxAllowed + ") for " + tier.key + " r=" + radius);
                 }
             }
         }
+    }
+
+    @Test
+    void searchFootprintCoversEverySpiralCandidate() {
+        assertEquals(36, CampBlueprint.MAX_SEARCH_SPIRAL_RADIUS);
+        assertEquals(SettlementTier.CAMP.radius + 36, CampBlueprint.searchFootprintRadius(0));
+        assertEquals(SettlementTier.CAMP.radius + 36, CampBlueprint.searchFootprintRadius(SettlementTier.CAMP));
+        assertEquals(SettlementTier.OUTPOST.radius + 36, CampBlueprint.searchFootprintRadius(SettlementTier.OUTPOST));
+        assertEquals(SettlementTier.STRONGHOLD.radius + 36, CampBlueprint.searchFootprintRadius(SettlementTier.STRONGHOLD));
+        assertEquals(SettlementTier.TOWN.radius + 36, CampBlueprint.searchFootprintRadius(SettlementTier.TOWN));
+
+        SettlementTier[] tiers = {
+                SettlementTier.CAMP, SettlementTier.OUTPOST, SettlementTier.STRONGHOLD, SettlementTier.TOWN
+        };
+        int[][] homes = {
+                {0, 0}, {12, 12}, {15, 15}, {-1, -1}, {-17, 31}
+        };
+
+        for (SettlementTier tier : tiers) {
+            int searchRadius = CampBlueprint.searchFootprintRadius(tier.radius);
+            assertEquals(tier.radius + CampBlueprint.MAX_SEARCH_SPIRAL_RADIUS, searchRadius);
+            for (int[] home : homes) {
+                int homeX = home[0], homeZ = home[1];
+                int[] searchBounds = CampBlueprint.footprintChunkBounds(homeX, homeZ, searchRadius);
+                int[] cov = CampBlueprint.ticketCoverage(homeX, homeZ, searchRadius);
+                int centerCx = cov[0], centerCz = cov[1], ticketRadius = cov[2];
+
+                // Check (0, 0) plus every 8-direction spiral offset up to +-MAX_SEARCH_SPIRAL_RADIUS (step 6)
+                for (int dist = 0; dist <= CampBlueprint.MAX_SEARCH_SPIRAL_RADIUS; dist += 6) {
+                    int[][] offsets = (dist == 0)
+                            ? new int[][]{{0, 0}}
+                            : new int[][]{
+                                    {dist, 0}, {-dist, 0}, {0, dist}, {0, -dist},
+                                    {dist, dist}, {-dist, dist}, {dist, -dist}, {-dist, -dist}
+                            };
+                    for (int[] off : offsets) {
+                        int candX = homeX + off[0];
+                        int candZ = homeZ + off[1];
+                        int[] candBounds = CampBlueprint.footprintChunkBounds(candX, candZ, tier.radius);
+                        assertTrue(candBounds[0] >= searchBounds[0] && candBounds[2] <= searchBounds[2]
+                                        && candBounds[1] >= searchBounds[1] && candBounds[3] <= searchBounds[3],
+                                "candidate (" + candX + "," + candZ + ") bounds must lie inside search bounds for "
+                                        + tier.key + " home=(" + homeX + "," + homeZ + ")");
+                        for (int chunkX = candBounds[0]; chunkX <= candBounds[2]; chunkX++) {
+                            for (int chunkZ = candBounds[1]; chunkZ <= candBounds[3]; chunkZ++) {
+                                int chebyshev = Math.max(Math.abs(chunkX - centerCx), Math.abs(chunkZ - centerCz));
+                                assertTrue(chebyshev < ticketRadius,
+                                        "candidate chunk (" + chunkX + "," + chunkZ + ") must be strictly inside FULL "
+                                                + "ticket coverage for " + tier.key + " home=(" + homeX + "," + homeZ
+                                                + ") offset=(" + off[0] + "," + off[1] + ")");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Explicit edge check: homeX=12, radius=20 (Stronghold), +36 candidate at x=48 -> maxX=71 (chunk 4)
+        int r20Search = CampBlueprint.searchFootprintRadius(20);
+        int[] r20Cov = CampBlueprint.ticketCoverage(12, 12, r20Search);
+        int[] r20CandBounds = CampBlueprint.footprintChunkBounds(12 + 36, 12 + 36, 20);
+        assertEquals(4, r20CandBounds[2]);
+        assertTrue(Math.max(Math.abs(r20CandBounds[2] - r20Cov[0]), Math.abs(r20CandBounds[3] - r20Cov[1])) < r20Cov[2],
+                "home=12, radius=20, +36 candidate corner chunk must be covered at FULL status");
     }
 }

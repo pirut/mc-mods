@@ -41,7 +41,7 @@ import java.util.Set;
  */
 public final class SiteFinder {
     private static final int MAX_CLIFF_SPREAD = 8;
-    private static final int MAX_SPIRAL_RADIUS = 36;
+    public static final int MAX_SPIRAL_RADIUS = CampBlueprint.MAX_SEARCH_SPIRAL_RADIUS;
     private static final int SPIRAL_STEP = 6;
     private static final int MAX_CANDIDATES_PER_ATTEMPT = 8;
 

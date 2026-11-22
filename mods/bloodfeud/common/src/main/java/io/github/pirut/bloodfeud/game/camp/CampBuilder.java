@@ -13,6 +13,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.TicketType;
@@ -44,7 +45,8 @@ import java.util.UUID;
  * and towns over multiple ticks without lag or overwriting player builds and containers.
  * <p>
  * Automatic world mutations only run off-screen while all non-spectator players in the same dimension are outside
- * {@link #standoffDistance(int, int)}, using brief, auto-expiring in-memory chunk tickets that are released on
+ * {@link #standoffDistance(int, int)} and do not track any footprint chunk, using brief, auto-expiring in-memory
+ * chunk tickets that are released on
  * every completion, pause, abort, cancellation, or shutdown path.
  */
 public final class CampBuilder {
@@ -178,19 +180,43 @@ public final class CampBuilder {
 
     /**
      * Returns {@code true} iff no non-spectator player in {@code dimension} is within
-     * {@link #standoffDistance(int, int)} of {@code (x, z)}.
+     * {@link #standoffDistance(int, int)} of {@code (x, z)} AND no non-spectator player's
+     * {@link ChunkTrackingView} (or current chunk view at server view distance) tracks any chunk
+     * in {@link CampBlueprint#footprintChunkBounds(int, int, int)}.
      */
     public static boolean isAreaClearOfPlayers(MinecraftServer server, String dimension, int x, int z, int radius) {
         if (server == null || dimension == null) return false;
-        int standoff = standoffDistance(server.getPlayerList().getViewDistance(), radius);
+        int viewDistance = server.getPlayerList().getViewDistance();
+        int standoff = standoffDistance(viewDistance, radius);
+        int[] bounds = CampBlueprint.footprintChunkBounds(x, z, radius);
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             if (p.isSpectator()) continue;
             if (!p.level().dimension().location().toString().equals(dimension)) continue;
             if (!isOutsideStandoff(x, z, p.getX(), p.getZ(), standoff)) {
                 return false;
             }
+            ChunkPos playerChunk = p.chunkPosition();
+            if (CampBlueprint.isFootprintTrackedByChunkView(
+                    x, z, radius, playerChunk.x, playerChunk.z, viewDistance)) {
+                return false;
+            }
+            ChunkTrackingView view = p.getChunkTrackingView();
+            if (view != null && isChunkBoundsTracked(bounds, view)) {
+                return false;
+            }
         }
         return true;
+    }
+
+    private static boolean isChunkBoundsTracked(int[] bounds, ChunkTrackingView view) {
+        for (int cx = bounds[0]; cx <= bounds[2]; cx++) {
+            for (int cz = bounds[1]; cz <= bounds[3]; cz++) {
+                if (view.contains(cx, cz)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -207,7 +233,12 @@ public final class CampBuilder {
         return CampBlueprint.ticketCoverage(cx, cz, footprintRadius);
     }
 
-    /** Bounded off-screen search footprint radius for finding an initial site around {@code (homeX, homeZ)}. */
+    /** Off-screen search footprint radius covering every spiral candidate around {@code (homeX, homeZ)}. */
+    public static int searchFootprintRadius(int settlementRadius) {
+        return CampBlueprint.searchFootprintRadius(settlementRadius);
+    }
+
+    /** Off-screen search footprint radius for finding an initial site around {@code (homeX, homeZ)}. */
     public static int searchFootprintRadius(SettlementTier target) {
         return CampBlueprint.searchFootprintRadius(target);
     }
