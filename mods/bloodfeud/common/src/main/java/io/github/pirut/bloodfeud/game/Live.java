@@ -162,7 +162,7 @@ public final class Live {
     public static void stopped() {
         if (instance != null) {
             for (Active a : instance.active.values()) a.bar.removeAllPlayers();
-            instance.campBuilder.clearAll();
+            instance.campBuilder.clearAll(instance.server);
         }
         instance = null;
     }
@@ -170,7 +170,7 @@ public final class Live {
     /** Called live when buildCamps is toggled on or off. */
     public void onBuildCampsChanged(boolean enabled) {
         data.feud.campsEnabled = enabled;
-        if (!enabled) campBuilder.cancelAutomatic();
+        if (!enabled) campBuilder.cancelAutomatic(server);
     }
 
     public Feud feud() {
@@ -448,12 +448,22 @@ public final class Live {
         data.changed();
     }
 
-    /** Immediately re-banners any loaded built settlement marked dirty; unloaded ones retry via CampBuilder. */
+    /** Re-banners loaded built settlements marked dirty only while players are away; others retry off-screen via CampBuilder. */
     private void flushDirtyBanners() {
+        flushDirtyBanners(true);
+    }
+
+    private void flushDirtyBanners(boolean requireAway) {
         Feud f = data.feud;
         boolean dirtied = false;
         for (Pack pk : f.packs.values()) {
             if (!pk.bannersDirty || !pk.siteSet || pk.builtTier <= 0 || campBuilder.isBuilding(pk.id)) continue;
+            if (requireAway) {
+                SettlementTier built = SettlementTier.byLevel(pk.builtTier);
+                if (!CampBuilder.isAreaClearOfPlayers(server, pk.dimension, pk.siteX, pk.siteZ, built.radius)) {
+                    continue;
+                }
+            }
             if (campBuilder.rebanner(level(pk.dimension), f, pk)) {
                 pk.bannersDirty = false;
                 dirtied = true;
@@ -1509,7 +1519,7 @@ public final class Live {
         UUID playerId = player.getUUID();
         Pack pack = nearest;
         CampBuilder.QueueResult qr = campBuilder.queueRuin(level, f, pack, target.level, List.of(), false, gameTime(), () -> {
-            flushDirtyBanners();
+            flushDirtyBanners(false);
             if (onDone != null) onDone.accept(pack);
         });
         if (!qr.queued()) {
@@ -1527,7 +1537,7 @@ public final class Live {
         pack.met.add(playerId);
         f.ruinSettlement(pack, target, now());
         f.drainNews();
-        flushDirtyBanners();
+        flushDirtyBanners(false);
         data.changed();
         return new UpgradeResult(true, "", pack, target, qr.skippedZones(), qr.skippedRingColumns());
     }
@@ -1547,7 +1557,7 @@ public final class Live {
 
     public void forgetAll() {
         for (UUID id : new ArrayList<>(active.keySet())) removeActive(id, true);
-        campBuilder.clearAll();
+        campBuilder.clearAll(server);
         data.feud.brutes.clear();
         data.feud.packs.clear();
         data.feud.abandonedSites.clear();

@@ -464,4 +464,92 @@ class SettlementTest {
         assertTrue(f3.updateSettlement(tPack));
         assertFalse(tPack.ruined, "Regrowing to full threshold restores ruined Town");
     }
+
+    @Test
+    void standoffDistanceScalesWithViewDistanceAndTierRadius() {
+        SettlementTier[] tiers = {
+                SettlementTier.CAMP, SettlementTier.OUTPOST, SettlementTier.STRONGHOLD, SettlementTier.TOWN
+        };
+        int[] viewDistances = {0, 2, 4, 6, 8, 10, 12, 16, 32};
+
+        for (int vd : viewDistances) {
+            int prev = -1;
+            for (SettlementTier tier : tiers) {
+                int expected = Math.max(tier.radius + 96, Math.max(2, vd) * 16 + tier.radius + 16);
+                int actual = CampBlueprint.standoffDistance(vd, tier.radius);
+                assertEquals(expected, actual, "standoffDistance(" + vd + ", " + tier.key + ")");
+                assertTrue(actual >= tier.radius + 96, "must respect minimum radius+96 floor");
+                assertTrue(actual > prev, "standoff must grow strictly with larger settlement tiers");
+                prev = actual;
+            }
+        }
+
+        // Low view distances clamp to radius + 96 floor
+        assertEquals(SettlementTier.CAMP.radius + 96, CampBlueprint.standoffDistance(2, SettlementTier.CAMP.radius));
+        assertEquals(SettlementTier.TOWN.radius + 96, CampBlueprint.standoffDistance(4, SettlementTier.TOWN.radius));
+        // Standard 10-chunk view distance: 10 * 16 + radius + 16 = 176 + radius
+        assertEquals(183, CampBlueprint.standoffDistance(10, SettlementTier.CAMP.radius));
+        assertEquals(205, CampBlueprint.standoffDistance(10, SettlementTier.TOWN.radius));
+        // High 16-chunk view distance: 16 * 16 + radius + 16 = 272 + radius
+        assertEquals(279, CampBlueprint.standoffDistance(16, SettlementTier.CAMP.radius));
+        assertEquals(301, CampBlueprint.standoffDistance(16, SettlementTier.TOWN.radius));
+    }
+
+    @Test
+    void isOutsideStandoffBoundaryCases() {
+        int standoff = 100;
+        // Same point & inside
+        assertFalse(CampBlueprint.isOutsideStandoff(10, -20, 10, -20, standoff));
+        assertFalse(CampBlueprint.isOutsideStandoff(10, -20, 109.99, -20, standoff));
+        assertFalse(CampBlueprint.isOutsideStandoff(10, -20, 10 + 59.9, -20 + 79.9, standoff));
+
+        // Exactly on boundary (axis-aligned and 3-4-5 diagonal) must NOT be considered clear
+        assertFalse(CampBlueprint.isOutsideStandoff(10, -20, 110.0, -20, standoff));
+        assertFalse(CampBlueprint.isOutsideStandoff(10, -20, 10, -120.0, standoff));
+        assertFalse(CampBlueprint.isOutsideStandoff(10, -20, 70.0, 60.0, standoff)); // hypot(60, 80) == 100
+
+        // Strictly outside boundary
+        assertTrue(CampBlueprint.isOutsideStandoff(10, -20, 110.01, -20, standoff));
+        assertTrue(CampBlueprint.isOutsideStandoff(10, -20, 10, -120.01, standoff));
+        assertTrue(CampBlueprint.isOutsideStandoff(10, -20, 70.01, 60.0, standoff));
+    }
+
+    @Test
+    void ticketCoverageCoversEveryFootprintChunkWithFullStatusMargin() {
+        SettlementTier[] tiers = {
+                SettlementTier.CAMP, SettlementTier.OUTPOST, SettlementTier.STRONGHOLD, SettlementTier.TOWN
+        };
+        int[][] coords = {
+                {0, 0}, {7, 7}, {15, 15}, {16, 16},
+                {-1, -1}, {-16, -16}, {-17, 31}, {1234, -5678}
+        };
+
+        for (SettlementTier tier : tiers) {
+            int[] radii = {tier.radius, CampBlueprint.searchFootprintRadius(tier)};
+            for (int radius : radii) {
+                for (int[] c : coords) {
+                    int cx = c[0], cz = c[1];
+                    int[] bounds = CampBlueprint.footprintChunkBounds(cx, cz, radius);
+                    int[] cov = CampBlueprint.ticketCoverage(cx, cz, radius);
+                    int centerCx = cov[0], centerCz = cov[1], ticketRadius = cov[2];
+
+                    assertTrue(ticketRadius >= 1, "ticketRadius must be at least 1");
+                    int maxDistSeen = 0;
+                    for (int chunkX = bounds[0]; chunkX <= bounds[2]; chunkX++) {
+                        for (int chunkZ = bounds[1]; chunkZ <= bounds[3]; chunkZ++) {
+                            int chebyshev = Math.max(Math.abs(chunkX - centerCx), Math.abs(chunkZ - centerCz));
+                            assertTrue(chebyshev < ticketRadius,
+                                    "chunk (" + chunkX + "," + chunkZ + ") must be within Chebyshev < "
+                                            + ticketRadius + " of (" + centerCx + "," + centerCz + ") for r=" + radius);
+                            maxDistSeen = Math.max(maxDistSeen, chebyshev);
+                        }
+                    }
+                    assertEquals(Math.max(1, maxDistSeen + 1), ticketRadius,
+                            "ticketRadius must tightly equal maxChebyshevDist + 1");
+                    assertTrue(ticketRadius <= 5,
+                            "off-screen ticket radius should stay modest (<= 5) for " + tier.key + " r=" + radius);
+                }
+            }
+        }
+    }
 }

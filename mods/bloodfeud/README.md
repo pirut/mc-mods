@@ -61,8 +61,9 @@ King, or being wiped out completely — its Camp, Outpost, Stronghold, or Town f
 campfires, collapsed roofs and walls, cracked/mossy family masonry, tattered banners, rubble, and cobwebs). If the
 pack later rebuilds its strength back to its threshold, it restores its ruined settlement.
 
-Every family builds in its own vanilla block palette, foundations adapt to hills, builds stream in gradually with no
-lag or chunk force-loading, and automatic placement avoids player-built bases and world spawn. Turn automatic pack
+Every family builds in its own vanilla block palette, foundations adapt to hills, automatic settlement changes
+(new builds, upgrades, ruinations, repairs, and banner updates) happen off-screen while players are away so nothing
+pops in front of you, and automatic placement avoids player-built bases and world spawn. Turn automatic pack
 settlements off or back on anytime with `buildCamps=false` in `config/bloodfeud.properties` or `/bloodfeud camps off`
 and `/bloodfeud camps on`.
 

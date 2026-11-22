@@ -69,12 +69,17 @@ public final class SiteFinder {
         return List.copyOf(list);
     }
 
+    /** Non-blocking check that chunk {@code (chunkX, chunkZ)} is loaded in memory at FULL status right now. */
+    public static boolean isChunkReady(ServerLevel level, int chunkX, int chunkZ) {
+        return level.getChunkSource().getChunkNow(chunkX, chunkZ) != null;
+    }
+
     /** Checks every chunk intersecting {@code [minX..maxX] x [minZ..maxZ]} without triggering chunk loads. */
     public static boolean areBoundsLoaded(ServerLevel level, int minX, int minZ, int maxX, int maxZ) {
         int[] b = CampBlueprint.chunkBounds(minX, minZ, maxX, maxZ);
         for (int chunkX = b[0]; chunkX <= b[2]; chunkX++) {
             for (int chunkZ = b[1]; chunkZ <= b[3]; chunkZ++) {
-                if (!level.hasChunk(chunkX, chunkZ)) return false;
+                if (!isChunkReady(level, chunkX, chunkZ)) return false;
             }
         }
         return true;
@@ -85,7 +90,7 @@ public final class SiteFinder {
         int[] b = CampBlueprint.footprintChunkBounds(cx, cz, radius);
         for (int chunkX = b[0]; chunkX <= b[2]; chunkX++) {
             for (int chunkZ = b[1]; chunkZ <= b[3]; chunkZ++) {
-                if (!level.hasChunk(chunkX, chunkZ)) return false;
+                if (!isChunkReady(level, chunkX, chunkZ)) return false;
             }
         }
         return true;
@@ -93,8 +98,9 @@ public final class SiteFinder {
 
     /**
      * Finds an automatic settlement site near {@code (pack.homeX, pack.homeZ)}.
-     * Caps candidate evaluations per attempt ({@value #MAX_CANDIDATES_PER_ATTEMPT}) to avoid tick spikes,
-     * respects spawn safe radius, refuses water/lava/cliffs/trees, avoids non-natural blocks, and never force-loads chunks.
+     * Evaluates only candidates whose footprint chunks are already loaded, capping loaded evaluations per attempt
+     * ({@value #MAX_CANDIDATES_PER_ATTEMPT}) to avoid tick spikes, respecting spawn safe radius, refusing
+     * water/lava/cliffs/trees, avoiding non-natural blocks, and never synchronously force-loading chunks.
      */
     public static Site findAutoSite(ServerLevel level, Pack pack, SettlementTier tier) {
         int radius = Math.max(SettlementTier.CAMP.radius, tier == null ? SettlementTier.CAMP.radius : tier.radius);
@@ -104,17 +110,23 @@ public final class SiteFinder {
 
         int total = SPIRAL_OFFSETS.size();
         int start = Math.floorMod(pack.siteSearchOffset, total);
-        int checked = 0;
-        for (int i = 0; i < MAX_CANDIDATES_PER_ATTEMPT && i < total; i++) {
-            int[] off = SPIRAL_OFFSETS.get((start + i) % total);
-            checked++;
-            Site candidate = evaluateAutoCandidate(level, baseX + off[0], baseZ + off[1], radius, facing);
+        int evaluated = 0;
+        int scanned = 0;
+        for (int i = 0; i < total && evaluated < MAX_CANDIDATES_PER_ATTEMPT; i++) {
+            int idx = (start + i) % total;
+            int[] off = SPIRAL_OFFSETS.get(idx);
+            scanned = i + 1;
+            int cx = baseX + off[0];
+            int cz = baseZ + off[1];
+            if (!isFootprintLoaded(level, cx, cz, radius)) continue;
+            evaluated++;
+            Site candidate = evaluateAutoCandidate(level, cx, cz, radius, facing);
             if (candidate != null) {
                 pack.siteSearchOffset = 0;
                 return candidate;
             }
         }
-        pack.siteSearchOffset = (start + checked) % total;
+        pack.siteSearchOffset = (start + scanned) % total;
         return null;
     }
 
@@ -223,7 +235,7 @@ public final class SiteFinder {
      * or returns {@code null} if unloaded, water, lava, or void.
      */
     public static Integer findSurfaceY(ServerLevel level, int x, int z) {
-        if (!level.hasChunk(x >> 4, z >> 4)) return null;
+        if (!isChunkReady(level, x >> 4, z >> 4)) return null;
         int minY = level.getMinBuildHeight() + 2;
         int maxY = level.getMaxBuildHeight() - 18;
 
@@ -312,7 +324,7 @@ public final class SiteFinder {
                                                  Set<CampBlueprint.Spot> ownedContainers) {
         int wx = origin.getX() + rx;
         int wz = origin.getZ() + rz;
-        if (!level.hasChunk(wx >> 4, wz >> 4)) return true;
+        if (!isChunkReady(level, wx >> 4, wz >> 4)) return true;
         int minY = Math.max(level.getMinBuildHeight() + 1, origin.getY() + Math.min(-2, relMinY));
         int maxY = Math.min(level.getMaxBuildHeight() - 1, origin.getY() + Math.max(6, relMaxY));
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -346,7 +358,7 @@ public final class SiteFinder {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int[] s : samples) {
             int wx = s[0], wz = s[1];
-            if (!level.hasChunk(wx >> 4, wz >> 4)) return true;
+            if (!isChunkReady(level, wx >> 4, wz >> 4)) return true;
             if (level.getFluidState(pos.set(wx, origin.getY() - 1, wz)).is(FluidTags.LAVA)
                     || level.getFluidState(pos.set(wx, origin.getY() - 2, wz)).is(FluidTags.LAVA)) {
                 return true;

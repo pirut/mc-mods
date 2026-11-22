@@ -680,6 +680,53 @@ public final class CampBlueprint {
         return chunkBounds(cx - r, cz - r, cx + r, cz + r);
     }
 
+    public static final int CAMP_SEARCH_TICKET_MARGIN = 24;
+    public static final int MAX_SEARCH_TICKET_MARGIN = 18;
+
+    /**
+     * Minimum horizontal distance (blocks) every non-spectator player in the same dimension must be beyond
+     * before automatic settlement changes may occur, guaranteeing every block of the settlement is outside
+     * every player's loaded/rendered view distance (with a minimum floor of {@code settlementRadius + 96}).
+     */
+    public static int standoffDistance(int serverViewDistanceChunks, int settlementRadius) {
+        int r = Math.max(0, settlementRadius);
+        return Math.max(r + 96, Math.max(2, serverViewDistanceChunks) * 16 + r + 16);
+    }
+
+    /** Returns {@code true} iff {@code (playerX, playerZ)} is strictly beyond {@code standoff} blocks of {@code (targetX, targetZ)}. */
+    public static boolean isOutsideStandoff(double targetX, double targetZ, double playerX, double playerZ, int standoff) {
+        return Math.hypot(playerX - targetX, playerZ - targetZ) > standoff;
+    }
+
+    /**
+     * Computes {@code {centerChunkX, centerChunkZ, ticketRadius}} for an off-screen region ticket that covers
+     * every chunk in {@link #footprintChunkBounds(int, int, int)} at FULL status (plus 1-chunk margin).
+     * <p>
+     * In Minecraft 1.21.1 {@code DistanceManager.addRegionTicket(type, center, ticketRadius, value)}, the ticket level
+     * at {@code center} is {@code 33 - ticketRadius}, so every chunk at Chebyshev distance {@code d <= ticketRadius}
+     * reaches {@code FULL} status ({@code level <= 33}); setting {@code ticketRadius = maxChebyshevDist + 1} (min 1)
+     * ensures every footprint chunk has {@code d < ticketRadius} ({@code level <= 32}) and all 1-chunk neighbors are
+     * also {@code FULL}.
+     */
+    public static int[] ticketCoverage(int cx, int cz, int footprintRadius) {
+        int[] bounds = footprintChunkBounds(cx, cz, footprintRadius);
+        int minCx = bounds[0], minCz = bounds[1], maxCx = bounds[2], maxCz = bounds[3];
+        int centerCx = Math.floorDiv(minCx + maxCx, 2);
+        int centerCz = Math.floorDiv(minCz + maxCz, 2);
+        int dx = Math.max(Math.abs(minCx - centerCx), Math.abs(maxCx - centerCx));
+        int dz = Math.max(Math.abs(minCz - centerCz), Math.abs(maxCz - centerCz));
+        int maxChebyshev = Math.max(dx, dz);
+        int ticketRadius = Math.max(1, maxChebyshev + 1);
+        return new int[]{centerCx, centerCz, ticketRadius};
+    }
+
+    /** Bounded off-screen search footprint radius for finding an initial site around {@code (homeX, homeZ)}. */
+    public static int searchFootprintRadius(SettlementTier target) {
+        int radius = Math.max(SettlementTier.CAMP.radius, target == null ? SettlementTier.CAMP.radius : target.radius);
+        int margin = (radius <= SettlementTier.CAMP.radius) ? CAMP_SEARCH_TICKET_MARGIN : MAX_SEARCH_TICKET_MARGIN;
+        return radius + margin;
+    }
+
     /** True for large perimeter/street ring zones that should be filtered per-column rather than dropped wholesale. */
     public static boolean isRingZone(String zone) {
         if (zone == null) return false;
