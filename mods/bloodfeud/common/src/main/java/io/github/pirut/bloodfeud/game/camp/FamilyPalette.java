@@ -18,6 +18,11 @@ import net.minecraft.world.level.block.WallTorchBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Half;
 
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
 /**
  * Distinct vanilla 1.21.1 block palettes for all six Blood Feud families, tinted by each pack's DyeColor
  * for wool canopies, carpets, and standing/wall banners.
@@ -172,6 +177,21 @@ public final class FamilyPalette {
             case SPIDERS -> Palettes.SPIDERS;
             case WITCHES -> Palettes.WITCHES;
         };
+    }
+
+    private final Map<CampBlueprint.Material, Set<Block>> placed = new EnumMap<>(CampBlueprint.Material.class);
+
+    /** Every block this family puts down for a material, in any pack or vassal color. */
+    public synchronized Set<Block> blocks(CampBlueprint.Material material) {
+        return placed.computeIfAbsent(material, m -> {
+            Set<Block> out = new HashSet<>();
+            for (int color = 0; color < 16; color++) {
+                for (int meta : new int[]{0, color}) {
+                    out.add(resolve(new CampBlueprint.Placement(0, 0, 0, m, CampBlueprint.Facing.NORTH, meta, m.pass, ""), color).getBlock());
+                }
+            }
+            return Set.copyOf(out);
+        });
     }
 
     public BlockState resolve(CampBlueprint.Placement op, int packColor) {

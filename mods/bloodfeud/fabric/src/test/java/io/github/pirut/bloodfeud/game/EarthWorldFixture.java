@@ -65,6 +65,7 @@ public final class EarthWorldFixture {
         level.minBuild = minBuild;
         level.maxBuild = maxBuild;
         level.blocks = new HashMap<>();
+        level.blockEntities = new HashMap<>();
         level.unknownHeightReads = new AtomicInteger();
         level.serverThreadMapReads = new AtomicInteger();
         level.key = CUBIC;
@@ -90,6 +91,7 @@ public final class EarthWorldFixture {
     public static final class FakeLevel extends ServerLevel implements CubicLevel {
         public ServerCubeWorld cubes;
         public Map<BlockPos, BlockState> blocks;
+        public Map<BlockPos, BlockEntity> blockEntities;
         public AtomicInteger unknownHeightReads, serverThreadMapReads;
         public ResourceKey<Level> key;
         int ground, minBuild, maxBuild;
@@ -132,13 +134,31 @@ public final class EarthWorldFixture {
         @Override
         public boolean setBlock(BlockPos pos, BlockState state, int flags) {
             if (cubes != null && !cubes.isLoaded(pos)) return false;
-            blocks.put(pos.immutable(), state);
+            BlockPos at = pos.immutable();
+            blocks.put(at, state);
+            BlockEntity old = blockEntities.get(at);
+            if (old != null && !old.getType().isValid(state)) blockEntities.remove(at);
+            if (state.getBlock() instanceof net.minecraft.world.level.block.EntityBlock maker && !blockEntities.containsKey(at)) {
+                BlockEntity made = maker.newBlockEntity(at, state);
+                if (made != null) {
+                    made.setLevel(this);
+                    blockEntities.put(at, made);
+                }
+            }
             return true;
         }
 
         @Override
         public BlockEntity getBlockEntity(BlockPos pos) {
-            return null;
+            return blockEntities.get(pos);
+        }
+
+        @Override
+        public void blockEntityChanged(BlockPos pos) {
+        }
+
+        @Override
+        public void updateNeighbourForOutputSignal(BlockPos pos, net.minecraft.world.level.block.Block block) {
         }
 
         @Override

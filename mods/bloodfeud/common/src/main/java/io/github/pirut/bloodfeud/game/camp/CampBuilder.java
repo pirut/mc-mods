@@ -639,9 +639,9 @@ public final class CampBuilder {
             CampBlueprint.Plan diff = CampBlueprint.ruinDiffPlan(site.packId(), site.family(), site.color(),
                     site.vassalColors(), site.siteFacing(), site.builtTier());
             diff = CampBlueprint.withoutSkipped(diff, site.skippedZones(), site.skippedColumns());
-            Set<CampBlueprint.Spot> ownedPositions = CampBlueprint.ownedPositions(
+            Set<CampBlueprint.Spot> ownedPositions = new SiteFinder.Owned(CampBlueprint.ownedMaterials(
                     site.packId(), site.family(), site.color(), site.vassalColors(), site.siteFacing(),
-                    site.builtTier(), site.skippedZones(), site.skippedColumns());
+                    site.builtTier(), site.skippedZones(), site.skippedColumns()), site.family());
             Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(
                     site.packId(), site.family(), site.color(), site.vassalColors(), site.siteFacing(),
                     site.builtTier(), site.skippedZones(), site.skippedColumns());
@@ -690,9 +690,9 @@ public final class CampBuilder {
         plan = CampBlueprint.withoutSkipped(plan, pack.skippedZones, pack.skippedColumns);
 
         int ownedTier = (from == 0 && pack.buildStarted) ? to : from;
-        Set<CampBlueprint.Spot> ownedPositions = CampBlueprint.ownedPositions(
+        Set<CampBlueprint.Spot> ownedPositions = new SiteFinder.Owned(CampBlueprint.ownedMaterials(
                 pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, ownedTier,
-                pack.skippedZones, pack.skippedColumns);
+                pack.skippedZones, pack.skippedColumns), pack.family);
         Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(
                 pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, ownedTier,
                 pack.skippedZones, pack.skippedColumns);
@@ -755,13 +755,13 @@ public final class CampBuilder {
         }
         int finalTier = inPlace ? pack.builtTier : to;
 
-        Set<CampBlueprint.Spot> ownedPositions = inPlace
-                ? CampBlueprint.ownedPositions(pack.id, pack.family, displayColor, vassalColors,
+        Set<CampBlueprint.Spot> ownedPositions = new SiteFinder.Owned(inPlace
+                ? CampBlueprint.ownedMaterials(pack.id, pack.family, displayColor, vassalColors,
                         pack.siteFacing, pack.builtTier, pack.skippedZones, pack.skippedColumns)
                 : (pack.buildStarted
-                        ? CampBlueprint.ownedRuinedPositions(pack.id, pack.family, displayColor, vassalColors,
+                        ? CampBlueprint.ownedRuinedMaterials(pack.id, pack.family, displayColor, vassalColors,
                                 pack.siteFacing, to, pack.skippedZones, pack.skippedColumns)
-                        : Set.of());
+                        : Map.of()), pack.family);
         Set<CampBlueprint.Spot> ownedContainers = inPlace
                 ? CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassalColors,
                         pack.siteFacing, pack.builtTier, pack.skippedZones, pack.skippedColumns)
@@ -821,9 +821,9 @@ public final class CampBuilder {
                 pack.siteFacing, built, to);
         plan = CampBlueprint.withoutSkipped(plan, pack.skippedZones, pack.skippedColumns);
 
-        Set<CampBlueprint.Spot> ownedPositions = CampBlueprint.ownedRuinedPositions(
+        Set<CampBlueprint.Spot> ownedPositions = new SiteFinder.Owned(CampBlueprint.ownedRuinedMaterials(
                 pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, built,
-                pack.skippedZones, pack.skippedColumns);
+                pack.skippedZones, pack.skippedColumns), pack.family);
         Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(
                 pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, built,
                 pack.skippedZones, pack.skippedColumns);
@@ -1138,10 +1138,11 @@ public final class CampBuilder {
                 BlockEntity be = level.getBlockEntity(pos);
                 if (be instanceof Container container && container.isEmpty()) {
                     long posSeed = job.seed ^ (((long) pos.getX() * 341873128712L) ^ ((long) pos.getZ() * 132897987541L));
-                    CampLoot.fill(container, job.family, lootTier, posSeed);
+                    // Named first: applying components also applies the chest's (empty) contents, which wiped the loot.
                     be.applyComponents(be.components(), DataComponentPatch.builder()
                             .set(DataComponents.CUSTOM_NAME, CampLoot.chestTitle(job.packTitle, lootTier))
                             .build());
+                    CampLoot.fill(container, job.family, lootTier, posSeed);
                     be.setChanged();
                 }
             }
