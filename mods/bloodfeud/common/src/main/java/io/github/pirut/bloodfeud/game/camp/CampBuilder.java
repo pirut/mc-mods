@@ -13,9 +13,12 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.TicketType;
 import net.minecraft.world.Container;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.AbstractChestBlock;
 import net.minecraft.world.level.block.BannerBlock;
@@ -27,6 +30,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -37,17 +41,28 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Chunk-safe incremental builder that places, ruins, and repairs gang camps, outposts, strongholds and towns
- * over multiple ticks (~250 block ops/tick) without lag, chunk force-loading, or overwriting player builds
- * and containers.
+ * Chunk-safe incremental builder that places, ruins, repairs, and re-banners gang camps, outposts, strongholds,
+ * and towns over multiple ticks without lag or overwriting player builds and containers.
+ * <p>
+ * Automatic world mutations only run off-screen while all non-spectator players in the same dimension are outside
+ * {@link #standoffDistance(int, int)} and do not track any footprint chunk, using brief, auto-expiring in-memory
+ * chunk tickets that are released on
+ * every completion, pause, abort, cancellation, or shutdown path.
  */
 public final class CampBuilder {
     private static final int OPS_PER_TICK = 250;
-    private static final int AUTO_TRIGGER_RANGE = 144;
-    private static final int MAX_CONCURRENT_AUTO = 3;
+    private static final int OFFSCREEN_OPS_PER_TICK = 400;
+    private static final int MAX_CONCURRENT_AUTO = 2;
+    private static final int OFFSCREEN_TICKET_TTL_TICKS = 200;
+    private static final long TICKET_RENEW_INTERVAL_TICKS = 80L;
+    private static final long PREP_TIMEOUT_TICKS = 400L;
     private static final long RETRY_COOLDOWN_TICKS = 2400L;
     private static final long STALL_TIMEOUT_TICKS = 600L;
+    private static final int MAX_SEARCH_ATTEMPTS = 5;
     public static final int MAX_FOUNDATION_DEPTH = 14;
+
+    private static final TicketType<ChunkPos> OFFSCREEN_TICKET = TicketType.create(
+            "bloodfeud_camp", Comparator.comparingLong(ChunkPos::toLong), OFFSCREEN_TICKET_TTL_TICKS);
 
     public record QueueResult(boolean queued, List<String> skippedZones, int skippedRingColumns) {
     }
@@ -117,71 +132,383 @@ public final class CampBuilder {
         }
     }
 
+    private enum TicketPurpose { PREP, BUILD, REBANNER }
+
+    private static final class HeldTicket {
+        final ResourceKey<Level> dimension;
+        final ChunkPos center;
+        final int ticketRadius;
+        final int targetX;
+        final int targetZ;
+        final int standoffRadius;
+        final long acquiredAtTick;
+        long renewedAtTick;
+        TicketPurpose purpose;
+        int searchAttempts;
+
+        HeldTicket(ResourceKey<Level> dimension, ChunkPos center, int ticketRadius,
+                   int targetX, int targetZ, int standoffRadius,
+                   long gameTime, TicketPurpose purpose) {
+            this.dimension = dimension;
+            this.center = center;
+            this.ticketRadius = ticketRadius;
+            this.targetX = targetX;
+            this.targetZ = targetZ;
+            this.standoffRadius = standoffRadius;
+            this.acquiredAtTick = gameTime;
+            this.renewedAtTick = gameTime;
+            this.purpose = purpose;
+        }
+    }
+
     private final Map<UUID, BuildJob> jobs = new LinkedHashMap<>();
+    private final Map<UUID, HeldTicket> heldTickets = new LinkedHashMap<>();
+
+    /**
+     * Minimum horizontal distance (blocks) every non-spectator player in the same dimension must be beyond
+     * before automatic settlement changes may occur, guaranteeing every block of the settlement is outside
+     * every player's loaded/rendered view distance (with a minimum floor of {@code settlementRadius + 96}).
+     */
+    public static int standoffDistance(int serverViewDistanceChunks, int settlementRadius) {
+        return CampBlueprint.standoffDistance(serverViewDistanceChunks, settlementRadius);
+    }
+
+    /** Returns {@code true} iff {@code (playerX, playerZ)} is strictly beyond {@code standoff} blocks of {@code (targetX, targetZ)}. */
+    public static boolean isOutsideStandoff(double targetX, double targetZ, double playerX, double playerZ, int standoff) {
+        return CampBlueprint.isOutsideStandoff(targetX, targetZ, playerX, playerZ, standoff);
+    }
+
+    /**
+     * Returns {@code true} iff no non-spectator player in {@code dimension} is within
+     * {@link #standoffDistance(int, int)} of {@code (x, z)} AND no non-spectator player's
+     * {@link ChunkTrackingView} (or current chunk view at server view distance) tracks any chunk
+     * in {@link CampBlueprint#footprintChunkBounds(int, int, int)}.
+     */
+    public static boolean isAreaClearOfPlayers(MinecraftServer server, String dimension, int x, int z, int radius) {
+        if (server == null || dimension == null) return false;
+        int viewDistance = server.getPlayerList().getViewDistance();
+        int standoff = standoffDistance(viewDistance, radius);
+        int[] bounds = CampBlueprint.footprintChunkBounds(x, z, radius);
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+            if (p.isSpectator()) continue;
+            if (!p.level().dimension().location().toString().equals(dimension)) continue;
+            if (!isOutsideStandoff(x, z, p.getX(), p.getZ(), standoff)) {
+                return false;
+            }
+            ChunkPos playerChunk = p.chunkPosition();
+            if (CampBlueprint.isFootprintTrackedByChunkView(
+                    x, z, radius, playerChunk.x, playerChunk.z, viewDistance)) {
+                return false;
+            }
+            ChunkTrackingView view = p.getChunkTrackingView();
+            if (view != null && isChunkBoundsTracked(bounds, view)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isChunkBoundsTracked(int[] bounds, ChunkTrackingView view) {
+        for (int cx = bounds[0]; cx <= bounds[2]; cx++) {
+            for (int cz = bounds[1]; cz <= bounds[3]; cz++) {
+                if (view.contains(cx, cz)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Computes {@code {centerChunkX, centerChunkZ, ticketRadius}} for an off-screen region ticket that covers
+     * every chunk in {@link CampBlueprint#footprintChunkBounds(int, int, int)} at FULL status (plus 1-chunk margin).
+     * <p>
+     * In Minecraft 1.21.1 {@code DistanceManager.addRegionTicket(type, center, ticketRadius, value)}, the ticket level
+     * at {@code center} is {@code 33 - ticketRadius}, so every chunk at Chebyshev distance {@code d <= ticketRadius}
+     * reaches {@code FULL} status ({@code level <= 33}); setting {@code ticketRadius = maxChebyshevDist + 1} (min 1)
+     * ensures every footprint chunk has {@code d < ticketRadius} ({@code level <= 32}) and all 1-chunk neighbors are
+     * also {@code FULL}.
+     */
+    public static int[] ticketCoverage(int cx, int cz, int footprintRadius) {
+        return CampBlueprint.ticketCoverage(cx, cz, footprintRadius);
+    }
+
+    /** Off-screen search footprint radius covering every spiral candidate around {@code (homeX, homeZ)}. */
+    public static int searchFootprintRadius(int settlementRadius) {
+        return CampBlueprint.searchFootprintRadius(settlementRadius);
+    }
+
+    /** Off-screen search footprint radius for finding an initial site around {@code (homeX, homeZ)}. */
+    public static int searchFootprintRadius(SettlementTier target) {
+        return CampBlueprint.searchFootprintRadius(target);
+    }
 
     public boolean isBuilding(UUID packId) {
         return jobs.containsKey(packId);
     }
 
-    /** Cancels all in-flight automatic build/ruin/repair jobs (called when {@code /bloodfeud camps off} disables auto-camps). */
-    public void cancelAutomatic() {
-        jobs.values().removeIf(job -> job.automatic);
+    /**
+     * Cancels all in-flight automatic build/ruin/repair jobs and releases their off-screen chunk tickets
+     * (called when {@code /bloodfeud camps off} disables auto-camps).
+     */
+    public void cancelAutomatic(MinecraftServer server) {
+        for (Iterator<Map.Entry<UUID, BuildJob>> it = jobs.entrySet().iterator(); it.hasNext(); ) {
+            BuildJob job = it.next().getValue();
+            if (job.automatic) {
+                it.remove();
+                releaseTicket(server, job.packId);
+            }
+        }
+        List<UUID> toRelease = new ArrayList<>();
+        for (Map.Entry<UUID, HeldTicket> entry : heldTickets.entrySet()) {
+            if (entry.getValue().purpose != TicketPurpose.REBANNER) {
+                toRelease.add(entry.getKey());
+            }
+        }
+        for (UUID id : toRelease) {
+            releaseTicket(server, id);
+        }
     }
 
-    /** Clears every queued build job (called on server stop or {@code /bloodfeud forget everything}). */
-    public void clearAll() {
+    /** Clears every queued build job and releases all off-screen chunk tickets (server stop or forget everything). */
+    public void clearAll(MinecraftServer server) {
         jobs.clear();
+        releaseAllTickets(server);
+    }
+
+    private HeldTicket acquireOrRenewTicket(MinecraftServer server, UUID id, ServerLevel level,
+                                            int targetX, int targetZ, int footprintRadius, int standoffRadius,
+                                            long gameTime, TicketPurpose purpose) {
+        int[] cov = ticketCoverage(targetX, targetZ, footprintRadius);
+        ChunkPos center = new ChunkPos(cov[0], cov[1]);
+        int ticketRadius = cov[2];
+        ResourceKey<Level> dim = level.dimension();
+
+        HeldTicket existing = heldTickets.get(id);
+        if (existing != null) {
+            if (existing.dimension.equals(dim)
+                    && existing.center.equals(center)
+                    && existing.ticketRadius == ticketRadius) {
+                existing.purpose = purpose;
+                if (gameTime - existing.renewedAtTick >= TICKET_RENEW_INTERVAL_TICKS) {
+                    level.getChunkSource().addRegionTicket(OFFSCREEN_TICKET, center, ticketRadius, center);
+                    existing.renewedAtTick = gameTime;
+                }
+                return existing;
+            }
+            // Add the updated ticket first so overlapping chunks stay loaded continuously before releasing the old one
+            level.getChunkSource().addRegionTicket(OFFSCREEN_TICKET, center, ticketRadius, center);
+            HeldTicket updated = new HeldTicket(dim, center, ticketRadius, targetX, targetZ, standoffRadius, gameTime, purpose);
+            heldTickets.put(id, updated);
+            removeTicketFromServerIfUnused(server, existing);
+            return updated;
+        }
+
+        level.getChunkSource().addRegionTicket(OFFSCREEN_TICKET, center, ticketRadius, center);
+        HeldTicket ticket = new HeldTicket(dim, center, ticketRadius, targetX, targetZ, standoffRadius, gameTime, purpose);
+        heldTickets.put(id, ticket);
+        return ticket;
+    }
+
+    private void releaseTicket(MinecraftServer server, UUID id) {
+        HeldTicket removed = heldTickets.remove(id);
+        if (removed != null) {
+            removeTicketFromServerIfUnused(server, removed);
+        }
+    }
+
+    private void removeTicketFromServerIfUnused(MinecraftServer server, HeldTicket target) {
+        if (server == null || target == null) return;
+        for (HeldTicket other : heldTickets.values()) {
+            if (other.dimension.equals(target.dimension)
+                    && other.center.equals(target.center)
+                    && other.ticketRadius == target.ticketRadius) {
+                return;
+            }
+        }
+        ServerLevel level = server.getLevel(target.dimension);
+        if (level != null) {
+            level.getChunkSource().removeRegionTicket(OFFSCREEN_TICKET, target.center, target.ticketRadius, target.center);
+        }
+    }
+
+    private void releaseAllTickets(MinecraftServer server) {
+        if (heldTickets.isEmpty()) return;
+        List<HeldTicket> toRelease = new ArrayList<>(heldTickets.values());
+        heldTickets.clear();
+        if (server == null) return;
+        for (HeldTicket t : toRelease) {
+            ServerLevel level = server.getLevel(t.dimension);
+            if (level != null) {
+                level.getChunkSource().removeRegionTicket(OFFSCREEN_TICKET, t.center, t.ticketRadius, t.center);
+            }
+        }
+    }
+
+    private static boolean hasAbandonedSite(Feud feud, UUID packId) {
+        for (Feud.AbandonedSite site : feud.abandonedSites) {
+            if (site.packId().equals(packId)) return true;
+        }
+        return false;
     }
 
     /**
-     * Flushes pending re-bannering on loaded settlements, then checks nearby packs and abandoned sites and schedules
-     * automatic builds, upgrades, in-place ruinations, and restorations when {@code Config.buildCamps} is enabled
-     * and a player comes within 144 blocks.
+     * Guards pending off-screen prep/rebanner tickets on every tick: immediately releases tickets if a player
+     * enters standoff distance, if the pack disappears, if auto-camps are turned off, or if prep times out,
+     * and renews still-valid tickets before TTL expiry.
+     */
+    private void maintainOffscreenTickets(MinecraftServer server, FeudData data, long gameTime) {
+        if (heldTickets.isEmpty()) return;
+        for (Iterator<Map.Entry<UUID, HeldTicket>> it = heldTickets.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<UUID, HeldTicket> entry = it.next();
+            UUID id = entry.getKey();
+            HeldTicket ticket = entry.getValue();
+            if (ticket.purpose == TicketPurpose.BUILD) {
+                if (!jobs.containsKey(id)) {
+                    it.remove();
+                    removeTicketFromServerIfUnused(server, ticket);
+                }
+                continue;
+            }
+            if (ticket.purpose == TicketPurpose.PREP && !BloodFeud.config().buildCamps) {
+                it.remove();
+                removeTicketFromServerIfUnused(server, ticket);
+                continue;
+            }
+            Pack pack = data.feud.pack(id);
+            boolean hasAbandoned = pack == null && hasAbandonedSite(data.feud, id);
+            if (pack == null && !hasAbandoned) {
+                it.remove();
+                removeTicketFromServerIfUnused(server, ticket);
+                continue;
+            }
+            if (ticket.purpose == TicketPurpose.REBANNER && (pack == null || !pack.bannersDirty || jobs.containsKey(id))) {
+                it.remove();
+                removeTicketFromServerIfUnused(server, ticket);
+                continue;
+            }
+            if (!isAreaClearOfPlayers(server, ticket.dimension.location().toString(),
+                    ticket.targetX, ticket.targetZ, ticket.standoffRadius)) {
+                it.remove();
+                removeTicketFromServerIfUnused(server, ticket);
+                continue;
+            }
+            if (gameTime - ticket.acquiredAtTick >= PREP_TIMEOUT_TICKS) {
+                it.remove();
+                removeTicketFromServerIfUnused(server, ticket);
+                if (ticket.purpose == TicketPurpose.PREP && pack != null) {
+                    pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
+                }
+                continue;
+            }
+            if (gameTime - ticket.renewedAtTick >= TICKET_RENEW_INTERVAL_TICKS) {
+                ServerLevel level = server.getLevel(ticket.dimension);
+                if (level == null) {
+                    it.remove();
+                    removeTicketFromServerIfUnused(server, ticket);
+                    continue;
+                }
+                level.getChunkSource().addRegionTicket(OFFSCREEN_TICKET, ticket.center, ticket.ticketRadius, ticket.center);
+                ticket.renewedAtTick = gameTime;
+            }
+        }
+    }
+
+    /**
+     * Checks packs and abandoned sites whose areas are completely clear of players ({@link #isAreaClearOfPlayers})
+     * and schedules off-screen re-bannering, initial builds, upgrades, in-place ruinations, restorations, and
+     * abandoned-site crumbling using brief, bounded off-screen chunk tickets.
      */
     public void checkAutoBuilds(MinecraftServer server, FeudData data, long gameTime) {
         Feud feud = data.feud;
 
-        // Always flush pending faction re-bannering once a built settlement's footprint loads
+        // 1. Flush pending faction re-bannering off-screen only
         boolean dirtiedData = false;
         for (Pack pack : feud.packs.values()) {
             if (!pack.bannersDirty || !pack.siteSet || pack.builtTier <= 0 || jobs.containsKey(pack.id)) continue;
+            SettlementTier built = SettlementTier.byLevel(pack.builtTier);
+            if (!isAreaClearOfPlayers(server, pack.dimension, pack.siteX, pack.siteZ, built.radius)) {
+                releaseTicket(server, pack.id);
+                continue;
+            }
             ServerLevel level = resolveLevel(server, pack.dimension);
-            if (level == null) continue;
-            if (rebanner(level, feud, pack)) {
-                pack.bannersDirty = false;
-                dirtiedData = true;
+            if (level == null) {
+                releaseTicket(server, pack.id);
+                continue;
+            }
+            if (SiteFinder.isFootprintLoaded(level, pack.siteX, pack.siteZ, built.radius)) {
+                if (rebanner(level, feud, pack)) {
+                    pack.bannersDirty = false;
+                    dirtiedData = true;
+                }
+                releaseTicket(server, pack.id);
+            } else if (!heldTickets.containsKey(pack.id) && heldTickets.size() < MAX_CONCURRENT_AUTO) {
+                acquireOrRenewTicket(server, pack.id, level, pack.siteX, pack.siteZ, built.radius, built.radius,
+                        gameTime, TicketPurpose.REBANNER);
             }
         }
         if (dirtiedData) data.changed();
 
         if (!BloodFeud.config().buildCamps) return;
 
-        int autoCount = 0;
-        for (BuildJob j : jobs.values()) {
-            if (j.automatic && !j.stalled) autoCount++;
-        }
-        if (autoCount >= MAX_CONCURRENT_AUTO) return;
-
+        // 2. Automatic initial builds, upgrades, in-place ruinations, and repairs off-screen
         for (Pack pack : feud.packs.values()) {
-            if (autoCount >= MAX_CONCURRENT_AUTO) break;
             if (jobs.containsKey(pack.id)) continue;
+            HeldTicket existingTicket = heldTickets.get(pack.id);
+            if (existingTicket != null && existingTicket.purpose == TicketPurpose.REBANNER) continue;
+
             Pack.AutoBuildAction action = autoActionFor(pack);
-            if (action == Pack.AutoBuildAction.NONE) continue;
-            if (pack.siteRetryAt > gameTime) continue;
+            if (action == Pack.AutoBuildAction.NONE) {
+                if (existingTicket != null) releaseTicket(server, pack.id);
+                continue;
+            }
+            if (pack.siteRetryAt > gameTime) {
+                if (existingTicket != null) releaseTicket(server, pack.id);
+                continue;
+            }
 
             SettlementTier target = pack.tier == null ? SettlementTier.CAMP : pack.tier;
-            if (!playerNearby(server, pack.dimension, pack.campX(), pack.campZ())) continue;
-            ServerLevel level = resolveLevel(server, pack.dimension);
-            if (level == null) continue;
-
             int checkTier = (action == Pack.AutoBuildAction.RUIN && pack.builtTier > 0)
                     ? pack.builtTier
                     : Math.max(pack.builtTier, target.level);
-            int radius = SettlementTier.byLevel(checkTier).radius;
+            SettlementTier checkTierEnum = SettlementTier.byLevel(checkTier);
+            int radius = checkTierEnum.radius;
+            int gateX = pack.campX();
+            int gateZ = pack.campZ();
+            int gateRadius = pack.siteSet ? radius : searchFootprintRadius(checkTierEnum);
+
+            if (!isAreaClearOfPlayers(server, pack.dimension, gateX, gateZ, gateRadius)) {
+                releaseTicket(server, pack.id);
+                continue;
+            }
+            ServerLevel level = resolveLevel(server, pack.dimension);
+            if (level == null) {
+                releaseTicket(server, pack.id);
+                continue;
+            }
+
             if (!pack.siteSet) {
+                if (!SiteFinder.isFootprintLoaded(level, pack.homeX, pack.homeZ, gateRadius)) {
+                    if (existingTicket == null && heldTickets.size() < MAX_CONCURRENT_AUTO) {
+                        acquireOrRenewTicket(server, pack.id, level, pack.homeX, pack.homeZ,
+                                gateRadius, gateRadius, gameTime, TicketPurpose.PREP);
+                    }
+                    continue;
+                }
+                if (existingTicket == null && heldTickets.size() >= MAX_CONCURRENT_AUTO) continue;
+
                 SiteFinder.Site site = SiteFinder.findAutoSite(level, pack, target);
                 if (site == null) {
-                    pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
+                    if (existingTicket != null && existingTicket.searchAttempts + 1 < MAX_SEARCH_ATTEMPTS) {
+                        existingTicket.searchAttempts++;
+                    } else {
+                        releaseTicket(server, pack.id);
+                        pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
+                    }
+                    continue;
+                }
+                if (!isAreaClearOfPlayers(server, pack.dimension, site.origin().getX(), site.origin().getZ(), radius)) {
+                    releaseTicket(server, pack.id);
                     continue;
                 }
                 pack.siteSet = true;
@@ -195,14 +522,21 @@ public final class CampBuilder {
                 data.changed();
             } else {
                 if (!SiteFinder.isFootprintLoaded(level, pack.siteX, pack.siteZ, radius)) {
+                    if (existingTicket == null && heldTickets.size() < MAX_CONCURRENT_AUTO) {
+                        acquireOrRenewTicket(server, pack.id, level, pack.siteX, pack.siteZ,
+                                radius, radius, gameTime, TicketPurpose.PREP);
+                    }
                     continue;
                 }
+                if (existingTicket == null && heldTickets.size() >= MAX_CONCURRENT_AUTO) continue;
+
                 // Re-validate reserved initial sites (siteSet && !buildStarted && builtTier == 0) before placing blocks;
                 // once buildStarted is true, skip the coarse full-radius scan (which would flag skipped-zone player blocks
                 // or downward foundation fills) and let queueBuild/queueRuin run per-zone filterPlan with ownership directly.
                 if (pack.builtTier == 0 && !pack.buildStarted) {
                     BlockPos origin = new BlockPos(pack.siteX, pack.siteY, pack.siteZ);
                     if (SiteFinder.hasPlayerBuild(level, origin, radius, Set.of(), Set.of())) {
+                        releaseTicket(server, pack.id);
                         pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
                         pack.siteSet = false;
                         pack.skippedZones.clear();
@@ -220,11 +554,13 @@ public final class CampBuilder {
                 case NONE -> new QueueResult(false, List.of(), 0);
             };
             if (res.queued()) {
-                autoCount++;
+                acquireOrRenewTicket(server, pack.id, level, pack.siteX, pack.siteZ,
+                        radius, radius, gameTime, TicketPurpose.BUILD);
                 if (!res.skippedZones().isEmpty() || res.skippedRingColumns() > 0) {
                     data.changed();
                 }
             } else {
+                releaseTicket(server, pack.id);
                 pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
                 if (pack.builtTier == 0 && !pack.buildStarted) {
                     pack.siteSet = false;
@@ -235,15 +571,28 @@ public final class CampBuilder {
             }
         }
 
-        // Crumble intact settlements left behind by disbanded packs once a player approaches
+        // 3. Crumble intact settlements left behind by disbanded packs while players are away
         for (Feud.AbandonedSite site : new ArrayList<>(feud.abandonedSites)) {
-            if (autoCount >= MAX_CONCURRENT_AUTO) break;
             if (jobs.containsKey(site.packId())) continue;
-            if (!playerNearby(server, site.dimension(), site.siteX(), site.siteZ())) continue;
-            ServerLevel level = resolveLevel(server, site.dimension());
-            if (level == null) continue;
             SettlementTier built = SettlementTier.byLevel(site.builtTier());
-            if (!SiteFinder.isFootprintLoaded(level, site.siteX(), site.siteZ(), built.radius)) continue;
+            HeldTicket existingTicket = heldTickets.get(site.packId());
+            if (!isAreaClearOfPlayers(server, site.dimension(), site.siteX(), site.siteZ(), built.radius)) {
+                releaseTicket(server, site.packId());
+                continue;
+            }
+            ServerLevel level = resolveLevel(server, site.dimension());
+            if (level == null) {
+                releaseTicket(server, site.packId());
+                continue;
+            }
+            if (!SiteFinder.isFootprintLoaded(level, site.siteX(), site.siteZ(), built.radius)) {
+                if (existingTicket == null && heldTickets.size() < MAX_CONCURRENT_AUTO) {
+                    acquireOrRenewTicket(server, site.packId(), level, site.siteX(), site.siteZ(),
+                            built.radius, built.radius, gameTime, TicketPurpose.PREP);
+                }
+                continue;
+            }
+            if (existingTicket == null && heldTickets.size() >= MAX_CONCURRENT_AUTO) continue;
 
             CampBlueprint.Plan diff = CampBlueprint.ruinDiffPlan(site.packId(), site.family(), site.color(),
                     site.vassalColors(), site.siteFacing(), site.builtTier());
@@ -257,6 +606,7 @@ public final class CampBuilder {
             BlockPos origin = new BlockPos(site.siteX(), site.siteY(), site.siteZ());
             FilterResult filtered = filterPlan(level, origin, diff, null, ownedPositions, ownedContainers);
             if (filtered.ops().isEmpty()) {
+                releaseTicket(server, site.packId());
                 if (feud.abandonedSites.removeIf(s -> s.packId().equals(site.packId()))) {
                     data.changed();
                 }
@@ -267,7 +617,8 @@ public final class CampBuilder {
                     Mode.ABANDONED_RUIN, true, true, filtered.ops(), ownedPositions, ownedContainers,
                     site.vassalColors(), site.skippedZones(), site.skippedColumns(), gameTime, null);
             jobs.put(site.packId(), job);
-            autoCount++;
+            acquireOrRenewTicket(server, site.packId(), level, site.siteX(), site.siteZ(),
+                    built.radius, built.radius, gameTime, TicketPurpose.BUILD);
         }
     }
 
@@ -323,6 +674,7 @@ public final class CampBuilder {
                 pack.title(), from, to, Mode.BUILD, automatic, shouldProtect, filtered.ops(),
                 ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
+        if (!automatic) releaseTicket(level.getServer(), pack.id);
         jobs.put(pack.id, job);
         return new QueueResult(true, filtered.skippedZones(), filtered.skippedRingColumns());
     }
@@ -398,6 +750,7 @@ public final class CampBuilder {
                 pack.title(), pack.builtTier, finalTier, Mode.RUIN, automatic, shouldProtect, ops,
                 ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
+        if (!automatic) releaseTicket(level.getServer(), pack.id);
         jobs.put(pack.id, job);
         return new QueueResult(true, skippedZones, skippedRingColumns);
     }
@@ -453,6 +806,7 @@ public final class CampBuilder {
                 pack.title(), built, to, Mode.REPAIR, automatic, true, filtered.ops(),
                 ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
+        if (!automatic) releaseTicket(level.getServer(), pack.id);
         jobs.put(pack.id, job);
         return new QueueResult(true, filtered.skippedZones(), filtered.skippedRingColumns());
     }
@@ -536,16 +890,24 @@ public final class CampBuilder {
         return new FilterResult(ops, blockedZones, blockedRingCols, List.copyOf(skippedZones), skippedRingColumns);
     }
 
-    /** Executes up to ~250 block operations per tick across queued build/ruin/repair jobs. */
+    /**
+     * Executes queued build/ruin/repair jobs (up to {@value #OPS_PER_TICK} ops/tick for manual builds and
+     * {@value #OFFSCREEN_OPS_PER_TICK} ops/tick for off-screen automatic jobs) while maintaining off-screen
+     * chunk tickets and immediately pausing any automatic job if a player enters standoff distance.
+     */
     public void tick(MinecraftServer server, FeudData data, long gameTime) {
+        maintainOffscreenTickets(server, data, gameTime);
         if (jobs.isEmpty()) return;
-        int budget = OPS_PER_TICK;
+
+        int manualRemaining = OPS_PER_TICK;
+        int totalRemaining = OFFSCREEN_OPS_PER_TICK;
         List<Runnable> completedCallbacks = null;
 
-        for (Iterator<Map.Entry<UUID, BuildJob>> it = jobs.entrySet().iterator(); it.hasNext() && budget > 0; ) {
+        for (Iterator<Map.Entry<UUID, BuildJob>> it = jobs.entrySet().iterator(); it.hasNext(); ) {
             BuildJob job = it.next().getValue();
             if (job.automatic && !BloodFeud.config().buildCamps) {
                 it.remove();
+                releaseTicket(server, job.packId);
                 continue;
             }
             Pack pack = null;
@@ -553,6 +915,7 @@ public final class CampBuilder {
                 pack = data.feud.pack(job.packId);
                 if (pack == null) {
                     it.remove();
+                    releaseTicket(server, job.packId);
                     if (job.index > 0 && job.mode != Mode.RUIN) {
                         int coverTier = Math.max(job.fromTier, job.toTier);
                         if (coverTier > 0) {
@@ -570,23 +933,55 @@ public final class CampBuilder {
             ServerLevel level = server.getLevel(job.dimension);
             if (level == null) {
                 it.remove();
+                releaseTicket(server, job.packId);
                 continue;
             }
+
+            // Mid-flight player-away standoff protection for automatic jobs
+            if (job.automatic) {
+                int jobRadius = SettlementTier.byLevel(Math.max(job.fromTier, job.toTier)).radius;
+                if (!isAreaClearOfPlayers(server, job.dimension.location().toString(),
+                        job.origin.getX(), job.origin.getZ(), jobRadius)) {
+                    job.lastProgressTick = gameTime;
+                    job.stalled = false;
+                    releaseTicket(server, job.packId);
+                    continue;
+                }
+                if (!heldTickets.containsKey(job.packId) && heldTickets.size() >= MAX_CONCURRENT_AUTO) {
+                    job.lastProgressTick = gameTime;
+                    continue;
+                }
+                acquireOrRenewTicket(server, job.packId, level,
+                        job.origin.getX(), job.origin.getZ(), jobRadius, jobRadius,
+                        gameTime, TicketPurpose.BUILD);
+            }
+
+            int jobBudget = job.automatic ? totalRemaining : Math.min(manualRemaining, totalRemaining);
+            if (jobBudget <= 0) {
+                job.lastProgressTick = gameTime;
+                continue;
+            }
+
             FamilyPalette palette = FamilyPalette.of(job.family);
             boolean stalled = false;
             int opsDone = 0;
-            while (budget > 0 && job.index < job.ops.size()) {
+            while (jobBudget > 0 && job.index < job.ops.size()) {
                 CampBlueprint.Placement op = job.ops.get(job.index);
                 BlockPos pos = job.origin.offset(op.rx(), op.ry(), op.rz());
-                if (!level.hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) {
+                if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4)) {
                     stalled = true;
                     break;
                 }
                 applyOp(level, pos, op, palette, job);
                 job.index++;
-                budget--;
+                jobBudget--;
                 opsDone++;
             }
+            totalRemaining -= opsDone;
+            if (!job.automatic) {
+                manualRemaining -= opsDone;
+            }
+
             if (opsDone > 0) {
                 job.lastProgressTick = gameTime;
                 if (pack != null && pack.builtTier == 0 && !pack.buildStarted) {
@@ -598,7 +993,8 @@ public final class CampBuilder {
             if (stalled) {
                 if (job.automatic && gameTime - job.lastProgressTick >= STALL_TIMEOUT_TICKS) {
                     it.remove();
-                    if (pack != null && pack.builtTier == 0) {
+                    releaseTicket(server, job.packId);
+                    if (pack != null) {
                         pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
                     }
                 }
@@ -607,6 +1003,7 @@ public final class CampBuilder {
 
             if (job.index >= job.ops.size()) {
                 it.remove();
+                releaseTicket(server, job.packId);
                 if (job.mode == Mode.ABANDONED_RUIN) {
                     if (data.feud.abandonedSites.removeIf(s -> s.packId().equals(job.packId))) {
                         data.changed();
@@ -729,7 +1126,7 @@ public final class CampBuilder {
                 continue;
             }
             BlockPos pos = origin.offset(op.rx(), op.ry(), op.rz());
-            if (!level.hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) continue;
+            if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4)) continue;
             BlockState existing = level.getBlockState(pos);
             Block block = existing.getBlock();
             boolean replaceable = block instanceof BannerBlock || block instanceof WallBannerBlock
@@ -757,7 +1154,7 @@ public final class CampBuilder {
                     continue;
                 }
                 BlockPos pos = origin.offset(s.rx(), s.ry(), s.rz());
-                if (!level.hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) continue;
+                if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4)) continue;
                 boolean clearedBanner = false;
                 if (level.getBlockState(pos).getBlock() instanceof BannerBlock) {
                     level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
@@ -788,17 +1185,6 @@ public final class CampBuilder {
         List<Integer> colors = new ArrayList<>();
         for (Pack v : feud.vassals(pack)) colors.add(v.color);
         return colors;
-    }
-
-    private static boolean playerNearby(MinecraftServer server, String dimension, int x, int z) {
-        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            if (p.isSpectator()) continue;
-            if (!p.level().dimension().location().toString().equals(dimension)) continue;
-            if (Math.hypot(p.getX() - x, p.getZ() - z) <= AUTO_TRIGGER_RANGE) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static ServerLevel resolveLevel(MinecraftServer server, String dimension) {

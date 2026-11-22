@@ -668,6 +668,7 @@ public final class CampBlueprint {
     }
 
     public static final int FOOTPRINT_MARGIN = 3;
+    public static final int MAX_SEARCH_SPIRAL_RADIUS = 36;
 
     /** Returns {@code [minCx, minCz, maxCx, maxCz]} covering all chunks touched by {@code [minX..maxX] x [minZ..maxZ]}. */
     public static int[] chunkBounds(int minX, int minZ, int maxX, int maxZ) {
@@ -678,6 +679,110 @@ public final class CampBlueprint {
     public static int[] footprintChunkBounds(int cx, int cz, int radius) {
         int r = Math.max(1, radius + FOOTPRINT_MARGIN);
         return chunkBounds(cx - r, cz - r, cx + r, cz + r);
+    }
+
+    /**
+     * Minimum horizontal distance (blocks) every non-spectator player in the same dimension must be beyond
+     * before automatic settlement changes may occur (with a minimum floor of {@code settlementRadius + 96}).
+     * Accounts for chunk-boundary alignment, {@link #FOOTPRINT_MARGIN}, and Minecraft 1.21.1's outer tracking
+     * border chunk ({@code (viewDistance + 2) * 16 + radius + FOOTPRINT_MARGIN}); pair with
+     * {@link #isFootprintTrackedByChunkView(int, int, int, int, int, int)} / {@code ChunkTrackingView#contains}
+     * to also reject diagonal chunk-tracking overlap.
+     */
+    public static int standoffDistance(int serverViewDistanceChunks, int settlementRadius) {
+        int r = Math.max(0, settlementRadius);
+        int vd = Math.max(2, serverViewDistanceChunks);
+        return Math.max(r + 96, (vd + 2) * 16 + r + FOOTPRINT_MARGIN);
+    }
+
+    /** Returns {@code true} iff {@code (playerX, playerZ)} is strictly beyond {@code standoff} blocks of {@code (targetX, targetZ)}. */
+    public static boolean isOutsideStandoff(double targetX, double targetZ, double playerX, double playerZ, int standoff) {
+        return Math.hypot(playerX - targetX, playerZ - targetZ) > standoff;
+    }
+
+    /**
+     * Exact mirror of Minecraft 1.21.1's {@code ChunkTrackingView.isWithinDistance(..., true)}
+     * (the predicate {@code ChunkTrackingView.contains(chunkX, chunkZ)} delegates to).
+     */
+    public static boolean isChunkTrackedByView(int playerChunkX, int playerChunkZ, int viewDistance,
+                                               int chunkX, int chunkZ) {
+        int vd = Math.max(2, viewDistance);
+        int dx = Math.max(0, Math.abs(chunkX - playerChunkX) - 1);
+        int dz = Math.max(0, Math.abs(chunkZ - playerChunkZ) - 1);
+        long maxAxis = Math.max(0, Math.max(dx, dz) - 1);
+        long minAxis = Math.min(dx, dz);
+        return (minAxis * minAxis + maxAxis * maxAxis) < ((long) vd * (long) vd);
+    }
+
+    /**
+     * Returns {@code true} iff ANY chunk in {@link #footprintChunkBounds(int, int, int)} around {@code (x, z)}
+     * is tracked by a player's Minecraft 1.21.1 {@code ChunkTrackingView} centered at
+     * {@code (playerChunkX, playerChunkZ)} with {@code viewDistance}.
+     */
+    public static boolean isFootprintTrackedByChunkView(int x, int z, int radius,
+                                                        int playerChunkX, int playerChunkZ,
+                                                        int viewDistance) {
+        int[] bounds = footprintChunkBounds(x, z, radius);
+        for (int cx = bounds[0]; cx <= bounds[2]; cx++) {
+            for (int cz = bounds[1]; cz <= bounds[3]; cz++) {
+                if (isChunkTrackedByView(playerChunkX, playerChunkZ, viewDistance, cx, cz)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Combined off-screen clearance check matching {@code CampBuilder.isAreaClearOfPlayers}: returns {@code true} iff
+     * {@code (playerX, playerZ)} is strictly outside {@link #standoffDistance(int, int)} AND no chunk in
+     * {@link #footprintChunkBounds(int, int, int)} is tracked by a {@code ChunkTrackingView} at the player's
+     * chunk with {@code serverViewDistanceChunks}.
+     */
+    public static boolean isPlayerClearOfFootprint(int targetX, int targetZ, int radius,
+                                                   double playerX, double playerZ,
+                                                   int serverViewDistanceChunks) {
+        int standoff = standoffDistance(serverViewDistanceChunks, radius);
+        if (!isOutsideStandoff(targetX, targetZ, playerX, playerZ, standoff)) {
+            return false;
+        }
+        int playerChunkX = ((int) Math.floor(playerX)) >> 4;
+        int playerChunkZ = ((int) Math.floor(playerZ)) >> 4;
+        return !isFootprintTrackedByChunkView(targetX, targetZ, radius,
+                playerChunkX, playerChunkZ, serverViewDistanceChunks);
+    }
+
+    /**
+     * Computes {@code {centerChunkX, centerChunkZ, ticketRadius}} for an off-screen region ticket that covers
+     * every chunk in {@link #footprintChunkBounds(int, int, int)} at FULL status (plus 1-chunk margin).
+     * <p>
+     * In Minecraft 1.21.1 {@code DistanceManager.addRegionTicket(type, center, ticketRadius, value)}, the ticket level
+     * at {@code center} is {@code 33 - ticketRadius}, so every chunk at Chebyshev distance {@code d <= ticketRadius}
+     * reaches {@code FULL} status ({@code level <= 33}); setting {@code ticketRadius = maxChebyshevDist + 1} (min 1)
+     * ensures every footprint chunk has {@code d < ticketRadius} ({@code level <= 32}) and all 1-chunk neighbors are
+     * also {@code FULL}.
+     */
+    public static int[] ticketCoverage(int cx, int cz, int footprintRadius) {
+        int[] bounds = footprintChunkBounds(cx, cz, footprintRadius);
+        int minCx = bounds[0], minCz = bounds[1], maxCx = bounds[2], maxCz = bounds[3];
+        int centerCx = Math.floorDiv(minCx + maxCx, 2);
+        int centerCz = Math.floorDiv(minCz + maxCz, 2);
+        int dx = Math.max(Math.abs(minCx - centerCx), Math.abs(maxCx - centerCx));
+        int dz = Math.max(Math.abs(minCz - centerCz), Math.abs(maxCz - centerCz));
+        int maxChebyshev = Math.max(dx, dz);
+        int ticketRadius = Math.max(1, maxChebyshev + 1);
+        return new int[]{centerCx, centerCz, ticketRadius};
+    }
+
+    /** Off-screen search footprint radius covering every spiral candidate around {@code (homeX, homeZ)}. */
+    public static int searchFootprintRadius(int settlementRadius) {
+        int radius = Math.max(SettlementTier.CAMP.radius, settlementRadius);
+        return radius + MAX_SEARCH_SPIRAL_RADIUS;
+    }
+
+    /** Off-screen search footprint radius for finding an initial site around {@code (homeX, homeZ)}. */
+    public static int searchFootprintRadius(SettlementTier target) {
+        return searchFootprintRadius(target == null ? SettlementTier.CAMP.radius : target.radius);
     }
 
     /** True for large perimeter/street ring zones that should be filtered per-column rather than dropped wholesale. */
