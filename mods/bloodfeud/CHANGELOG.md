@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-alpha.5
+
+- Automatic settlement changes (new camps, tier upgrades, ruinations, repairs, abandoned-site crumbling, and faction banner swaps) now only happen off-screen while players are outside view/standoff range, preventing structures from popping in front of players.
+- In-flight automatic settlement builds immediately pause if a player approaches and seamlessly finish once the player leaves.
+- Off-screen settlement updates use brief, auto-expiring, concurrency-capped chunk tickets that are released immediately upon completion, pause, cancellation, or shutdown.
+- Manual operator commands (`/bloodfeud camp ...`, `upgrade`, `ruin`) continue to apply immediately on demand.
+
 ## 0.1.0-alpha.4
 
 - **Growing gang camps and towns.** Packs now build physical settlements at their home and expand them as they grow: **Camp -> Outpost -> Stronghold -> Town** (crowning a King unlocks a Town). Each of the six mob families builds in its own vanilla block palette, with tents, watchtowers, boss halls, fortified walls, gatehouses, tavern, jail, war forge, smuggler stalls, loot stashes, and garrison patrols. Settlements build incrementally only in loaded chunks and protect player builds and containers.
