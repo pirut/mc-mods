@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-beta.1
+
+- Blood Feud is now in beta. This release has the same code as 0.1.0-alpha.6; see its notes below.
+
 ## 0.1.0-alpha.6
 
 - **Works in Earth Platform worlds.** Packs find ground and build their camps, outposts, strongholds and towns at
