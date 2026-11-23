@@ -613,10 +613,14 @@ public final class CampBlueprint {
         if (upToTier >= SettlementTier.TOWN.level
                 && (skippedZones == null || !skippedZones.contains("town_kings_hall"))) {
             for (Spot s : vassalBannerSpots(facing)) {
+                // A vassal banner (y 2) stands on a fence post (y 1) on a pillar (y 0) on a wall-accent footing
+                // (y -1), which is the town's ground or path while no vassal flies there. Each height only ever
+                // holds its own part, whether or not a vassal flies there now.
+                Material[][] post = {{Material.WALL_ACCENT, Material.GROUND, Material.PATH}, {Material.PILLAR},
+                        {Material.FENCE}, {Material.VASSAL_BANNER}};
                 for (int y = -1; y <= 2; y++) {
-                    // A vassal banner stands on a fence post on a pillar, put up when a vassal's banner is.
                     owned.computeIfAbsent(new Spot(s.rx, y, s.rz), k -> EnumSet.noneOf(Material.class))
-                            .addAll(EnumSet.of(Material.VASSAL_BANNER, Material.FENCE, Material.PILLAR));
+                            .addAll(List.of(post[y + 1]));
                 }
             }
         }

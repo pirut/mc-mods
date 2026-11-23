@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 import static io.github.pirut.bloodfeud.game.EarthWorldFixture.X;
@@ -70,6 +71,10 @@ class CampOwnershipTest {
 
     /** A camp built for real in a normal dimension, by the operator command's path. */
     private static Camp camp() {
+        return camp(SettlementTier.CAMP);
+    }
+
+    private static Camp camp(SettlementTier tier) {
         FakeLevel level = EarthWorldFixture.level(70, -64, 320);
         level.key = Level.OVERWORLD;
         level.cubes = null;
@@ -80,10 +85,10 @@ class CampOwnershipTest {
         pack.siteX = X;
         pack.siteY = 71;
         pack.siteZ = Z;
-        pack.tier = SettlementTier.CAMP;
+        pack.tier = tier;
         Camp camp = new Camp(level, data, pack, new CampBuilder(), new long[]{0});
-        camp.run(camp.builder.queueBuild(level, data.feud, pack, 0, 1, false, 0, null));
-        assertEquals(1, pack.builtTier);
+        camp.run(camp.builder.queueBuild(level, data.feud, pack, 0, tier.level, false, 0, null));
+        assertEquals(tier.level, pack.builtTier);
         return camp;
     }
 
@@ -122,21 +127,64 @@ class CampOwnershipTest {
     }
 
     @Test
-    void bricksWhereTheCampfireStoodAreNotTurnedBackIntoACampfire() {
+    void anUpgradeThatRebuildsAnEditedSpotLeavesThePlayersBlockAndFillsTheNewStash() {
         Camp camp = camp();
         FakeLevel level = camp.level;
-        BlockPos fire = camp.find(1, CampBlueprint.Material.CAMPFIRE);
-        BlockPos wool = camp.find(1, CampBlueprint.Material.WOOL_PRIMARY);
-        level.setBlock(fire, Blocks.BRICKS.defaultBlockState(), 3);
-        level.setBlock(wool, Blocks.GLASS.defaultBlockState(), 3);
+        Feud feud = camp.data.feud;
+        camp.pack.tier = SettlementTier.OUTPOST;
+        camp.run(camp.builder.queueBuild(level, feud, camp.pack, 1, 2, false, camp.clock[0], null));
+        Set<CampBlueprint.Spot> outpost = CampBlueprint.ownedPositions(camp.pack.id, camp.pack.family, camp.pack.color,
+                List.of(), camp.pack.siteFacing, 2);
+        BlockPos edited = null;
+        for (CampBlueprint.Placement op : CampBlueprint.plan(camp.pack.id, camp.pack.family, camp.pack.color, List.of(),
+                camp.pack.siteFacing, 2, 3).placements()) {
+            CampBlueprint.Material m = op.material();
+            if (m == CampBlueprint.Material.AIR || m == CampBlueprint.Material.FOUNDATION_COLUMN) continue;
+            BlockPos at = camp.at(op);
+            if (outpost.contains(new CampBlueprint.Spot(op.rx(), op.ry(), op.rz())) && !level.getBlockState(at).isAir()) {
+                edited = at;
+                break;
+            }
+        }
+        assertNotNull(edited, "the stronghold rebuilds a spot the outpost already holds");
+        level.setBlock(edited, Blocks.BRICKS.defaultBlockState(), 3);
+        camp.pack.tier = SettlementTier.STRONGHOLD;
+        camp.run(camp.builder.queueBuild(level, feud, camp.pack, 2, 3, false, camp.clock[0], null));
+        assertEquals(3, camp.pack.builtTier);
+        assertTrue(is(level, edited, Blocks.BRICKS), "the stronghold left the player's bricks at " + edited);
+        BlockPos stash = camp.find(3, CampBlueprint.Material.CHEST_STRONGHOLD);
+        assertFalse(((Container) level.getBlockEntity(stash)).isEmpty(), "the new stronghold stash holds loot");
+    }
+
+    @Test
+    void aPlayersFurnaceOnTheStashSpotSurvivesRepair() {
+        Camp camp = camp();
+        FakeLevel level = camp.level;
+        BlockPos stash = camp.find(1, CampBlueprint.Material.CHEST_CAMP);
+        level.setBlock(stash, Blocks.FURNACE.defaultBlockState(), 3);
         camp.pack.ruined = true;
         camp.run(camp.builder.queueRuin(level, camp.data.feud, camp.pack, 1, false, camp.clock[0], null));
-        assertTrue(is(level, fire, Blocks.BRICKS), "ruin left the bricks");
-        assertTrue(is(level, wool, Blocks.GLASS), "ruin left the glass");
         camp.pack.ruined = false;
         camp.run(camp.builder.queueRepair(level, camp.data.feud, camp.pack, 1, false, camp.clock[0], null));
-        assertTrue(is(level, fire, Blocks.BRICKS), "repair left the bricks");
-        assertTrue(is(level, wool, Blocks.GLASS), "repair left the glass");
+        assertTrue(is(level, stash, Blocks.FURNACE), "the furnace is still there, not a camp chest");
+    }
+
+    @Test
+    void aFenceAtAVassalPillarsHeightSurvivesRepair() {
+        Camp camp = camp(SettlementTier.TOWN);
+        FakeLevel level = camp.level;
+        Feud feud = camp.data.feud;
+        assertTrue(camp.pack.skippedZones.isEmpty(), "the whole town stands, vassal posts included");
+        CampBlueprint.Spot slot = CampBlueprint.vassalBannerSpots(camp.pack.siteFacing).get(0);
+        // No vassal flies here, so the camp keeps this spot clear; only a vassal's pillar would ever stand at y 0.
+        BlockPos pillarHeight = new BlockPos(camp.pack.siteX + slot.rx(), camp.pack.siteY, camp.pack.siteZ + slot.rz());
+        Block fence = io.github.pirut.bloodfeud.game.camp.FamilyPalette.of(camp.pack.family).fence;
+        level.setBlock(pillarHeight, fence.defaultBlockState(), 3);
+        camp.pack.ruined = true;
+        camp.run(camp.builder.queueRuin(level, feud, camp.pack, 4, false, camp.clock[0], null));
+        camp.pack.ruined = false;
+        camp.run(camp.builder.queueRepair(level, feud, camp.pack, 4, false, camp.clock[0], null));
+        assertTrue(is(level, pillarHeight, fence), "the player's fence where only a pillar belongs is still there");
     }
 
     private static void assertPlayerBlocksStand(FakeLevel level, BlockPos fire, BlockPos wool, BlockPos banner, String after) {

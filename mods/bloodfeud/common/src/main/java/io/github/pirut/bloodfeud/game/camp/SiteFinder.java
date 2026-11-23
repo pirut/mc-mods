@@ -490,7 +490,9 @@ public final class SiteFinder {
         CampBlueprint.Spot rel = new CampBlueprint.Spot(
                 pos.getX() - origin.getX(), pos.getY() - origin.getY(), pos.getZ() - origin.getZ());
         if (isContainerBlock(level, pos, state)) {
-            return !ownedContainers.contains(rel);
+            if (!ownedContainers.contains(rel)) return true;
+            // On the camp's stash spot, only the camp's own stash is the camp's: a player's furnace there is theirs.
+            return ownedPositions instanceof Owned owned && !owned.isSettlementBlock(rel, state);
         }
         if (isNaturalOrReplaceable(state)) return false;
         // A player can take a settlement's place: bricks where its campfire stood are theirs, not the camp's.
