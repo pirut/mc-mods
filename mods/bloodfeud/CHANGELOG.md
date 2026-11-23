@@ -13,6 +13,11 @@
 - On the Earth, bells scare Brutes, the spawn safe radius follows where new players arrive, and new packs are named
   after the biome they stand in.
 - If Blood Feud can't work with the installed Earth Platform, it says so once in the log and builds nothing there.
+- Fixed camps writing over player blocks that stand in the camp's own places, in every dimension: bricks where a
+  campfire was are no longer turned back into a campfire by a ruin, repair or upgrade, and the rest of the camp still
+  ruins and repairs around them.
+- Fixed camp stash chests always being empty: their loot was wiped as they were named. A repair still never refills a
+  stash that was emptied.
 
 ## 0.1.0-alpha.5
 

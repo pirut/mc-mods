@@ -4,7 +4,10 @@ import io.github.pirut.bloodfeud.feud.Family;
 import io.github.pirut.bloodfeud.feud.SettlementTier;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -531,6 +534,9 @@ public final class CampBlueprint {
         return (int) (Math.floorMod(h, 100L));
     }
 
+    /** A vassal banner's post, from its footing at y -1 up to the banner at y 2. */
+    private static final Material[] VASSAL_POST = {Material.WALL_ACCENT, Material.PILLAR, Material.FENCE, Material.VASSAL_BANNER};
+
     /** Unrotated forecourt coordinates where Tier 4 Town flies vassal pack banners (clear of Tier 1-3 structures). */
     private static final int[][] VASSAL_SPOTS = {
             {-3, -3}, {3, -3}, {-3, -1}, {3, -1}, {-3, 1}, {3, 1}
@@ -596,23 +602,46 @@ public final class CampBlueprint {
     public static Set<Spot> ownedPositions(UUID packId, Family family, int packColor,
                                            List<Integer> vassalColors, int facing, int upToTier,
                                            Set<String> skippedZones, Set<Long> skippedColumns) {
-        if (upToTier <= 0) return Set.of();
+        return ownedMaterials(packId, family, packColor, vassalColors, facing, upToTier, skippedZones, skippedColumns).keySet();
+    }
+
+    /** {@link #ownedPositions}, with what the settlement puts at each, so a player's block there can be told apart. */
+    public static Map<Spot, Set<Material>> ownedMaterials(UUID packId, Family family, int packColor,
+                                                          List<Integer> vassalColors, int facing, int upToTier,
+                                                          Set<String> skippedZones, Set<Long> skippedColumns) {
+        if (upToTier <= 0) return Map.of();
         Plan built = plan(packId, family, packColor, vassalColors, facing, 0, upToTier);
-        Set<Spot> owned = new HashSet<>(built.placements.size());
-        for (Placement p : built.placements) {
-            if (p.material != Material.AIR && !isSkipped(p.zone, p.rx, p.rz, skippedZones, skippedColumns)) {
-                owned.add(new Spot(p.rx, p.ry, p.rz));
-            }
-        }
+        Map<Spot, Set<Material>> owned = new HashMap<>(built.placements.size());
+        addOwned(owned, built.placements, skippedZones, skippedColumns);
         if (upToTier >= SettlementTier.TOWN.level
                 && (skippedZones == null || !skippedZones.contains("town_kings_hall"))) {
+            // Each vassal slot holds its post's part at each height when a vassal flies there, and what the town
+            // itself puts there when none does; vassals come and go, so either may stand there now.
+            Map<Spot, Set<Material>> bare = owned;
+            if (vassalColors != null && !vassalColors.isEmpty()) {
+                bare = new HashMap<>();
+                addOwned(bare, plan(packId, family, packColor, List.of(), facing, 0, upToTier).placements,
+                        skippedZones, skippedColumns);
+            }
             for (Spot s : vassalBannerSpots(facing)) {
                 for (int y = -1; y <= 2; y++) {
-                    owned.add(new Spot(s.rx, y, s.rz));
+                    Spot at = new Spot(s.rx, y, s.rz);
+                    Set<Material> here = owned.computeIfAbsent(at, k -> EnumSet.noneOf(Material.class));
+                    here.add(VASSAL_POST[y + 1]);
+                    here.addAll(bare.getOrDefault(at, Set.of()));
                 }
             }
         }
         return owned;
+    }
+
+    private static void addOwned(Map<Spot, Set<Material>> owned, Collection<Placement> placements,
+                                 Set<String> skippedZones, Set<Long> skippedColumns) {
+        for (Placement p : placements) {
+            if (p.material != Material.AIR && !isSkipped(p.zone, p.rx, p.rz, skippedZones, skippedColumns)) {
+                owned.computeIfAbsent(new Spot(p.rx, p.ry, p.rz), k -> EnumSet.noneOf(Material.class)).add(p.material);
+            }
+        }
     }
 
     /** Relative positions placed by either intact or ruined tiers {@code 1..upToTier}, used when repairing ruins. */
@@ -628,20 +657,23 @@ public final class CampBlueprint {
     public static Set<Spot> ownedRuinedPositions(UUID packId, Family family, int packColor,
                                                  List<Integer> vassalColors, int facing, int upToTier,
                                                  Set<String> skippedZones, Set<Long> skippedColumns) {
-        if (upToTier <= 0) return Set.of();
-        Set<Spot> owned = new HashSet<>(ownedPositions(packId, family, packColor, vassalColors, facing, upToTier,
-                skippedZones, skippedColumns));
+        return ownedRuinedMaterials(packId, family, packColor, vassalColors, facing, upToTier, skippedZones, skippedColumns).keySet();
+    }
+
+    /** {@link #ownedRuinedPositions}, with what the settlement puts at each, intact or ruined. */
+    public static Map<Spot, Set<Material>> ownedRuinedMaterials(UUID packId, Family family, int packColor,
+                                                                List<Integer> vassalColors, int facing, int upToTier,
+                                                                Set<String> skippedZones, Set<Long> skippedColumns) {
+        if (upToTier <= 0) return Map.of();
+        Map<Spot, Set<Material>> owned = ownedMaterials(packId, family, packColor, vassalColors, facing, upToTier,
+                skippedZones, skippedColumns);
         int to = Math.max(1, Math.min(SettlementTier.TOWN.level, upToTier));
         Plan intact = plan(packId, family, packColor, vassalColors, facing, 0, to);
         long seed = ruinSeed(packId, family);
         for (Map<Long, Placement> ruinedMap : List.of(
                 computeRuinedMap(intact, family, seed, true),
                 computeRuinedMap(intact, family, seed, false))) {
-            for (Placement p : ruinedMap.values()) {
-                if (p.material != Material.AIR && !isSkipped(p.zone, p.rx, p.rz, skippedZones, skippedColumns)) {
-                    owned.add(new Spot(p.rx, p.ry, p.rz));
-                }
-            }
+            addOwned(owned, ruinedMap.values(), skippedZones, skippedColumns);
         }
         return owned;
     }
@@ -1779,10 +1811,10 @@ public final class CampBlueprint {
             int vz = VASSAL_SPOTS[i][1];
             int vColor = b.vassalColors.get(i);
             b.foundation(vx, vz);
-            b.set(vx, -1, vz, Material.WALL_ACCENT);
-            b.set(vx, 0, vz, Material.PILLAR);
-            b.set(vx, 1, vz, Material.FENCE);
-            b.set(vx, 2, vz, Material.VASSAL_BANNER, Facing.SOUTH, vColor);
+            b.set(vx, -1, vz, VASSAL_POST[0]);
+            b.set(vx, 0, vz, VASSAL_POST[1]);
+            b.set(vx, 1, vz, VASSAL_POST[2]);
+            b.set(vx, 2, vz, VASSAL_POST[3], Facing.SOUTH, vColor);
         }
     }
 

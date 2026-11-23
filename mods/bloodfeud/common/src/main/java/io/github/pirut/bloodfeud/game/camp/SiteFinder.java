@@ -1,6 +1,7 @@
 package io.github.pirut.bloodfeud.game.camp;
 
 import io.github.pirut.bloodfeud.BloodFeud;
+import io.github.pirut.bloodfeud.feud.Family;
 import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.SettlementTier;
 import io.github.pirut.bloodfeud.game.Earth;
@@ -34,6 +35,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -347,7 +349,7 @@ public final class SiteFinder {
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
                 for (int y = minY; y <= maxY; y++) {
-                    if (isPlayerBlockAt(level, origin, pos.set(x, y, z), ownedPositions, ownedContainers)) {
+                    if (holdsUpZone(level, origin, pos.set(x, y, z), ownedPositions, ownedContainers)) {
                         return true;
                     }
                 }
@@ -368,11 +370,27 @@ public final class SiteFinder {
         int maxY = Math.min(Earth.top(level) - 1, origin.getY() + Math.max(6, relMaxY));
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int y = minY; y <= maxY; y++) {
-            if (isPlayerBlockAt(level, origin, pos.set(wx, y, wz), ownedPositions, ownedContainers)) {
+            if (holdsUpZone(level, origin, pos.set(wx, y, wz), ownedPositions, ownedContainers)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Whether a block keeps the settlement out of the zone or ring column around it. A player's block standing in the
+     * settlement's own place (bricks where its campfire was, a chest where its banner was) is still never written over,
+     * since every write checks the block it replaces; but it doesn't stop the rest of the zone from ruining or being
+     * repaired.
+     */
+    private static boolean holdsUpZone(ServerLevel level, BlockPos origin, BlockPos pos,
+                                       Set<CampBlueprint.Spot> ownedPositions,
+                                       Set<CampBlueprint.Spot> ownedContainers) {
+        if (!isPlayerBlockAt(level, origin, pos, ownedPositions, ownedContainers)) return false;
+        if (!(ownedPositions instanceof Owned) || !Earth.isLoaded(level, pos)) return true;
+        CampBlueprint.Spot rel = new CampBlueprint.Spot(
+                pos.getX() - origin.getX(), pos.getY() - origin.getY(), pos.getZ() - origin.getZ());
+        return !ownedPositions.contains(rel);
     }
 
     /**
@@ -460,7 +478,8 @@ public final class SiteFinder {
     /**
      * Returns {@code true} if the block at {@code pos} must be treated as player-built or protected.
      * Any container is ALWAYS protected unless its exact relative position is in {@code ownedContainers}.
-     * Outside {@code ownedPositions}, any block not on the strict natural/replaceable allowlist is protected.
+     * Any block not on the strict natural/replaceable allowlist is protected, unless it stands at a position in
+     * {@code ownedPositions} and is a block the settlement itself puts there (see {@link Owned}).
      */
     public static boolean isPlayerBlockAt(ServerLevel level, BlockPos origin, BlockPos pos,
                                           Set<CampBlueprint.Spot> ownedPositions,
@@ -471,10 +490,51 @@ public final class SiteFinder {
         CampBlueprint.Spot rel = new CampBlueprint.Spot(
                 pos.getX() - origin.getX(), pos.getY() - origin.getY(), pos.getZ() - origin.getZ());
         if (isContainerBlock(level, pos, state)) {
-            return !ownedContainers.contains(rel);
+            if (!ownedContainers.contains(rel)) return true;
+            // On the camp's stash spot, only the camp's own stash is the camp's: a player's furnace there is theirs.
+            return ownedPositions instanceof Owned owned && !owned.isSettlementBlock(rel, state);
         }
-        if (ownedPositions.contains(rel)) return false;
-        return !isNaturalOrReplaceable(state);
+        if (isNaturalOrReplaceable(state)) return false;
+        // A player can take a settlement's place: bricks where its campfire stood are theirs, not the camp's.
+        return !(ownedPositions instanceof Owned owned && owned.isSettlementBlock(rel, state));
+    }
+
+    /**
+     * A settlement's own positions, which know what the settlement puts at each: only those blocks (or natural ones)
+     * may be replaced there. A plain set of positions protects everything that isn't natural.
+     */
+    public static final class Owned extends java.util.AbstractSet<CampBlueprint.Spot> {
+        private final Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials;
+        private final FamilyPalette palette;
+
+        public Owned(Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials, Family family) {
+            this.materials = materials;
+            this.palette = FamilyPalette.of(family);
+        }
+
+        boolean isSettlementBlock(CampBlueprint.Spot rel, BlockState state) {
+            Set<CampBlueprint.Material> placed = materials.get(rel);
+            if (placed == null) return false;
+            for (CampBlueprint.Material m : placed) {
+                if (palette.blocks(m).contains(state.getBlock())) return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean contains(Object o) {
+            return materials.containsKey(o);
+        }
+
+        @Override
+        public java.util.Iterator<CampBlueprint.Spot> iterator() {
+            return materials.keySet().iterator();
+        }
+
+        @Override
+        public int size() {
+            return materials.size();
+        }
     }
 
     /** Strict allowlist of natural terrain/foliage and replaceable blocks safe for automatic builds to clear. */
