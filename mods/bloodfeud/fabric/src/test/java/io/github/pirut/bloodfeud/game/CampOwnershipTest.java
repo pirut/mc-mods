@@ -75,11 +75,15 @@ class CampOwnershipTest {
     }
 
     private static Camp camp(SettlementTier tier) {
+        return camp(tier, Family.ROTTEN);
+    }
+
+    private static Camp camp(SettlementTier tier, Family family) {
         FakeLevel level = EarthWorldFixture.level(70, -64, 320);
         level.key = Level.OVERWORLD;
         level.cubes = null;
         FeudData data = new FeudData();
-        Pack pack = new Pack(new UUID(7, 8), Family.ROTTEN, "minecraft:overworld", "Test", 14, X, Z, 0);
+        Pack pack = new Pack(new UUID(7, 8), family, "minecraft:overworld", "Test", 14, X, Z, 0);
         data.feud.packs.put(pack.id, pack);
         pack.siteSet = true;
         pack.siteX = X;
@@ -185,6 +189,23 @@ class CampOwnershipTest {
         camp.pack.ruined = false;
         camp.run(camp.builder.queueRepair(level, feud, camp.pack, 4, false, camp.clock[0], null));
         assertTrue(is(level, pillarHeight, fence), "the player's fence where only a pillar belongs is still there");
+    }
+
+    @Test
+    void mudBricksOnAWitchTownsVassalFootingSurviveRepair() {
+        // Witches put podzol here when no vassal flies, wall accent when one does; mud bricks are their path block.
+        Camp camp = camp(SettlementTier.TOWN, Family.WITCHES);
+        FakeLevel level = camp.level;
+        assertEquals(0, camp.pack.siteFacing);
+        assertTrue(camp.pack.skippedZones.isEmpty());
+        BlockPos footing = new BlockPos(camp.pack.siteX - 3, camp.pack.siteY - 1, camp.pack.siteZ - 3);
+        assertSame(Blocks.MUD_BRICKS, io.github.pirut.bloodfeud.game.camp.FamilyPalette.of(Family.WITCHES).path);
+        level.setBlock(footing, Blocks.MUD_BRICKS.defaultBlockState(), 3);
+        camp.pack.ruined = true;
+        camp.run(camp.builder.queueRuin(level, camp.data.feud, camp.pack, 4, false, camp.clock[0], null));
+        camp.pack.ruined = false;
+        camp.run(camp.builder.queueRepair(level, camp.data.feud, camp.pack, 4, false, camp.clock[0], null));
+        assertTrue(is(level, footing, Blocks.MUD_BRICKS), "the player's mud bricks are still there, not podzol");
     }
 
     private static void assertPlayerBlocksStand(FakeLevel level, BlockPos fire, BlockPos wool, BlockPos banner, String after) {

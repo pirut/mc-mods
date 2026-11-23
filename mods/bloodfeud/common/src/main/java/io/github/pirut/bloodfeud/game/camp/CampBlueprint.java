@@ -534,6 +534,9 @@ public final class CampBlueprint {
         return (int) (Math.floorMod(h, 100L));
     }
 
+    /** A vassal banner's post, from its footing at y -1 up to the banner at y 2. */
+    private static final Material[] VASSAL_POST = {Material.WALL_ACCENT, Material.PILLAR, Material.FENCE, Material.VASSAL_BANNER};
+
     /** Unrotated forecourt coordinates where Tier 4 Town flies vassal pack banners (clear of Tier 1-3 structures). */
     private static final int[][] VASSAL_SPOTS = {
             {-3, -3}, {3, -3}, {-3, -1}, {3, -1}, {-3, 1}, {3, 1}
@@ -612,15 +615,20 @@ public final class CampBlueprint {
         addOwned(owned, built.placements, skippedZones, skippedColumns);
         if (upToTier >= SettlementTier.TOWN.level
                 && (skippedZones == null || !skippedZones.contains("town_kings_hall"))) {
+            // Each vassal slot holds its post's part at each height when a vassal flies there, and what the town
+            // itself puts there when none does; vassals come and go, so either may stand there now.
+            Map<Spot, Set<Material>> bare = owned;
+            if (vassalColors != null && !vassalColors.isEmpty()) {
+                bare = new HashMap<>();
+                addOwned(bare, plan(packId, family, packColor, List.of(), facing, 0, upToTier).placements,
+                        skippedZones, skippedColumns);
+            }
             for (Spot s : vassalBannerSpots(facing)) {
-                // A vassal banner (y 2) stands on a fence post (y 1) on a pillar (y 0) on a wall-accent footing
-                // (y -1), which is the town's ground or path while no vassal flies there. Each height only ever
-                // holds its own part, whether or not a vassal flies there now.
-                Material[][] post = {{Material.WALL_ACCENT, Material.GROUND, Material.PATH}, {Material.PILLAR},
-                        {Material.FENCE}, {Material.VASSAL_BANNER}};
                 for (int y = -1; y <= 2; y++) {
-                    owned.computeIfAbsent(new Spot(s.rx, y, s.rz), k -> EnumSet.noneOf(Material.class))
-                            .addAll(List.of(post[y + 1]));
+                    Spot at = new Spot(s.rx, y, s.rz);
+                    Set<Material> here = owned.computeIfAbsent(at, k -> EnumSet.noneOf(Material.class));
+                    here.add(VASSAL_POST[y + 1]);
+                    here.addAll(bare.getOrDefault(at, Set.of()));
                 }
             }
         }
@@ -1803,10 +1811,10 @@ public final class CampBlueprint {
             int vz = VASSAL_SPOTS[i][1];
             int vColor = b.vassalColors.get(i);
             b.foundation(vx, vz);
-            b.set(vx, -1, vz, Material.WALL_ACCENT);
-            b.set(vx, 0, vz, Material.PILLAR);
-            b.set(vx, 1, vz, Material.FENCE);
-            b.set(vx, 2, vz, Material.VASSAL_BANNER, Facing.SOUTH, vColor);
+            b.set(vx, -1, vz, VASSAL_POST[0]);
+            b.set(vx, 0, vz, VASSAL_POST[1]);
+            b.set(vx, 1, vz, VASSAL_POST[2]);
+            b.set(vx, 2, vz, VASSAL_POST[3], Facing.SOUTH, vColor);
         }
     }
 
