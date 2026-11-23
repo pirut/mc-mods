@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.0-alpha.6
+
+- **Works in Earth Platform worlds.** Packs find ground and build their camps, outposts, strongholds and towns at
+  real heights, from below sea level to the high mountains, with or without Sable. Earth Platform stays optional.
+- Fixed Earth servers freezing, and being stopped by the watchdog, while a pack far from any player looked for a camp
+  site: it waited for map downloads on the server thread.
+- On the Earth, player builds and containers are protected at every height and while no one is near to keep them
+  loaded. A settlement only counts as built once its blocks are really in the world.
+- Settlements that older versions recorded on the Earth are let go, because some were never built: those packs find
+  a new site, and whatever stands at the old one is left alone.
+- On the Earth, bells scare Brutes, the spawn safe radius follows where new players arrive, and new packs are named
+  after the biome they stand in.
+- If Blood Feud can't work with the installed Earth Platform, it says so once in the log and builds nothing there.
+
 ## 0.1.0-alpha.5
 
 - Automatic settlement changes (new camps, tier upgrades, ruinations, repairs, abandoned-site crumbling, and faction banner swaps) now only happen off-screen while players are outside view/standoff range, preventing structures from popping in front of players.

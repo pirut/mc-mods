@@ -1,3 +1,6 @@
 plugins {
     id 'mcmods.fabric'
 }
+
+// The Earth Platform tests start Minecraft's registries, which log into the working folder.
+tasks.named('test', Test) { workingDir = temporaryDir }

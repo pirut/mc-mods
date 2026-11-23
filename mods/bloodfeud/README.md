@@ -124,6 +124,13 @@ someone comes back it catches up on the nights it missed. A Brute that swore rev
 about 2,000 blocks a day and turns up when it catches up. A world holds at most 64 packs; past that, the oldest
 far-away pack no one has met fades away.
 
+## On the Earth
+
+[Earth Platform](https://github.com/pirut/earth-platform) is optional and needs no setup: packs settle at real
+heights and leave player builds alone there too (tested with build 76, with and without Sable). A camp takes a little
+longer to appear somewhere nobody has visited, while the map data for it downloads. The Ledger's map and the Map of
+the Feuds don't show the Earth's terrain, only where packs and Brutes are.
+
 ## Commands
 
 - `/bloodfeud` (or `/bloodfeud packs`): the packs you've met around you, who leads them, and which way their home is.

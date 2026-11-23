@@ -58,6 +58,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.level.block.BannerBlock;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -164,6 +165,7 @@ public final class Live {
             for (Active a : instance.active.values()) a.bar.removeAllPlayers();
             instance.campBuilder.clearAll(instance.server);
         }
+        Earth.stopped();
         instance = null;
     }
 
@@ -399,7 +401,8 @@ public final class Live {
     public void tick() {
         long gt = gameTime();
         campBuilder.tick(server, data, gt);
-        if (gt % 40 == 17) campBuilder.checkAutoBuilds(server, data, gt);
+        boolean scheduled = gt % 40 == 17;
+        if (scheduled || campBuilder.isWaitingForCubes()) campBuilder.checkAutoBuilds(server, data, gt, scheduled);
         long nightIndex = Math.floorDiv(now() - 13000, Feud.DAY);
         if (lastNightIndex == Long.MIN_VALUE) lastNightIndex = nightIndex;
         else if (nightIndex != lastNightIndex) {
@@ -498,8 +501,19 @@ public final class Live {
         ServerLevel level = level(dimension);
         String biome = "";
         if (level != null) {
-            biome = level.getBiome(new BlockPos(x, level.getSeaLevel(), z)).unwrapKey()
-                    .map(k -> k.location().toString()).orElse("");
+            if (Earth.is(level)) {
+                // Only the ground's own cube knows the biome: the carrier says plains everywhere. Far away, no biome.
+                if (Earth.knowsHeight(level, x, z)) {
+                    int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+                    if (Earth.isLoaded(level, new BlockPos(x, y, z))) {
+                        biome = level.getNoiseBiome(x >> 2, y >> 2, z >> 2).unwrapKey()
+                                .map(k -> k.location().toString()).orElse("");
+                    }
+                }
+            } else {
+                biome = level.getBiome(new BlockPos(x, level.getSeaLevel(), z)).unwrapKey()
+                        .map(k -> k.location().toString()).orElse("");
+            }
         }
         return PlaceNames.name(r, biome, false);
     }
@@ -697,8 +711,9 @@ public final class Live {
         if (active.size() >= cfg.maxActiveBrutes) return;
         ServerLevel level = p.serverLevel();
         if (level.getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL) return;
-        BlockPos spawn = level.getSharedSpawnPos();
-        if (level.dimension() == net.minecraft.world.level.Level.OVERWORLD
+        boolean earth = Earth.is(level);
+        BlockPos spawn = earth ? Earth.arrival(level) : level.getSharedSpawnPos();
+        if ((earth || level.dimension() == net.minecraft.world.level.Level.OVERWORLD) && spawn != null
                 && Math.hypot(p.getX() - spawn.getX(), p.getZ() - spawn.getZ()) < cfg.spawnSafeRadius) return;
         String dim = dim(level);
         Feud f = data.feud;
@@ -722,6 +737,9 @@ public final class Live {
             double range = packEncounterRange(pk);
             double d = pk.distanceTo(dim, p.getX(), p.getZ());
             if (d <= range && d < best && !resting(pk.id, gt) && !packOut(pk)) {
+                // A settlement far above or below the player has no cubes loaded, so nowhere for its garrison to stand.
+                if (earth && pk.builtTier > 0 && pk.siteSet
+                        && !Earth.isLoaded(level, new BlockPos(pk.siteX, pk.siteY, pk.siteZ))) continue;
                 near = pk;
                 best = d;
             }
@@ -1465,12 +1483,14 @@ public final class Live {
                 ? campBuilder.queueRepair(level, f, pack, target.level, false, gameTime(), done)
                 : campBuilder.queueBuild(level, f, pack, currentBuilt, target.level, false, gameTime(), done);
         if (!qr.queued()) {
+            boolean loading = isGroundLoading(level, pack, target);
             if (assignedSite) {
                 nearest.siteSet = false;
                 nearest.buildStarted = false;
                 nearest.skippedZones.clear();
                 nearest.skippedColumns.clear();
             }
+            if (loading) return new UpgradeResult(false, GROUND_LOADING, pack, target, List.of(), 0);
             return new UpgradeResult(false, "Cannot upgrade " + Feud.cap(pack.title())
                     + ": expansion area is blocked by player builds or terrain.", pack, target,
                     qr.skippedZones(), qr.skippedRingColumns());
@@ -1523,12 +1543,14 @@ public final class Live {
             if (onDone != null) onDone.accept(pack);
         });
         if (!qr.queued()) {
+            boolean loading = isGroundLoading(level, pack, target);
             if (assignedSite) {
                 nearest.siteSet = false;
                 nearest.buildStarted = false;
                 nearest.skippedZones.clear();
                 nearest.skippedColumns.clear();
             }
+            if (loading) return new UpgradeResult(false, GROUND_LOADING, pack, target, List.of(), 0);
             return new UpgradeResult(false, "Cannot ruin " + Feud.cap(pack.title())
                     + ": area is blocked or nothing to ruin.", pack, target,
                     qr.skippedZones(), qr.skippedRingColumns());
@@ -1540,6 +1562,13 @@ public final class Live {
         flushDirtyBanners(false);
         data.changed();
         return new UpgradeResult(true, "", pack, target, qr.skippedZones(), qr.skippedRingColumns());
+    }
+
+    private static final String GROUND_LOADING = "The ground there is still loading. Move closer or try again in a moment.";
+
+    private static boolean isGroundLoading(ServerLevel level, Pack pack, SettlementTier target) {
+        int radius = SettlementTier.byLevel(Math.max(pack.builtTier, target.level)).radius;
+        return SiteFinder.isWaitingForGround(level, new BlockPos(pack.siteX, pack.siteY, pack.siteZ), radius);
     }
 
     private static Pack nearestPack(Feud f, String dim, double x, double z, double maxDist) {

@@ -1,0 +1,360 @@
+package io.github.pirut.bloodfeud.game;
+
+import io.github.pirut.bloodfeud.BloodFeud;
+import net.minecraft.Util;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Everything Blood Feud knows about Earth Platform, which is optional and only reached by reflection.
+ * <p>
+ * The Earth keeps its blocks in 16-block cubes behind empty carrier chunks, so a loaded chunk says nothing about its
+ * blocks: an unloaded cube reads as void air and ignores writes. Cubes that no player watches are dropped every 40
+ * ticks and can't be held, so callers look again each tick and only act on ticks where what they touch is loaded.
+ * Anything that reads map data may download it, so that only ever runs off the server thread.
+ * <p>
+ * If any of this is missing or has changed, it logs once and nothing in the Earth counts as loaded, so nothing is
+ * built there. In every other dimension every answer is the vanilla one.
+ */
+public final class Earth {
+    private static final ResourceLocation CUBIC = ResourceLocation.fromNamespaceAndPath("earthplatform", "cubic");
+    private static final String PACKAGE = "io.earthplatform.minecraft.cubic.";
+    /** How long a column's map data is trusted to still be in the generator's memory. */
+    private static final long WARM_NANOS = TimeUnit.SECONDS.toNanos(30);
+    /** How long to leave a column whose map data couldn't be had. */
+    private static final long WARM_RETRY_NANOS = TimeUnit.SECONDS.toNanos(5);
+    private static final int MAX_WARM_COLUMNS = 4096;
+
+    private static Api api;
+    private static boolean failed;
+    private static final Map<Long, Warm> warmColumns = new HashMap<>();
+    private static Object warmWorld;
+
+    private record Warm(CompletableFuture<Void> data, long since) {
+    }
+
+    /** The parts of Earth Platform this uses. */
+    private record Api(Method cubesOf, Method cubesAt, Method isLoaded, Method cubeAt, Method columnTops,
+                       Method blockEntities, Method readyAround, Method generator, Method surfaceY, Method waterY,
+                       Method skyTopY, Method arrival, Field session, Field sessionServer, Field sessionLanding,
+                       int minY, int maxY) {
+        static Api find() throws ReflectiveOperationException {
+            Class<?> cubicLevel = type("CubicLevel");
+            Class<?> world = type("CubeWorld");
+            Class<?> serverWorld = type("ServerCubeWorld");
+            Class<?> generator = type("gen.CubeGenerator");
+            Field session = type("play.EarthWorlds").getDeclaredField("session");
+            Field server = session.getType().getDeclaredField("server");
+            Field landing = session.getType().getDeclaredField("landing");
+            session.setAccessible(true);
+            server.setAccessible(true);
+            landing.setAccessible(true);
+            return new Api(
+                    cubicLevel.getMethod("of", Level.class),
+                    cubicLevel.getMethod("at", Level.class, int.class, int.class),
+                    world.getMethod("isLoaded", BlockPos.class),
+                    world.getMethod("cubeAtBlock", int.class, int.class, int.class),
+                    world.getMethod("columnTops", int.class, int.class),
+                    type("Cube").getMethod("blockEntities"),
+                    serverWorld.getMethod("readyAround", BlockPos.class),
+                    serverWorld.getMethod("generator"),
+                    generator.getMethod("surfaceY", int.class, int.class),
+                    generator.getMethod("waterY", int.class, int.class),
+                    generator.getMethod("skyTopY", int.class, int.class),
+                    generator.getMethod("arrival"),
+                    session, server, landing,
+                    world.getField("MIN_Y").getInt(null),
+                    world.getField("MAX_Y").getInt(null));
+        }
+
+        private static Class<?> type(String name) throws ClassNotFoundException {
+            return Class.forName(PACKAGE + name, false, Earth.class.getClassLoader());
+        }
+    }
+
+    private Earth() {
+    }
+
+    /** Whether this is the Earth's dimension, whether or not Blood Feud can work with it. */
+    public static boolean is(Level level) {
+        return is(level.dimension());
+    }
+
+    public static boolean is(ResourceKey<Level> dimension) {
+        return dimension != null && CUBIC.equals(dimension.location());
+    }
+
+    static boolean is(String dimension) {
+        return CUBIC.toString().equals(dimension);
+    }
+
+    private static Api api() {
+        if (api == null && !failed) {
+            try {
+                api = Api.find();
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+                fail(e);
+            }
+        }
+        return failed ? null : api;
+    }
+
+    private static void fail(Throwable why) {
+        if (failed) return;
+        failed = true;
+        BloodFeud.LOG.warn("Blood Feud can't work with this version of Earth Platform, so it builds nothing on the Earth", why);
+    }
+
+    /** Whether settlements may be built in this level at all. */
+    public static boolean canBuildIn(Level level) {
+        return !is(level) || api() != null;
+    }
+
+    /** The lowest Y a block can be at. */
+    public static int bottom(Level level) {
+        Api a = is(level) ? api() : null;
+        return a == null ? level.getMinBuildHeight() : a.minY();
+    }
+
+    /** One above the highest Y a block can be at. */
+    public static int top(Level level) {
+        Api a = is(level) ? api() : null;
+        return a == null ? level.getMaxBuildHeight() : a.maxY() + 1;
+    }
+
+    /**
+     * Whether the block at {@code pos} can be read and written. Outside the Earth this is always true: callers check
+     * the chunk themselves.
+     */
+    public static boolean isLoaded(Level level, BlockPos pos) {
+        if (!is(level)) return true;
+        Api a = api();
+        if (a == null || pos.getY() < a.minY() || pos.getY() > a.maxY()) return false;
+        try {
+            Object cubes = a.cubesAt().invoke(null, level, pos.getX(), pos.getZ());
+            return cubes != null && (boolean) a.isLoaded().invoke(cubes, pos);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+            return false;
+        }
+    }
+
+    /**
+     * Whether every cube in the box is loaded on this tick. If not, asks the Earth's workers for them without waiting,
+     * once the map data their columns need has been read off the server thread: adopting a cube reads its column's
+     * height on the server thread, which would otherwise wait for a download.
+     */
+    public static boolean ready(ServerLevel level, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        if (!is(level)) return true;
+        Api a = api();
+        if (a == null || minY < a.minY() || maxY > a.maxY()) return false;
+        try {
+            Object cubes = a.cubesAt().invoke(null, level, minX, minZ);
+            if (cubes == null || a.cubesAt().invoke(null, level, maxX, maxZ) != cubes) return false;
+            BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+            boolean loaded = true;
+            for (int cx = minX >> 4; cx <= maxX >> 4 && loaded; cx++) {
+                for (int cy = minY >> 4; cy <= maxY >> 4 && loaded; cy++) {
+                    for (int cz = minZ >> 4; cz <= maxZ >> 4 && loaded; cz++) {
+                        loaded = (boolean) a.isLoaded().invoke(cubes, pos.set(cx << 4, cy << 4, cz << 4));
+                    }
+                }
+            }
+            if (loaded) return true;
+
+            List<Integer> xs = requestCentres(minX >> 4, maxX >> 4);
+            List<Integer> ys = requestCentres(minY >> 4, maxY >> 4);
+            List<Integer> zs = requestCentres(minZ >> 4, maxZ >> 4);
+            // Lighting and random ticks read one column past the cubes asked for, hence 2 around each centre.
+            if (!warm(a, cubes, xs.get(0) - 2, zs.get(0) - 2, xs.get(xs.size() - 1) + 2, zs.get(zs.size() - 1) + 2)) {
+                return false;
+            }
+            for (int cx : xs) {
+                for (int cy : ys) {
+                    for (int cz : zs) a.readyAround().invoke(cubes, new BlockPos(cx << 4, cy << 4, cz << 4));
+                }
+            }
+            return false;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+            return false;
+        }
+    }
+
+    /** Centres of the 3-wide requests that cover cubes {@code min..max}, with no overhang once the range is 3 wide. */
+    private static List<Integer> requestCentres(int min, int max) {
+        List<Integer> centres = new ArrayList<>();
+        for (int c = min + 1; ; c += 3) {
+            if (c + 1 >= max) {
+                centres.add(Math.max(min + 1, max - 1));
+                return centres;
+            }
+            centres.add(c);
+        }
+    }
+
+    /** True once the height of every block in these columns is in the generator's memory. */
+    private static boolean warm(Api a, Object cubes, int minCx, int minCz, int maxCx, int maxCz)
+            throws ReflectiveOperationException {
+        if (warmWorld != cubes) {
+            warmColumns.clear();
+            warmWorld = cubes;
+        }
+        long now = System.nanoTime();
+        boolean warm = true;
+        List<int[]> cold = new ArrayList<>();
+        for (int cx = minCx; cx <= maxCx; cx++) {
+            for (int cz = minCz; cz <= maxCz; cz++) {
+                Warm w = warmColumns.get(column(cx, cz));
+                if (w == null) {
+                    warm = false;
+                    cold.add(new int[]{cx, cz});
+                } else if (!w.data().isDone()) {
+                    warm = false;
+                } else {
+                    boolean bad = w.data().isCompletedExceptionally();
+                    if (bad) warm = false;
+                    if (now - w.since() > (bad ? WARM_RETRY_NANOS : WARM_NANOS)) {
+                        warm = false;
+                        cold.add(new int[]{cx, cz});
+                    }
+                }
+            }
+        }
+        if (cold.isEmpty()) return warm;
+        if (warmColumns.size() > MAX_WARM_COLUMNS) {
+            warmColumns.values().removeIf(w -> w.data().isDone() && now - w.since() > WARM_RETRY_NANOS);
+        }
+        Object generator = a.generator().invoke(cubes);
+        CompletableFuture<Void> data = CompletableFuture.runAsync(() -> {
+            for (int[] c : cold) {
+                for (int i = 0; i < 256; i++) mapData(a.skyTopY(), generator, (c[0] << 4) + (i & 15), (c[1] << 4) + (i >> 4));
+            }
+        }, Util.ioPool());
+        Warm w = new Warm(data, now);
+        for (int[] c : cold) warmColumns.put(column(c[0], c[1]), w);
+        return warm;
+    }
+
+    private static long column(int cx, int cz) {
+        return ((long) cx << 32) | (cz & 0xFFFFFFFFL);
+    }
+
+    /** Off the server thread only: may download. Map data that can't be had yet throws, and is tried again later. */
+    private static int mapData(Method method, Object generator, int x, int z) {
+        try {
+            return (int) method.invoke(generator, x, z);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("No Earth map data at " + x + ", " + z, e);
+        }
+    }
+
+    /**
+     * Reads the generated height of each {@code {x, z}} column off the server thread, as {@code {ground, water}}.
+     * Null if the Earth can't be read.
+     */
+    public static CompletableFuture<int[][]> survey(ServerLevel level, List<int[]> columns) {
+        Api a = api();
+        if (a == null) return null;
+        try {
+            Object cubes = a.cubesOf().invoke(null, level);
+            if (cubes == null) return null;
+            Object generator = a.generator().invoke(cubes);
+            return CompletableFuture.supplyAsync(() -> {
+                int[][] out = new int[columns.size()][];
+                for (int i = 0; i < out.length; i++) {
+                    int[] c = columns.get(i);
+                    out[i] = new int[]{mapData(a.surfaceY(), generator, c[0], c[1]), mapData(a.waterY(), generator, c[0], c[1])};
+                }
+                return out;
+            }, Util.ioPool());
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+            return null;
+        }
+    }
+
+    /**
+     * Whether {@code getHeight} can answer for this column from memory. For any other column on the Earth it reads map
+     * data on the calling thread, which can hang the server on a download.
+     */
+    public static boolean knowsHeight(Level level, int x, int z) {
+        if (!is(level)) return true;
+        Api a = api();
+        if (a == null) return false;
+        try {
+            Object cubes = a.cubesAt().invoke(null, level, x, z);
+            return cubes != null && a.columnTops().invoke(cubes, x >> 4, z >> 4) != null;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+            return false;
+        }
+    }
+
+    /**
+     * The column new players arrive around: the level's shared spawn means nothing on the Earth. Null while Earth
+     * Platform is still working it out, or if it can't be read.
+     */
+    public static BlockPos arrival(ServerLevel level) {
+        Api a = api();
+        if (a == null) return null;
+        try {
+            int[] at;
+            Object session = a.session().get(null);
+            if (session != null && a.sessionServer().get(session) == level.getServer()) {
+                at = (int[]) a.sessionLanding().get(session);
+            } else {
+                // Not an Earth world, only its dimension: /cubes enter lands around the generator's own start.
+                Object cubes = a.cubesOf().invoke(null, level);
+                at = cubes == null ? null : (int[]) a.arrival().invoke(a.generator().invoke(cubes));
+            }
+            return at == null ? null : new BlockPos(at[0], 0, at[1]);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+            return null;
+        }
+    }
+
+    /** Block entities of the loaded cubes around {@code at}. The carrier chunk holds none. */
+    static List<BlockEntity> blockEntitiesAround(ServerLevel level, BlockPos at) {
+        Api a = api();
+        if (a == null) return List.of();
+        List<BlockEntity> found = new ArrayList<>();
+        try {
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    int x = at.getX() + dx * 16, z = at.getZ() + dz * 16;
+                    Object cubes = a.cubesAt().invoke(null, level, x, z);
+                    if (cubes == null) continue;
+                    for (int dy = -2; dy <= 2; dy++) {
+                        Object cube = a.cubeAt().invoke(cubes, x, at.getY() + dy * 16, z);
+                        if (cube == null) continue;
+                        for (Object be : ((Map<?, ?>) a.blockEntities().invoke(cube)).values()) found.add((BlockEntity) be);
+                    }
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+        }
+        return found;
+    }
+
+    /** The server stopped: let go of its world. */
+    static void stopped() {
+        warmColumns.clear();
+        warmWorld = null;
+    }
+}
