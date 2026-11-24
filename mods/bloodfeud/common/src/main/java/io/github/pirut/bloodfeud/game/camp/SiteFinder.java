@@ -216,12 +216,14 @@ public final class SiteFinder {
     }
 
     /**
-     * Whether a camp of {@code radius} centred on {@code (x, z)} would reach into ground another pack of {@code feud}
-     * holds (see {@link #heldByOthers}). Null {@code feud} checks nothing.
+     * Whether a site centred on {@code (x, z)} would reserve ground (a Stronghold's, or {@code radius} if bigger) that
+     * overlaps ground another pack of {@code feud} holds (see {@link #heldByOthers}). Null {@code feud} checks nothing.
      */
     public static boolean claimedByAnother(Feud feud, Pack pack, int x, int z, int radius) {
         if (feud == null) return false;
-        int r = radius + CampBlueprint.FOOTPRINT_MARGIN;
+        // The candidate's whole reservation (a Stronghold's, or its own if bigger), not just its first camp: two sites
+        // never claim overlapping ground.
+        int r = Math.max(SettlementTier.STRONGHOLD.radius, radius) + CampBlueprint.FOOTPRINT_MARGIN;
         return overlapsAny(heldByOthers(feud, pack), x - r, z - r, x + r, z + r);
     }
 
@@ -570,7 +572,8 @@ public final class SiteFinder {
     /**
      * A settlement's own positions. Exact (what the pack has put down, {@code Pack.placed}): a position is the pack's
      * only while the very block it placed still stands there. Legacy (a settlement built before 0.1.0-beta.2, with no
-     * such record): the blocks its blueprint puts at each position, in any color.
+     * such record): the blocks its blueprint puts at each position, except anything colored (wool, carpet, banners),
+     * which it can't tell from a player's.
      */
     public static final class Owned extends java.util.AbstractSet<CampBlueprint.Spot> {
         private final Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials;
@@ -595,6 +598,14 @@ public final class SiteFinder {
             return placed != null;
         }
 
+        /** Materials that come in a pack's colors, which an older settlement can't prove are its own. */
+        static boolean colored(CampBlueprint.Material m) {
+            return switch (m) {
+                case WOOL_PRIMARY, WOOL_ACCENT, CARPET, BANNER_STANDING, BANNER_WALL, VASSAL_BANNER -> true;
+                default -> false;
+            };
+        }
+
         boolean isSettlementBlock(CampBlueprint.Spot rel, BlockState state) {
             if (placed != null) {
                 String mine = placed.get(BlockPos.asLong(rel.rx(), rel.ry(), rel.rz()));
@@ -603,6 +614,7 @@ public final class SiteFinder {
             Set<CampBlueprint.Material> here = materials.get(rel);
             if (here == null) return false;
             for (CampBlueprint.Material m : here) {
+                if (colored(m)) continue;
                 if (palette.blocks(m).contains(state.getBlock())) return true;
             }
             return false;

@@ -545,11 +545,11 @@ class CampCrewTest {
         b.grunts = 3;
         s.data.feud.packs.put(b.id, b);
         s.tick(20); // one scheduled pass
-        assertTrue(s.pack.siteSet && b.siteSet, "both chose a site");
+        assertTrue(s.pack.siteSet, "the first chose a site");
+        if (!b.siteSet) return; // nothing near its home is clear of the first's reservation: it waits, not overlaps
         int apart = Math.max(Math.abs(s.pack.siteX - b.siteX), Math.abs(s.pack.siteZ - b.siteZ));
-        // The first site reserved a Stronghold's ground; the second camp keeps out of it.
-        assertTrue(apart > SettlementTier.STRONGHOLD.radius + SettlementTier.CAMP.radius + 2 * CampBlueprint.FOOTPRINT_MARGIN,
-                "apart by " + apart);
+        // Each site reserves a Stronghold's ground; the two reservations don't overlap.
+        assertTrue(apart > 2 * (SettlementTier.STRONGHOLD.radius + CampBlueprint.FOOTPRINT_MARGIN), "apart by " + apart);
     }
 
     @Test
@@ -797,7 +797,9 @@ class CampCrewTest {
         CampBuilder manual = s.newBuilder();
         assertTrue(manual.queueRuin(s.level, s.data.feud, s.pack, 1, false, s.clock, null).queued());
         for (int i = 0; i < 400 && manual.isBuilding(s.pack.id); i++) manual.tick(s.level.getServer(), s.data, s.clock++);
-        assertTrue(wool(s, Blocks.LIGHT_BLUE_WOOL) < before / 2);
+        BlockState fire = s.level.getBlockState(s.find(CampBlueprint.Material.CAMPFIRE));
+        assertTrue(fire.getBlock() instanceof CampfireBlock && !fire.getValue(CampfireBlock.LIT), "the rest falls to ruin: " + fire);
+        assertEquals(before, wool(s, Blocks.LIGHT_BLUE_WOOL), "its wool it can't tell from a player's, so it is left");
         assertTrue(s.pack.placed.isEmpty(), "and it goes on without a record");
     }
 
@@ -893,5 +895,158 @@ class CampCrewTest {
         fresh.works.placedCount = 12;
         CampBuilder.abandonWorks(fresh);
         assertEquals(0, fresh.builtTier, "a first camp keeps buildStarted instead");
+    }
+
+    // ------------------------------------------------------------------ final check
+
+    @Test
+    void twoNewCampsAFewDozenBlocksApartDontClaimOverlappingGround() {
+        Site s = site();
+        s.pack.siteSet = false;
+        Pack b = new Pack(new UUID(6, 7), Family.ROTTEN, "minecraft:overworld", "Other", 9, X + 40, Z, 0);
+        b.grunts = 3;
+        s.data.feud.packs.put(b.id, b);
+        s.tick(20);
+        assertTrue(s.pack.siteSet && b.siteSet, "both found a site");
+        int apart = Math.max(Math.abs(s.pack.siteX - b.siteX), Math.abs(s.pack.siteZ - b.siteZ));
+        assertTrue(apart > 2 * (SettlementTier.STRONGHOLD.radius + CampBlueprint.FOOTPRINT_MARGIN), "apart by " + apart);
+    }
+
+    @Test
+    void aBuilderIsntMovedWhereSomethingNextDoorReachesIntoItsBody() {
+        Site s = site();
+        BlockPos at = new BlockPos(X + 3, 71, Z);
+        assertTrue(CampBuilder.safeToStand(s.level, at, 1.95f, 2.2f), "open ground, for a ravager-sized mob");
+        s.level.setBlock(at.east(), Blocks.OAK_FENCE.defaultBlockState(), 3);
+        assertFalse(CampBuilder.safeToStand(s.level, at, 1.95f, 2.2f), "a fence in the next column reaches into a wide body");
+        assertTrue(CampBuilder.safeToStand(s.level, at, 0.6f, 1.95f), "but not a narrow one");
+        s.level.setBlock(at.east(), Blocks.AIR.defaultBlockState(), 3);
+        s.level.setBlock(at.east().below(), Blocks.COBBLESTONE_WALL.defaultBlockState(), 3);
+        assertFalse(CampBuilder.safeToStand(s.level, at, 1.95f, 2.2f), "a wall below, 1.5 tall, pokes up into it");
+    }
+
+    @Test
+    void glassDoesntShutASpotIn() {
+        Site s = site();
+        BlockPos spot = new BlockPos(X + 3, 65, Z);
+        assertTrue(CampBuilder.enclosed(s.level, spot));
+        s.level.setBlock(spot.above(), Blocks.GLASS.defaultBlockState(), 3);
+        assertFalse(CampBuilder.enclosed(s.level, spot), "seen through glass");
+    }
+
+    @Test
+    void aBlockWhoseSupportIsntThereYetIsDeferredNotDropped() {
+        Site s = site();
+        List<CampBlueprint.Placement> steps = CampBuilder.crewOrder(CampBlueprint.plan(s.pack.id, s.pack.family,
+                s.pack.color, List.of(), s.pack.siteFacing, 0, 1).placements());
+        int banner = stepOf(steps, CampBlueprint.Material.BANNER_STANDING);
+        BlockPos bannerAt = s.at(steps.get(banner));
+        s.tick(60);
+        assertNotNull(s.pack.works);
+        // Take its post away just before the crew gets to the banner.
+        for (int i = 0; i < 20 * 600 && s.done() >= 0 && s.done() < banner; i++) {
+            s.tick(1);
+            if (s.done() >= banner - 1 && !s.level.getBlockState(bannerAt.below()).isAir()) {
+                s.level.setBlock(bannerAt.below(), Blocks.AIR.defaultBlockState(), 3);
+            }
+        }
+        s.level.setBlock(bannerAt.below(), Blocks.AIR.defaultBlockState(), 3);
+        for (int i = 0; i < 20 * 400 && s.pack.works != null && s.done() < s.pack.works.total; i++) s.tick(1);
+        assertNotNull(s.pack.works, "not done: the banner waits");
+        assertTrue(s.pack.works.deferred.contains(banner), "deferred, not passed over");
+        assertTrue(s.level.getBlockState(bannerAt).isAir());
+        s.level.setBlock(bannerAt.below(), Blocks.OAK_FENCE.defaultBlockState(), 3); // its post is back
+        s.seen = false;
+        s.level.chunks.loaded = false;
+        s.tick(80);
+        assertTrue(s.level.getBlockState(bannerAt).getBlock() instanceof net.minecraft.world.level.block.BannerBlock,
+                "it went up off screen once it could stand");
+        assertEquals(1, s.pack.builtTier);
+    }
+
+    @Test
+    void reBanneringOnlyTouchesTheCampsOwnBanners() {
+        Site s = site();
+        s.tick(20 * 400);
+        BlockPos banner = s.find(CampBlueprint.Material.BANNER_STANDING);
+        s.level.setBlock(banner, Blocks.RED_BANNER.defaultBlockState(), 3); // a player's banner in its place
+        s.pack.bannersDirty = true;
+        assertTrue(s.builder.rebanner(s.level, s.data.feud, s.pack));
+        assertTrue(s.level.getBlockState(banner).is(Blocks.RED_BANNER), "the player's banner is left");
+
+        s.pack.placed.clear(); // a settlement from before there was a record
+        s.level.setBlock(banner, Blocks.LIGHT_BLUE_BANNER.defaultBlockState(), 3);
+        s.builder.rebanner(s.level, s.data.feud, s.pack);
+        assertTrue(s.level.getBlockState(banner).is(Blocks.LIGHT_BLUE_BANNER), "nothing it can prove is its own: left");
+    }
+
+    @Test
+    void aTownTakesDownOnlyTheVassalBannersAndPostsItPutUp() {
+        Site s = site();
+        Pack vassal = extraPack(s, new UUID(5, 10), X + 500);
+        vassal.liege = s.pack.id;
+        s.pack.tier = SettlementTier.TOWN;
+        CampBuilder manual = s.newBuilder();
+        assertTrue(manual.queueBuild(s.level, s.data.feud, s.pack, 0, 4, false, s.clock, null).queued());
+        for (int i = 0; i < 200 && manual.isBuilding(s.pack.id); i++) manual.tick(s.level.getServer(), s.data, s.clock++);
+        assertEquals(4, s.pack.builtTier);
+        List<CampBlueprint.Spot> spots = CampBlueprint.vassalBannerSpots(s.pack.siteFacing);
+        BlockPos ours = new BlockPos(s.pack.siteX, s.pack.siteY, s.pack.siteZ).offset(spots.get(0).rx(), spots.get(0).ry(), spots.get(0).rz());
+        BlockPos theirs = new BlockPos(s.pack.siteX, s.pack.siteY, s.pack.siteZ).offset(spots.get(1).rx(), spots.get(1).ry(), spots.get(1).rz());
+        assertTrue(s.level.getBlockState(ours).getBlock() instanceof net.minecraft.world.level.block.BannerBlock, "its vassal's banner");
+        net.minecraft.world.level.block.Block fence = io.github.pirut.bloodfeud.game.camp.FamilyPalette.of(s.pack.family).fence;
+        s.level.setBlock(theirs.below(), fence.defaultBlockState(), 3); // a player's fence, the same kind, at an empty post
+        s.level.setBlock(theirs, Blocks.RED_BANNER.defaultBlockState(), 3);
+        vassal.liege = null; // the vassal goes free
+        manual.rebanner(s.level, s.data.feud, s.pack);
+        assertTrue(s.level.getBlockState(ours).isAir(), "its own vassal banner came down");
+        assertFalse(s.level.getBlockState(ours.below()).is(fence), "with the post it put up");
+        assertTrue(s.level.getBlockState(theirs).is(Blocks.RED_BANNER), "a player's banner stays");
+        assertTrue(s.level.getBlockState(theirs.below()).is(fence), "and so does a player's post");
+    }
+
+    /** Every equipment drop chance, as the mob saves them. */
+    private static void assertDropsNothing(net.minecraft.world.entity.Mob mob) {
+        CompoundTag tag = new CompoundTag();
+        mob.addAdditionalSaveData(tag);
+        for (String list : List.of("ArmorDropChances", "HandDropChances", "body_armor_drop_chance")) {
+            if (tag.contains(list, net.minecraft.nbt.Tag.TAG_LIST)) {
+                net.minecraft.nbt.ListTag chances = tag.getList(list, net.minecraft.nbt.Tag.TAG_FLOAT);
+                for (int i = 0; i < chances.size(); i++) assertEquals(0f, chances.getFloat(i), list + " " + i);
+            } else if (tag.contains(list)) {
+                assertEquals(0f, tag.getFloat(list), list);
+            }
+        }
+        assertTrue(tag.contains("ArmorDropChances") && tag.contains("HandDropChances"), "saved its drop chances");
+    }
+
+    @Test
+    void aCrewHireDropsAndPicksUpNothingAndOnlyTheSunSensitiveGetFireResistanceWhileHired() {
+        Site s = site();
+        net.minecraft.world.entity.monster.Zombie zombie =
+                new net.minecraft.world.entity.monster.Zombie(net.minecraft.world.entity.EntityType.ZOMBIE, s.level);
+        zombie.setCanPickUpLoot(true);
+        CampBuilder.outfitCrew(zombie);
+        assertDropsNothing(zombie);
+        assertFalse(zombie.canPickUpLoot(), "picks nothing up while hired");
+        assertTrue(zombie.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE), "a zombie would burn in the sun");
+        CampBuilder.releaseCrew(zombie);
+        assertTrue(zombie.canPickUpLoot(), "picks up again once dismissed");
+        assertFalse(zombie.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE), "and can burn again, in lava too");
+        assertDropsNothing(zombie);
+
+        for (net.minecraft.world.entity.Mob m : List.<net.minecraft.world.entity.Mob>of(
+                new net.minecraft.world.entity.monster.Husk(net.minecraft.world.entity.EntityType.HUSK, s.level),
+                new net.minecraft.world.entity.monster.piglin.PiglinBrute(net.minecraft.world.entity.EntityType.PIGLIN_BRUTE, s.level),
+                new net.minecraft.world.entity.monster.WitherSkeleton(net.minecraft.world.entity.EntityType.WITHER_SKELETON, s.level),
+                new net.minecraft.world.entity.monster.Vindicator(net.minecraft.world.entity.EntityType.VINDICATOR, s.level))) {
+            CampBuilder.outfitCrew(m);
+            assertFalse(m.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE), m.getType() + " doesn't burn in the sun");
+            assertDropsNothing(m);
+        }
+        net.minecraft.world.entity.Mob skeleton =
+                new net.minecraft.world.entity.monster.Skeleton(net.minecraft.world.entity.EntityType.SKELETON, s.level);
+        CampBuilder.outfitCrew(skeleton);
+        assertTrue(skeleton.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE));
     }
 }

@@ -33,12 +33,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.AbstractChestBlock;
-import net.minecraft.world.level.block.BannerBlock;
 import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
-import net.minecraft.world.level.block.WallBannerBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.ClipContext;
@@ -526,9 +524,8 @@ public final class CampBuilder {
             if (server == null) continue;
             for (ServerLevel level : server.getAllLevels()) {
                 if (level.getEntity(mob) instanceof Mob m) {
-                    m.removeTag(TAG_BUILDER);
+                    releaseCrew(m);
                     m.clearRestriction();
-                    if (m.getTags().remove(TAG_BUILDER_HOLDS)) m.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
                     break;
                 }
             }
@@ -537,6 +534,52 @@ public final class CampBuilder {
 
     /** Builders carry this tag while they build. */
     public static final String TAG_BUILDER = "bloodfeud.builder";
+    private static final String TAG_CREW_LOOT = "bloodfeud.crew_could_pick_up";
+    private static final String TAG_CREW_FIREPROOF = "bloodfeud.crew_fireproof";
+
+    /**
+     * Readies a mob hired as crew: it drops nothing it wears or carries and picks nothing up while it builds, and one
+     * the sun would burn gets fire resistance so it can work through the day. {@link #releaseCrew} undoes what it
+     * gave; the drop chances stay at nothing.
+     */
+    public static void outfitCrew(Mob mob) {
+        for (EquipmentSlot slot : EquipmentSlot.values()) mob.setDropChance(slot, 0f);
+        if (mob.canPickUpLoot()) mob.addTag(TAG_CREW_LOOT);
+        mob.setCanPickUpLoot(false);
+        if (sunSensitive(mob) && !mob.hasEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE)) {
+            mob.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE,
+                    net.minecraft.world.effect.MobEffectInstance.INFINITE_DURATION, 0, false, false));
+            mob.addTag(TAG_CREW_FIREPROOF);
+        }
+    }
+
+    /** A mob leaves the crew (its build is done, or it rose to a Brute): it picks things up again and can burn again. */
+    public static void releaseCrew(Mob mob) {
+        mob.removeTag(TAG_BUILDER);
+        if (mob.removeTag(TAG_CREW_LOOT)) mob.setCanPickUpLoot(true);
+        if (mob.removeTag(TAG_CREW_FIREPROOF)) mob.removeEffect(net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE);
+        if (mob.removeTag(TAG_BUILDER_HOLDS)) mob.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+    }
+
+    /** Whether the sun sets this mob alight: zombies (not husks or zombified piglins) and skeletons that aren't fireproof. */
+    public static boolean sunSensitive(Mob mob) {
+        if (mob.fireImmune()) return false;
+        if (mob instanceof net.minecraft.world.entity.monster.Zombie) {
+            return !(mob instanceof net.minecraft.world.entity.monster.Husk)
+                    && !(mob instanceof net.minecraft.world.entity.monster.ZombifiedPiglin);
+        }
+        return mob instanceof net.minecraft.world.entity.monster.AbstractSkeleton;
+    }
+
+    /** A builder is leaving its crew for good (it rose to a Brute). */
+    public void leaveCrew(Mob mob) {
+        UUID packId = builderPack.remove(mob.getUUID());
+        if (packId != null) {
+            Crew crew = crews.get(packId);
+            if (crew != null) crew.mobs.remove(mob.getUUID());
+        }
+        releaseCrew(mob);
+    }
 
     private HeldTicket acquireOrRenewTicket(MinecraftServer server, UUID id, ServerLevel level,
                                             int targetX, int targetZ, int footprintRadius, int standoffRadius,
@@ -1772,6 +1815,14 @@ public final class CampBuilder {
                 stepBudget--;
                 continue;
             }
+            if (op.material().pass == CampBlueprint.PASS_DECOR
+                    && !palette.resolve(op, job.packColor).canSurvive(level, pos)) {
+                // What it hangs on or stands on isn't there yet (deferred, or taken): it goes up off screen, after it.
+                w.deferred.add(job.index);
+                job.index++;
+                stepBudget--;
+                continue;
+            }
             Mob worker = unseen ? null : nearest(idle, pos);
             if (worker != null && !canReach(level, worker.getEyePosition(), pos, worker)) {
                 if (crew.vantageFor != job.index) {
@@ -1795,7 +1846,7 @@ public final class CampBuilder {
                 }
                 // It couldn't walk there. It is moved there only if that is safe right now; never into a wall or the void.
                 crew.vantageFor = -1;
-                if (!safeToStand(level, crew.vantage, worker.getBbWidth(), worker.getBbHeight())) {
+                if (!safeToStand(level, crew.vantage, worker)) {
                     leaveOut(level, job, w, op, pos, pack, "the spot to reach it from isn't safe to stand on");
                     continue;
                 }
@@ -1922,12 +1973,12 @@ public final class CampBuilder {
         stepBudget--;
     }
 
-    /** Whether every side of {@code pos} is a loaded, solid block: nobody can see it from anywhere. */
+    /** Whether every side of {@code pos} is a loaded, opaque full block: nobody can see it from anywhere. */
     public static boolean enclosed(ServerLevel level, BlockPos pos) {
         for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
             BlockPos n = pos.relative(d);
             if (!SiteFinder.isChunkReady(level, n.getX() >> 4, n.getZ() >> 4) || !Earth.isLoaded(level, n)) return false;
-            if (!level.getBlockState(n).blocksMotion()) return false;
+            if (!level.getBlockState(n).isSolidRender(level, n)) return false; // glass or a fence lets it be seen
         }
         return true;
     }
@@ -1942,13 +1993,28 @@ public final class CampBuilder {
         if (!level.getBlockState(below).isFaceSturdy(level, below, net.minecraft.core.Direction.UP)) return false;
         net.minecraft.world.phys.AABB body = new net.minecraft.world.phys.AABB(at.getX() + 0.5 - width / 2, at.getY(),
                 at.getZ() + 0.5 - width / 2, at.getX() + 0.5 + width / 2, at.getY() + height, at.getZ() + 0.5 + width / 2);
-        for (BlockPos p : BlockPos.betweenClosed(BlockPos.containing(body.minX, body.minY, body.minZ),
-                BlockPos.containing(body.maxX - 1e-6, body.maxY - 1e-6, body.maxZ - 1e-6))) {
-            if (!SiteFinder.isChunkReady(level, p.getX() >> 4, p.getZ() >> 4) || !Earth.isLoaded(level, p)) return false;
-            net.minecraft.world.phys.shapes.VoxelShape shape = level.getBlockState(p).getCollisionShape(level, p);
-            if (!shape.isEmpty() && shape.bounds().move(p).intersects(body)) return false;
+        // Every block whose collision shape could reach into the body: its own cells, their neighbours, and the row
+        // under its feet (a fence or wall stands 1.5 tall).
+        for (BlockPos p : BlockPos.betweenClosed(BlockPos.containing(body.minX - 1, body.minY - 1, body.minZ - 1),
+                BlockPos.containing(body.maxX + 1, body.maxY, body.maxZ + 1))) {
+            if (!SiteFinder.isChunkReady(level, p.getX() >> 4, p.getZ() >> 4) || !Earth.isLoaded(level, p)) {
+                if (p.getX() >= Math.floor(body.minX) && p.getX() < body.maxX && p.getZ() >= Math.floor(body.minZ)
+                        && p.getZ() < body.maxZ && p.getY() >= at.getY() - 1) {
+                    return false; // part of where it would stand isn't loaded
+                }
+                continue;
+            }
+            for (net.minecraft.world.phys.AABB part : level.getBlockState(p).getCollisionShape(level, p).toAabbs()) {
+                if (part.move(p).intersects(body)) return false;
+            }
         }
         return true;
+    }
+
+    /** As above with the mob's own box, also asking the level (world border, anything else solid in the way). */
+    public static boolean safeToStand(ServerLevel level, BlockPos at, Mob mob) {
+        if (!safeToStand(level, at, mob.getBbWidth(), mob.getBbHeight())) return false;
+        return level.noCollision(mob, mob.getDimensions(mob.getPose()).makeBoundingBox(Vec3.atBottomCenterOf(at)));
     }
 
     /**
@@ -2141,7 +2207,6 @@ public final class CampBuilder {
             return existing.isAir() || existing.getBlock() instanceof AbstractChestBlock<?>
                     || existing.getBlock() instanceof BarrelBlock || SiteFinder.isContainerBlock(level, pos, existing);
         }
-        if (op.material().pass == CampBlueprint.PASS_DECOR && !target.canSurvive(level, pos)) return true;
         return existing == target;
     }
 
@@ -2267,40 +2332,28 @@ public final class CampBuilder {
         FamilyPalette palette = FamilyPalette.of(pack.family);
         BlockPos origin = new BlockPos(pack.siteX, pack.siteY, pack.siteZ);
 
+        boolean recorded = !pack.placed.isEmpty(); // an older settlement with no record has no banners it can prove are its own
         for (CampBlueprint.Placement op : banners) {
+            if (!recorded) break;
             if (CampBlueprint.isSkipped(op.zone(), op.rx(), op.rz(), pack.skippedZones, pack.skippedColumns)) {
                 continue;
             }
             BlockPos pos = origin.offset(op.rx(), op.ry(), op.rz());
-            if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4)) continue;
+            if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4) || !Earth.isLoaded(level, pos)) continue;
             BlockState existing = level.getBlockState(pos);
-            Block block = existing.getBlock();
-            String mine = pack.placed.get(BlockPos.asLong(op.rx(), op.ry(), op.rz()));
-            boolean ours = pack.placed.isEmpty() // an old settlement with no record: any banner on its spot
-                    || (mine != null && mine.equals(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(block).toString()));
-            boolean replaceable = ((block instanceof BannerBlock || block instanceof WallBannerBlock) && ours)
-                    || (!pack.builtRuined && op.material() == CampBlueprint.Material.VASSAL_BANNER && existing.isAir());
-            if (!replaceable) continue;
-            if (!pack.builtRuined && op.material() == CampBlueprint.Material.VASSAL_BANNER && existing.isAir()) {
+            boolean newVassalBanner = !pack.builtRuined && op.material() == CampBlueprint.Material.VASSAL_BANNER && existing.isAir();
+            if (!placedHere(pack, origin, pos, existing) && !newVassalBanner) continue; // only its own banner, as it put it
+            if (newVassalBanner) {
                 BlockPos below = pos.below();
-                if (level.getBlockState(below).isAir()) {
-                    level.setBlock(below, palette.fence.defaultBlockState(), Block.UPDATE_ALL);
-                }
+                if (level.getBlockState(below).isAir()) setNoted(level, pack, origin, below, palette.fence.defaultBlockState());
                 BlockPos base = below.below();
-                if (level.getBlockState(base).isAir()) {
-                    level.setBlock(base, palette.pillar.defaultBlockState(), Block.UPDATE_ALL);
-                }
+                if (level.getBlockState(base).isAir()) setNoted(level, pack, origin, base, palette.pillar.defaultBlockState());
             }
-            BlockState banner = palette.resolve(op, displayColor);
-            level.setBlock(pos, banner, Block.UPDATE_ALL);
-            if (!pack.placed.isEmpty()) { // its record follows the new banner, so the banner stays the pack's
-                pack.placed.put(BlockPos.asLong(op.rx(), op.ry(), op.rz()),
-                        net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(banner.getBlock()).toString());
-            }
+            setNoted(level, pack, origin, pos, palette.resolve(op, displayColor));
         }
 
-        // Clear stale vassal banners (and matching FENCE/PILLAR posts) beyond current vassals.size()
-        if (built == SettlementTier.TOWN) {
+        // Take down vassal banners (and their posts) beyond the current vassals: only what the camp put there itself.
+        if (built == SettlementTier.TOWN && recorded) {
             List<CampBlueprint.Spot> allVassalSpots = CampBlueprint.vassalBannerSpots(pack.siteFacing);
             for (int i = vassals.size(); i < allVassalSpots.size(); i++) {
                 CampBlueprint.Spot s = allVassalSpots.get(i);
@@ -2308,27 +2361,31 @@ public final class CampBuilder {
                     continue;
                 }
                 BlockPos pos = origin.offset(s.rx(), s.ry(), s.rz());
-                if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4)) continue;
-                boolean clearedBanner = false;
-                if (level.getBlockState(pos).getBlock() instanceof BannerBlock) {
-                    level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
-                    clearedBanner = true;
-                }
-                BlockPos below = pos.below();
-                BlockPos base = below.below();
-                boolean fenceMatches = level.getBlockState(below).is(palette.fence);
-                boolean pillarMatches = level.getBlockState(base).is(palette.pillar);
-                if (clearedBanner || (level.getBlockState(pos).isAir() && (fenceMatches || pillarMatches))) {
-                    if (fenceMatches) {
-                        level.setBlock(below, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
-                    }
-                    if (pillarMatches && (fenceMatches || level.getBlockState(below).isAir())) {
-                        level.setBlock(base, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+                if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4) || !Earth.isLoaded(level, pos)) continue;
+                for (BlockPos part : List.of(pos, pos.below(), pos.below(2))) {
+                    if (!Earth.isLoaded(level, part)) continue;
+                    BlockState here = level.getBlockState(part);
+                    if (!here.isAir() && placedHere(pack, origin, part, here)) {
+                        setNoted(level, pack, origin, part, Blocks.AIR.defaultBlockState());
                     }
                 }
             }
         }
         return true;
+    }
+
+    /** Whether {@code state} at {@code pos} is exactly what the pack's camp put there. */
+    private static boolean placedHere(Pack pack, BlockPos origin, BlockPos pos, BlockState state) {
+        String mine = pack.placed.get(BlockPos.asLong(pos.getX() - origin.getX(), pos.getY() - origin.getY(), pos.getZ() - origin.getZ()));
+        return mine != null && mine.equals(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
+    }
+
+    /** Sets a block for the pack's camp and notes it in its record (cleared to air: no longer the pack's). */
+    private static void setNoted(ServerLevel level, Pack pack, BlockPos origin, BlockPos pos, BlockState state) {
+        level.setBlock(pos, state, Block.UPDATE_ALL);
+        long at = BlockPos.asLong(pos.getX() - origin.getX(), pos.getY() - origin.getY(), pos.getZ() - origin.getZ());
+        if (state.isAir()) pack.placed.remove(at);
+        else pack.placed.put(at, net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
     }
 
     private static long colKey(int rx, int rz) {

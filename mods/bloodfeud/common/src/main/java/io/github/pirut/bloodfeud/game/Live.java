@@ -170,10 +170,8 @@ public final class Live {
             tag.putString("DeathLootTable", BuiltInLootTables.EMPTY.location().toString());
             mob.load(tag);
             mob.skipDropExperience();
-            for (EquipmentSlot slot : EquipmentSlot.values()) mob.setDropChance(slot, 0f); // its gear too (a brute's axe)
-            // It works through the day: sunlight wears a zombie's cap away and then burns it, which would kill a crew
-            // (and the pack's grunts with it) in a few minutes.
-            mob.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, MobEffectInstance.INFINITE_DURATION, 0, false, false));
+            // No drops (its gear too, a brute's axe), no pickups, and no burning in the sun while it builds.
+            CampBuilder.outfitCrew(mob);
         }
         return mob;
     }
@@ -998,6 +996,7 @@ public final class Live {
     /** Makes a mob the living body of a Brute record: name, gear, stats, boss bar. */
     void becomeBrute(Mob mob, Brute b) {
         removeActive(b.id, true);
+        campBuilder.leaveCrew(mob); // a builder that rises is a builder no more
         for (String t : new ArrayList<>(mob.getTags())) if (t.startsWith(TAG_ID) || t.startsWith(TAG_SAW)) mob.removeTag(t);
         mob.removeTag(TAG_GRUNT);
         mob.addTag(TAG_BRUTE);
