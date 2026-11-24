@@ -171,6 +171,9 @@ public final class Live {
             mob.load(tag);
             mob.skipDropExperience();
             for (EquipmentSlot slot : EquipmentSlot.values()) mob.setDropChance(slot, 0f); // its gear too (a brute's axe)
+            // It works through the day: sunlight wears a zombie's cap away and then burns it, which would kill a crew
+            // (and the pack's grunts with it) in a few minutes.
+            mob.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, MobEffectInstance.INFINITE_DURATION, 0, false, false));
         }
         return mob;
     }

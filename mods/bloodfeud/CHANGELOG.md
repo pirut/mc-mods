@@ -16,7 +16,8 @@
 - The Ledger, `/bloodfeud packs` and the maps say how far along a settlement is: "Camp, being built (40%)", or "Camp
   (not built yet)" before a pack has picked its site.
 - Builders only place a block they can reach and see, and are only moved where it's safe to stand. A block no builder
-  can get at is put up off screen later. Builders drop nothing, gear included, and give no experience.
+  can get at is put up off screen later. Builders drop nothing, gear included, give no experience, and don't burn in
+  daylight.
 - A camp counts as its own only the blocks it put down, while they still stand: a player's block in the site is never
   replaced, even across a restart. A pack beaten down mid-build falls to ruin over everything it put up.
 - A pack's site keeps room for a Stronghold, and no other pack builds there.
