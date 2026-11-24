@@ -15,11 +15,12 @@
   remember who killed their builders and say so.
 - The Ledger, `/bloodfeud packs` and the maps say how far along a settlement is: "Camp, being built (40%)", or "Camp
   (not built yet)" before a pack has picked its site.
-- Builders only place a block they can reach and see. They drop nothing and give no experience. A pack beaten down
-  mid-build falls to ruin over what it had put up, upgrade included, and no two packs pick the same ground.
-- New setting `campBlocksPerMinute`: each builder's pace (default 60).
-- Builders never replace a block a player put in the site (even across a restart, and wool in another color is the
-  player's), and stashes are filled as they are placed.
+- Builders only place a block they can reach and see, and are only moved where it's safe to stand. A block no builder
+  can get at is put up off screen later. Builders drop nothing, gear included, and give no experience.
+- A camp counts as its own only the blocks it put down, while they still stand: a player's block in the site is never
+  replaced, even across a restart. A pack beaten down mid-build falls to ruin over everything it put up.
+- A pack's site keeps room for a Stronghold, and no other pack builds there.
+- New setting `campBlocksPerMinute`: each builder's pace (default 60). Stashes are filled as they are placed.
 
 ## 0.1.0-beta.1
 

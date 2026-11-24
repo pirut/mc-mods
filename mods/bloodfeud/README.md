@@ -68,24 +68,25 @@ player-built bases and world spawn.
 block: a crew of the pack's own mobs clears the site, then walks to each spot and puts the block there, ground first,
 then walls and roofs, with the stash and banners last. A crew of three places up to three blocks a second (less when
 it has to walk), and a bigger pack sends more builders. A builder has to reach a block and see it to place it: it
-never builds through a wall or from afar, and one that can't walk to its spot is moved to where it can reach it. They
-mind their work while you watch from a distance, and turn on you if you come within about 8 blocks or hit them.
-While nobody can see the site, it is built off screen instead, quickly, so you find it finished, or well along, when
-you get there. It's one build either way: walk into view in the middle of it and the crew carries on from the same
-block. The Ledger, `/bloodfeud packs` and the map say how far along a build is ("Camp, being built (40%)").
+never builds through a wall or from afar. One that can't walk to its spot is moved there only if the spot is safe to
+stand on, and a block no builder can get at is put up off screen later (unless it's shut in where nobody could ever
+see it). They mind their work while you watch from a distance, and turn on you if you come within about 8 blocks or
+hit them. While nobody can see the site, it is built off screen instead, quickly, so you find it finished, or well
+along, when you get there. It's one build either way: walk into view in the middle of it and the crew carries on from
+the same block. The Ledger, `/bloodfeud packs` and the map say how far along a build is ("Camp, being built (40%)").
 
 Kill the builders and the build stalls, half built, in view or not. The pack sends a new crew about five minutes later
 if it's still around, and its Brutes remember who killed their builders. Builders are grunts, so killing them also
-weakens the pack, but they drop nothing and give no experience: a crew is no farm. A pack beaten down mid-build falls to
-ruin, and the ruin (and any later repair) covers whatever it had already put up. Builders never replace a block a
-player put in the site, even after a restart: that spot is left as it is and the rest is built around it. No two packs
-build on the same ground.
+weakens the pack, but they drop nothing (not even their gear) and give no experience: a crew is no farm. A pack beaten
+down mid-build falls to ruin, and the ruin (and any later repair) covers whatever it had already put up. A camp only
+ever counts the blocks it put down itself, while they still stand, as its own: anything a player puts in the site is
+left as it is, even across a restart, and the rest is built around it. A pack's site keeps room for a Stronghold, and
+no other pack builds there.
 
 Ruins, the crumbling of abandoned settlements, and banner changes still happen off screen, while players are away.
 
 Settings in `config/bloodfeud.properties`: `campBlocksPerMinute` (each builder's pace, default 60). Turn automatic
-pack settlements off or back on anytime with
-`buildCamps=false` or `/bloodfeud camps off` and `/bloodfeud camps on`.
+pack settlements off or back on anytime with `buildCamps=false` or `/bloodfeud camps off` and `/bloodfeud camps on`.
 
 ## Relics
 
