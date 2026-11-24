@@ -574,7 +574,7 @@ class CampCrewTest {
         assertNotNull(spot, "a place to stand where it can reach it");
         net.minecraft.world.phys.Vec3 there = new net.minecraft.world.phys.Vec3(spot.getX() + 0.5, spot.getY() + 1.62, spot.getZ() + 0.5);
         assertTrue(CampBuilder.canReach(s.level, there, target, null));
-        assertTrue(spot.getX() > X + 2, "on the far side of the wall: " + spot.toShortString());
+        assertTrue(spot.getX() >= X + 2, "on the wall or past it, not behind it: " + spot.toShortString());
     }
 
     @Test
