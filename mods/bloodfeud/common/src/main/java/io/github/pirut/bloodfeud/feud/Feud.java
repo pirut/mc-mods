@@ -303,6 +303,22 @@ public final class Feud {
     }
 
     /** Records that a pack lost a grunt in the world and re-checks whether its settlement falls into ruin. */
+    /**
+     * A player killed the last of a pack's builders, leaving its settlement half built. Every Brute of the pack
+     * remembers who did it, and the pack's story says so.
+     */
+    public void wreckedBuild(Pack p, UUID player, String playerName, String what, long now) {
+        if (p == null || player == null) return;
+        clock = now;
+        for (Brute b : members(p)) {
+            Relation r = b.relation(player);
+            r.met = true;
+            r.remember(new Memory(Memory.Kind.WRECKED_CAMP, now, ""));
+        }
+        p.met.add(player);
+        tellAt(p, News.Kind.RAID, playerName + " killed the builders of " + p.title() + "'s " + what + ".");
+    }
+
     public void gruntKilled(Pack p, long now) {
         if (p == null) return;
         clock = now;

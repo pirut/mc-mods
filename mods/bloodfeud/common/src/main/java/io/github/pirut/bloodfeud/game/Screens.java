@@ -117,7 +117,7 @@ public final class Screens {
         boolean campsOn = BloodFeud.config().buildCamps;
         SettlementTier displayTier = pk.displayTier(campsOn);
         t.putString("tier", displayTier.key);
-        t.putString("tierTitle", pk.displayTierTitle(campsOn));
+        t.putString("tierTitle", pk.settlementLabel(campsOn));
         t.putInt("builtTier", pk.builtTier);
         t.putBoolean("ruined", displayTier != SettlementTier.NONE && (campsOn ? pk.ruined : (pk.builtTier > 0 && (pk.builtRuined || pk.ruined))));
         t.putString("dim", pk.dimension);

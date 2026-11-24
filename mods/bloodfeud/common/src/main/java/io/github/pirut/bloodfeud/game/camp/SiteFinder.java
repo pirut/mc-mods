@@ -107,6 +107,17 @@ public final class SiteFinder {
                 origin.getX() + reach, origin.getY() + SITE_UP, origin.getZ() + reach);
     }
 
+    /**
+     * Whether a site is loaded as it is, without asking for anything to load: its chunks, and on the Earth its cubes,
+     * from {@value #SITE_DOWN} below to {@value #SITE_UP} above. A site a player is near passes.
+     */
+    public static boolean isSiteLoaded(ServerLevel level, BlockPos origin, int radius) {
+        if (!isFootprintLoaded(level, origin.getX(), origin.getZ(), radius)) return false;
+        int reach = radius + SITE_SIDE_MARGIN;
+        return Earth.loaded(level, origin.getX() - reach, origin.getY() - SITE_DOWN, origin.getZ() - reach,
+                origin.getX() + reach, origin.getY() + SITE_UP, origin.getZ() + reach);
+    }
+
     /** True when a site on the Earth has to wait for its cubes. Never true in other dimensions. */
     public static boolean isWaitingForGround(ServerLevel level, BlockPos origin, int radius) {
         return Earth.is(level) && !isSiteReady(level, origin, radius);

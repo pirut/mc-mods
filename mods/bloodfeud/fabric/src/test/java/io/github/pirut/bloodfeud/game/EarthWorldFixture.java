@@ -16,6 +16,7 @@ import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.valueproviders.ConstantInt;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -79,6 +80,12 @@ public final class EarthWorldFixture {
         });
         level.chunks = allocate(FakeChunks.class);
         level.chunks.chunk = allocate(LevelChunk.class);
+        // Made without constructors, so no field initializers ran.
+        level.chunks.loaded = true;
+        level.chunks.tickets = new java.util.HashSet<>();
+        level.chunks.ticketsLoad = true;
+        level.entityTicking = true;
+        level.difficulty = net.minecraft.world.Difficulty.NORMAL;
         level.type = new DimensionType(OptionalLong.empty(), true, false, false, true, 1.0, true, false,
                 0, 16, 16, BlockTags.INFINIBURN_OVERWORLD, BuiltinDimensionTypes.OVERWORLD_EFFECTS, 0f,
                 new DimensionType.MonsterSettings(false, false, ConstantInt.of(0), 0));
@@ -95,7 +102,12 @@ public final class EarthWorldFixture {
         public AtomicInteger unknownHeightReads, serverThreadMapReads;
         public ResourceKey<Level> key;
         int ground, minBuild, maxBuild;
-        FakeChunks chunks;
+        /** Whether mobs tick at every position (a player is near); a crew only builds while they do. */
+        public boolean entityTicking = true;
+        public net.minecraft.world.Difficulty difficulty = net.minecraft.world.Difficulty.NORMAL;
+        /** Blocks placed in view: with their sound, as a crew places them. */
+        public int placeSounds;
+        public FakeChunks chunks;
         DimensionType type;
         FakeServer fakeServer;
 
@@ -198,6 +210,38 @@ public final class EarthWorldFixture {
         }
 
         @Override
+        public boolean isPositionEntityTicking(BlockPos pos) {
+            return entityTicking && chunks.loaded;
+        }
+
+        @Override
+        public net.minecraft.world.Difficulty getDifficulty() {
+            return difficulty;
+        }
+
+        @Override
+        public void playSound(net.minecraft.world.entity.player.Player player, BlockPos pos,
+                              net.minecraft.sounds.SoundEvent sound, net.minecraft.sounds.SoundSource source,
+                              float volume, float pitch) {
+            placeSounds++;
+        }
+
+        @Override
+        public <T extends net.minecraft.core.particles.ParticleOptions> int sendParticles(T type, double x, double y,
+                double z, int count, double dx, double dy, double dz, double speed) {
+            return 0;
+        }
+
+        @Override
+        public void levelEvent(net.minecraft.world.entity.player.Player player, int type, BlockPos pos, int data) {
+        }
+
+        @Override
+        public net.minecraft.world.entity.Entity getEntity(java.util.UUID id) {
+            return null;
+        }
+
+        @Override
         public MinecraftServer getServer() {
             return fakeServer;
         }
@@ -218,8 +262,23 @@ public final class EarthWorldFixture {
         }
     }
 
-    static final class FakeChunks extends ServerChunkCache {
+    public static final class FakeChunks extends ServerChunkCache {
         LevelChunk chunk;
+        /** False: no player is near enough to load any chunk. */
+        public boolean loaded = true;
+        /** Region tickets held now; while one is, its chunks load (if {@link #ticketsLoad}). */
+        public java.util.Set<ChunkPos> tickets;
+        public boolean ticketsLoad = true;
+
+        @Override
+        public <T> void addRegionTicket(net.minecraft.server.level.TicketType<T> type, ChunkPos pos, int distance, T value) {
+            tickets.add(pos);
+        }
+
+        @Override
+        public <T> void removeRegionTicket(net.minecraft.server.level.TicketType<T> type, ChunkPos pos, int distance, T value) {
+            tickets.remove(pos);
+        }
 
         private FakeChunks() {
             super(null, null, null, null, null, null, 0, 0, false, null, null, null);
@@ -227,7 +286,7 @@ public final class EarthWorldFixture {
 
         @Override
         public LevelChunk getChunkNow(int x, int z) {
-            return chunk;
+            return loaded || (ticketsLoad && !tickets.isEmpty()) ? chunk : null;
         }
     }
 

@@ -41,6 +41,18 @@ I could have run. I stayed to remember your face.
 You were busy looting. I was busy planning.
 It's not personal. Oh, wait. Yes it is.
 
+[greet.wrecked_camp]
+You killed my builders. We'll build it again, out of your bones.
+Half a camp, {player}. That's what you left us. I'll leave you half a face.
+They were carrying wood. You brought a sword. Coward.
+Every post you knocked down, I'll drive into you.
+The walls were nearly up. Now look at them.
+We build, you burn. Let's see who's still here at the end.
+You took our builders, {player}. {pack} doesn't forget a debt.
+I'll finish that camp. You'll be the first thing hanging on its gate.
+Builders don't fight back. I do.
+You thought we'd stop building? We just need new hands. Yours, maybe.
+
 [greet.killed_you]
 Back for another beating?
 Remember me? I'm the one who put you in the dirt.

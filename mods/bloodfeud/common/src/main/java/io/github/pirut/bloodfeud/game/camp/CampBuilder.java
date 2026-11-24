@@ -8,6 +8,8 @@ import io.github.pirut.bloodfeud.feud.SettlementTier;
 import io.github.pirut.bloodfeud.game.Earth;
 import io.github.pirut.bloodfeud.game.FeudData;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.BlockParticleOption;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
@@ -18,7 +20,16 @@ import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.TicketType;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
+import net.minecraft.world.Difficulty;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.AbstractChestBlock;
@@ -26,6 +37,7 @@ import net.minecraft.world.level.block.BannerBlock;
 import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.WallBannerBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -36,6 +48,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,7 +58,16 @@ import java.util.UUID;
  * Chunk-safe incremental builder that places, ruins, repairs, and re-banners gang camps, outposts, strongholds,
  * and towns over multiple ticks without lag or overwriting player builds and containers.
  * <p>
- * Automatic world mutations only run off-screen while all non-spectator players in the same dimension are outside
+ * A pack builds (and rebuilds) its own settlement. While a player can see the site (its chunks are in someone's view;
+ * on the Earth, its cubes are in someone's watch range), a crew of the pack's mobs walks to each spot and puts the
+ * block there, a few blocks a second. While nobody can see it, it is built off screen, quickly, with its ground loaded
+ * for it just for the build: a chunk ticket and, on the Earth, its cubes asked for (and kept, where Earth Platform can
+ * keep them). Both are the same saved build ({@link Pack.Works}), so it carries on from the same step whichever way it
+ * goes, after a restart too. Nothing is ever written to ground that isn't loaded, or to the Earth's void air. Killing
+ * the crew stalls the build until the pack sends another.
+ * <p>
+ * Other automatic world mutations (ruin, abandoned-site crumbling, re-bannering) only run off-screen while all
+ * non-spectator players in the same dimension are outside
  * {@link #standoffDistance(int, int)} and do not track any footprint chunk, using brief, auto-expiring in-memory
  * chunk tickets that are released on
  * every completion, pause, abort, cancellation, or shutdown path.
@@ -66,6 +88,20 @@ public final class CampBuilder {
     private static final long STALL_TIMEOUT_TICKS = 600L;
     private static final int MAX_SEARCH_ATTEMPTS = 5;
     public static final int MAX_FOUNDATION_DEPTH = 14;
+    /** How long a pack takes to send new builders after a player killed the last of them. */
+    public static final long BUILDERS_RETURN_TICKS = 6000L;
+    private static final long HIRE_INTERVAL_TICKS = 40L;
+    /** Builders saved with the site come back as it loads, so hiring waits a moment. */
+    private static final long SETTLE_TICKS = 40L;
+    /** A builder that can't get this close to its spot within {@link #PLACE_ANYWAY_TICKS} places it anyway. */
+    private static final double REACH = 5.0;
+    private static final long PLACE_ANYWAY_TICKS = 100L;
+    /** A builder not seen for this long (killed out of sight, despawned) is struck from the crew. */
+    private static final long LOST_BUILDER_TICKS = 200L;
+    /** Steps that need no block placed (already right, or protected) are passed over for free, up to this many a tick. */
+    private static final int FREE_SKIPS_PER_TICK = 512;
+    /** After this many failed hires in a row (nowhere to stand, peaceful), the build goes on without visible builders. */
+    private static final int MAX_FAILED_HIRES = 5;
 
     private static final TicketType<ChunkPos> OFFSCREEN_TICKET = TicketType.create(
             "bloodfeud_camp", Comparator.comparingLong(ChunkPos::toLong), OFFSCREEN_TICKET_TTL_TICKS);
@@ -108,6 +144,10 @@ public final class CampBuilder {
         int index;
         long lastProgressTick;
         boolean stalled;
+        /** The saved progress of a build its crew carries out, or null for operator and off-screen jobs. */
+        Pack.Works works;
+        Set<String> blockedZones = Set.of();
+        Set<Long> blockedCols = Set.of();
 
         BuildJob(UUID packId, ResourceKey<Level> dimension, BlockPos origin, int siteFacing, Family family, int packColor,
                  String packTitle, int fromTier, int toTier, Mode mode, boolean automatic, boolean protectPlayerBlocks,
@@ -150,6 +190,8 @@ public final class CampBuilder {
         final long acquiredAtTick;
         long renewedAtTick;
         TicketPurpose purpose;
+        /** Held for a crewed build's site search or first load: kept while players are near but can't see it. */
+        boolean crewed;
         int searchAttempts;
         EarthSiteSearch earthSearch;
 
@@ -170,6 +212,133 @@ public final class CampBuilder {
 
     private final Map<UUID, BuildJob> jobs = new LinkedHashMap<>();
     private final Map<UUID, HeldTicket> heldTickets = new LinkedHashMap<>();
+
+    /** Spawns one builder for a pack near its site: a grunt of its kind. Live supplies it. */
+    public interface Hiring {
+        Mob hire(ServerLevel level, Pack pack, BlockPos near, int radius);
+    }
+
+    /** A pack's builders and how its build is pacing, while the server runs. */
+    private static final class Crew {
+        final Map<UUID, Long> mobs = new LinkedHashMap<>(); // builder -> game time last seen
+        long loadedSince = -1;
+        long nextHire;
+        double budget;
+        long waitingSince = -1;
+        /** Building off screen right now (nobody can see the site). */
+        boolean offscreen;
+        int failedHires;
+        boolean logged;
+        long lastReport;
+        int reportedAt = -1;
+    }
+
+    /** Whether a player can see a settlement site. Tests replace it. */
+    public interface Sight {
+        boolean seen(MinecraftServer server, ServerLevel level, BlockPos origin, int radius);
+    }
+
+    private Hiring hiring;
+    private Sight sight = CampBuilder::seenByPlayer;
+    /** Packs whose site cubes are kept loaded on the Earth for an off-screen build, and where. */
+    private final Map<UUID, ResourceKey<Level>> cubeHolds = new HashMap<>();
+    private final Map<UUID, Crew> crews = new HashMap<>();
+    private final Map<UUID, UUID> builderPack = new HashMap<>();
+    /** Site searches on the Earth, which take a few ticks each. */
+    private final Map<UUID, EarthSiteSearch> searches = new HashMap<>();
+
+    public void setHiring(Hiring hiring) {
+        this.hiring = hiring;
+    }
+
+    public void setSight(Sight sight) {
+        this.sight = sight;
+    }
+
+    /**
+     * Whether any player in the level can see a site: one of its chunks is in a player's view. On the Earth the site's
+     * cubes must also be within the range the Earth sends cubes round a player (fewer cubes across than the view, and
+     * {@code Earth.watchVertical} cubes up and down).
+     */
+    public static boolean seenByPlayer(MinecraftServer server, ServerLevel level, BlockPos origin, int radius) {
+        if (server == null || server.getPlayerList() == null || level == null) return false;
+        int viewDistance = server.getPlayerList().getViewDistance();
+        boolean earth = Earth.is(level);
+        int[] bounds = CampBlueprint.footprintChunkBounds(origin.getX(), origin.getZ(), radius);
+        for (ServerPlayer p : level.players()) {
+            if (p.isSpectator()) continue;
+            ChunkPos at = p.chunkPosition();
+            if (earth) {
+                int v = Earth.watchVertical(level), cy = p.getBlockY() >> 4;
+                if (cy < ((origin.getY() - SiteFinder.SITE_DOWN) >> 4) - v || cy > ((origin.getY() + SiteFinder.SITE_UP) >> 4) + v) continue;
+                int h = Earth.watchRadius(level, viewDistance);
+                long dx = Math.max(0, Math.max(bounds[0] - at.x, at.x - bounds[2]));
+                long dz = Math.max(0, Math.max(bounds[1] - at.z, at.z - bounds[3]));
+                if (dx * dx + dz * dz <= (long) h * h + h) return true;
+                continue;
+            }
+            if (CampBlueprint.isFootprintTrackedByChunkView(origin.getX(), origin.getZ(), radius, at.x, at.z, viewDistance)) return true;
+            ChunkTrackingView view = p.getChunkTrackingView();
+            if (view != null && isChunkBoundsTracked(bounds, view)) return true;
+        }
+        return false;
+    }
+
+    /** Keeps an off-screen site's cubes loaded on the Earth until its build is done, where Earth Platform can. */
+    private void keepCubes(ServerLevel level, UUID packId, BlockPos origin, int radius) {
+        if (cubeHolds.containsKey(packId) || !Earth.canKeep(level)) return;
+        int reach = radius + SiteFinder.SITE_SIDE_MARGIN;
+        if (Earth.keep(level, packId, origin.getX() - reach, origin.getY() - SiteFinder.SITE_DOWN, origin.getZ() - reach,
+                origin.getX() + reach, origin.getY() + SiteFinder.SITE_UP, origin.getZ() + reach)) {
+            cubeHolds.put(packId, level.dimension());
+        }
+    }
+
+    private void releaseCubes(MinecraftServer server, UUID packId) {
+        ResourceKey<Level> dimension = cubeHolds.remove(packId);
+        if (dimension == null || server == null) return;
+        ServerLevel level = server.getLevel(dimension);
+        if (level != null) Earth.release(level, packId);
+    }
+
+    /** Whether this mob is building a settlement right now. */
+    public boolean isBuilder(UUID mob) {
+        return builderPack.containsKey(mob);
+    }
+
+    /** How many builders a pack sends for a settlement of this tier: up to its grunts, at least one. */
+    public static int crewSize(Pack pack, int toTier) {
+        int most = switch (SettlementTier.byLevel(toTier)) {
+            case TOWN -> 6;
+            case STRONGHOLD -> 5;
+            case OUTPOST -> 4;
+            default -> 3;
+        };
+        return Math.max(1, Math.min(most, pack == null ? 1 : pack.grunts));
+    }
+
+    /** Blocks a crew of {@code builders} places a second at {@code blocksPerMinute} each. */
+    public static double crewRate(int builders, int blocksPerMinute) {
+        return Math.max(0, builders) * Math.max(1, blocksPerMinute) / 60.0;
+    }
+
+    /**
+     * A builder died. When a player killed the last one, the build stalls until the pack sends more and this returns
+     * true, so the pack can remember who did it.
+     */
+    public boolean builderDied(Pack pack, UUID mob, UUID playerKiller, long gameTime) {
+        UUID packId = builderPack.remove(mob);
+        if (packId == null || pack == null || !packId.equals(pack.id)) return false;
+        Crew crew = crews.get(packId);
+        if (crew != null) crew.mobs.remove(mob);
+        Pack.Works works = pack.works;
+        if (works == null || playerKiller == null || (crew != null && !crew.mobs.isEmpty())) return false;
+        works.stalledUntil = gameTime + BUILDERS_RETURN_TICKS;
+        works.wreckedBy = playerKiller;
+        BloodFeud.LOG.info("Blood Feud: {}'s builders were killed; its {} stands {}% built until it sends more",
+                pack.title(), SettlementTier.byLevel(works.toTier).key, works.percent());
+        return true;
+    }
 
     /**
      * Minimum horizontal distance (blocks) every non-spectator player in the same dimension must be beyond
@@ -256,6 +425,7 @@ public final class CampBuilder {
 
     /** Whether a held ticket is waiting on cubes, which only last until the Earth's next unload and so can't wait 40 ticks. */
     public boolean isWaitingForCubes() {
+        if (!searches.isEmpty()) return true;
         for (HeldTicket ticket : heldTickets.values()) {
             if (isWaitingForCubes(ticket)) return true;
         }
@@ -276,8 +446,10 @@ public final class CampBuilder {
             if (job.automatic) {
                 it.remove();
                 releaseTicket(server, job.packId);
+                dismissCrew(server, job.packId);
             }
         }
+        searches.clear();
         List<UUID> toRelease = new ArrayList<>();
         for (Map.Entry<UUID, HeldTicket> entry : heldTickets.entrySet()) {
             if (entry.getValue().purpose != TicketPurpose.REBANNER) {
@@ -293,7 +465,31 @@ public final class CampBuilder {
     public void clearAll(MinecraftServer server) {
         jobs.clear();
         releaseAllTickets(server);
+        crews.clear();
+        builderPack.clear();
+        searches.clear();
     }
+
+    /** Sends a pack's builders off: they stay as plain grunts of the pack. */
+    private void dismissCrew(MinecraftServer server, UUID packId) {
+        Crew crew = crews.remove(packId);
+        if (crew == null) return;
+        for (UUID mob : crew.mobs.keySet()) {
+            builderPack.remove(mob);
+            if (server == null) continue;
+            for (ServerLevel level : server.getAllLevels()) {
+                if (level.getEntity(mob) instanceof Mob m) {
+                    m.removeTag(TAG_BUILDER);
+                    m.clearRestriction();
+                    if (m.getTags().remove(TAG_BUILDER_HOLDS)) m.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                    break;
+                }
+            }
+        }
+    }
+
+    /** Builders carry this tag while they build. */
+    public static final String TAG_BUILDER = "bloodfeud.builder";
 
     private HeldTicket acquireOrRenewTicket(MinecraftServer server, UUID id, ServerLevel level,
                                             int targetX, int targetZ, int footprintRadius, int standoffRadius,
@@ -330,6 +526,7 @@ public final class CampBuilder {
     }
 
     private void releaseTicket(MinecraftServer server, UUID id) {
+        releaseCubes(server, id);
         HeldTicket removed = heldTickets.remove(id);
         if (removed != null) {
             removeTicketFromServerIfUnused(server, removed);
@@ -352,6 +549,7 @@ public final class CampBuilder {
     }
 
     private void releaseAllTickets(MinecraftServer server) {
+        for (UUID id : new ArrayList<>(cubeHolds.keySet())) releaseCubes(server, id);
         if (heldTickets.isEmpty()) return;
         List<HeldTicket> toRelease = new ArrayList<>(heldTickets.values());
         heldTickets.clear();
@@ -406,7 +604,7 @@ public final class CampBuilder {
                 removeTicketFromServerIfUnused(server, ticket);
                 continue;
             }
-            if (!isAreaClearOfPlayers(server, ticket.dimension.location().toString(),
+            if (!ticket.crewed && !isAreaClearOfPlayers(server, ticket.dimension.location().toString(),
                     ticket.targetX, ticket.targetZ, ticket.standoffRadius)) {
                 it.remove();
                 removeTicketFromServerIfUnused(server, ticket);
@@ -435,9 +633,9 @@ public final class CampBuilder {
     }
 
     /**
-     * Checks packs and abandoned sites whose areas are completely clear of players ({@link #isAreaClearOfPlayers})
-     * and schedules off-screen re-bannering, initial builds, upgrades, in-place ruinations, restorations, and
-     * abandoned-site crumbling using brief, bounded off-screen chunk tickets.
+     * Starts the crewed builds, upgrades and repairs of packs whose sites are loaded ({@link #startCrewedWork}), and
+     * schedules off-screen re-bannering, in-place ruinations and abandoned-site crumbling for areas completely clear
+     * of players ({@link #isAreaClearOfPlayers}) using brief, bounded off-screen chunk tickets.
      *
      * @param scheduled false on the ticks between scheduled checks, which only look again at work waiting for cubes
      */
@@ -474,18 +672,32 @@ public final class CampBuilder {
 
         if (!BloodFeud.config().buildCamps) return;
 
-        // 2. Automatic initial builds, upgrades, in-place ruinations, and repairs off-screen
+        // 2. New builds, upgrades and repairs, by the pack's crew in the open; in-place ruinations off-screen
         for (Pack pack : feud.packs.values()) {
             if (jobs.containsKey(pack.id)) continue;
             HeldTicket existingTicket = heldTickets.get(pack.id);
             if (existingTicket != null && existingTicket.purpose == TicketPurpose.REBANNER) continue;
-            if (!scheduled && !isWaitingForCubes(existingTicket)) continue;
+            if (!scheduled && !isWaitingForCubes(existingTicket) && !searches.containsKey(pack.id)) continue;
 
             Pack.AutoBuildAction action = autoActionFor(pack);
+            if (action != Pack.AutoBuildAction.BUILD && action != Pack.AutoBuildAction.REPAIR) {
+                searches.remove(pack.id);
+                if (pack.works != null) {
+                    pack.works = null; // it fell to ruin (or its build stopped mattering) before its crew finished
+                    data.changed();
+                }
+            }
             if (action == Pack.AutoBuildAction.NONE) {
                 if (existingTicket != null) releaseTicket(server, pack.id);
                 continue;
             }
+            if (action == Pack.AutoBuildAction.BUILD || action == Pack.AutoBuildAction.REPAIR) {
+                if (!scheduled && !searches.containsKey(pack.id) && !isWaitingForCubes(existingTicket)) continue;
+                if (pack.siteRetryAt > gameTime && pack.works == null) continue;
+                startCrewedWork(server, data, pack, action, gameTime);
+                continue;
+            }
+            if (!scheduled && !isWaitingForCubes(existingTicket)) continue;
             if (pack.siteRetryAt > gameTime) {
                 if (existingTicket != null) releaseTicket(server, pack.id);
                 continue;
@@ -665,6 +877,166 @@ public final class CampBuilder {
     }
 
     /**
+     * Starts (or, after a restart, picks up) a pack's crewed build. Its site is searched for once the ground around the
+     * pack's home is loaded: by a player near it, or by a short ticket when none is. A chosen site is checked for player
+     * builds once it is loaded: as it is while a player can see it, or loaded for it while nobody can.
+     */
+    private void startCrewedWork(MinecraftServer server, FeudData data, Pack pack, Pack.AutoBuildAction action,
+                                 long gameTime) {
+        Feud feud = data.feud;
+        ServerLevel level = resolveBuildLevel(server, pack.dimension);
+        if (level == null) return;
+        SettlementTier target = pack.tier == null ? SettlementTier.CAMP : pack.tier;
+        int toTier = Math.max(pack.builtTier, target.level);
+        int radius = SettlementTier.byLevel(toTier).radius;
+
+        if (!pack.siteSet) {
+            pack.works = null;
+            int searchRadius = searchFootprintRadius(target);
+            if (!SiteFinder.isFootprintLoaded(level, pack.homeX, pack.homeZ, searchRadius)) {
+                // No player is near enough to load it: load it for the search, off screen.
+                searches.remove(pack.id);
+                if (!heldTickets.containsKey(pack.id) && heldTickets.size() < MAX_CONCURRENT_AUTO) {
+                    acquireOrRenewTicket(server, pack.id, level, pack.homeX, pack.homeZ, searchRadius, searchRadius,
+                            gameTime, TicketPurpose.PREP).crewed = true;
+                }
+                return;
+            }
+            SiteFinder.Site site;
+            if (Earth.is(level)) {
+                EarthSiteSearch search = searches.computeIfAbsent(pack.id,
+                        k -> new EarthSiteSearch(level, pack, Math.max(SettlementTier.CAMP.radius, target.radius)));
+                EarthSiteSearch.Step step = search.step(level, pack);
+                if (!step.done()) return;
+                searches.remove(pack.id);
+                site = step.site();
+            } else {
+                site = SiteFinder.findAutoSite(level, pack, target);
+            }
+            if (site == null) {
+                releaseTicket(server, pack.id);
+                pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
+                return;
+            }
+            pack.siteSet = true;
+            pack.siteX = site.origin().getX();
+            pack.siteY = site.origin().getY();
+            pack.siteZ = site.origin().getZ();
+            pack.siteFacing = site.facing();
+            pack.buildStarted = false;
+            pack.skippedZones.clear();
+            pack.skippedColumns.clear();
+            data.changed();
+            BloodFeud.LOG.info("Blood Feud: {} chose a site for its {} at {} {} {} in {}", pack.title(),
+                    SettlementTier.byLevel(toTier).key, pack.siteX, pack.siteY, pack.siteZ, pack.dimension);
+        }
+
+        BlockPos origin = new BlockPos(pack.siteX, pack.siteY, pack.siteZ);
+        if (pack.works != null) {
+            Pack.Works w = pack.works;
+            boolean fits = w.repair == (action == Pack.AutoBuildAction.REPAIR)
+                    && w.fromTier == (w.repair ? Math.max(1, pack.builtTier) : pack.builtTier);
+            if (fits) {
+                resumeWorks(level, pack, gameTime); // its ticks load the site if they need to
+                return;
+            }
+            pack.works = null;
+            data.changed();
+        }
+
+        if (sight.seen(server, level, origin, radius)) {
+            if (!SiteFinder.isSiteLoaded(level, origin, radius)) return; // it is loading for the player who sees it
+        } else {
+            HeldTicket ticket = heldTickets.get(pack.id);
+            if (ticket == null && heldTickets.size() >= MAX_CONCURRENT_AUTO) return;
+            acquireOrRenewTicket(server, pack.id, level, origin.getX(), origin.getZ(), radius, radius, gameTime,
+                    TicketPurpose.PREP).crewed = true;
+            keepCubes(level, pack.id, origin, radius);
+            if (!SiteFinder.isSiteReady(level, origin, radius)) return; // asks for what is missing; never writes
+        }
+
+        if (pack.builtTier == 0 && !pack.buildStarted
+                && SiteFinder.hasPlayerBuild(level, origin, radius, Set.of(), Set.of())) {
+            releaseTicket(server, pack.id);
+            pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
+            pack.siteSet = false;
+            pack.skippedZones.clear();
+            pack.skippedColumns.clear();
+            data.changed();
+            return;
+        }
+        QueueResult res = action == Pack.AutoBuildAction.REPAIR
+                ? queueRepair(level, feud, pack, toTier, true, gameTime, null)
+                : queueBuild(level, feud, pack, pack.builtTier, target.level, true, gameTime, null);
+        if (res.queued()) {
+            data.changed();
+            return;
+        }
+        releaseTicket(server, pack.id);
+        pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
+        if (pack.builtTier == 0 && !pack.buildStarted) {
+            pack.siteSet = false;
+            pack.skippedZones.clear();
+            pack.skippedColumns.clear();
+            data.changed();
+        }
+    }
+
+    /** Saves a new automatic job as the pack's works, for its crew to carry out. */
+    private static void crewUp(BuildJob job, Pack pack, long gameTime) {
+        Pack.Works w = new Pack.Works(job.mode == Mode.REPAIR, job.fromTier, job.toTier, job.packColor,
+                job.vassalColors, job.blockedZones, job.blockedCols);
+        w.total = job.ops.size();
+        pack.works = w;
+        job.works = w;
+        BloodFeud.LOG.info("Blood Feud: {} began {} its {} at {} {} {} ({} steps)", pack.title(),
+                w.repair ? "rebuilding" : "building", SettlementTier.byLevel(w.toTier).key,
+                job.origin.getX(), job.origin.getY(), job.origin.getZ(), w.total);
+    }
+
+    /** The steps of a pack's saved works: the same ones, in the same order, as when its build began. */
+    static List<CampBlueprint.Placement> worksSteps(Pack pack, Pack.Works w) {
+        CampBlueprint.Plan plan = w.repair
+                ? CampBlueprint.repairPlan(pack.id, pack.family, w.color, w.vassalColors, pack.siteFacing, w.fromTier, w.toTier)
+                : CampBlueprint.plan(pack.id, pack.family, w.color, w.vassalColors, pack.siteFacing, w.fromTier, w.toTier);
+        plan = CampBlueprint.withoutSkipped(plan, pack.skippedZones, pack.skippedColumns);
+        plan = CampBlueprint.withoutSkipped(plan, w.skipZones, w.skipColumns);
+        return plan.placements();
+    }
+
+    /** Picks up a pack's saved works (after a restart): the same steps, from where its crew stopped. */
+    private void resumeWorks(ServerLevel level, Pack pack, long gameTime) {
+        Pack.Works w = pack.works;
+        List<CampBlueprint.Placement> ops = worksSteps(pack, w);
+        Set<CampBlueprint.Spot> ownedPositions;
+        Set<CampBlueprint.Spot> ownedContainers;
+        if (w.repair) {
+            ownedPositions = new SiteFinder.Owned(CampBlueprint.ownedRuinedMaterials(pack.id, pack.family, w.color,
+                    w.vassalColors, pack.siteFacing, w.fromTier, pack.skippedZones, pack.skippedColumns), pack.family);
+            ownedContainers = CampBlueprint.containerPositions(pack.id, pack.family, w.color, w.vassalColors,
+                    pack.siteFacing, w.fromTier, pack.skippedZones, pack.skippedColumns);
+        } else {
+            int ownedTier = (w.fromTier == 0 && (pack.buildStarted || w.done > 0)) ? w.toTier : w.fromTier;
+            ownedPositions = new SiteFinder.Owned(CampBlueprint.ownedMaterials(pack.id, pack.family, w.color,
+                    w.vassalColors, pack.siteFacing, ownedTier, pack.skippedZones, pack.skippedColumns), pack.family);
+            ownedContainers = CampBlueprint.containerPositions(pack.id, pack.family, w.color, w.vassalColors,
+                    pack.siteFacing, ownedTier, pack.skippedZones, pack.skippedColumns);
+        }
+        BuildJob job = new BuildJob(pack.id, level.dimension(), new BlockPos(pack.siteX, pack.siteY, pack.siteZ),
+                pack.siteFacing, pack.family, w.color, pack.title(), w.fromTier, w.toTier,
+                w.repair ? Mode.REPAIR : Mode.BUILD, true, true, ops, ownedPositions, ownedContainers,
+                w.vassalColors, pack.skippedZones, pack.skippedColumns, gameTime, null);
+        job.blockedZones = w.skipZones;
+        job.blockedCols = w.skipColumns;
+        job.works = w;
+        job.index = Math.min(w.done, ops.size());
+        w.total = ops.size();
+        jobs.put(pack.id, job);
+        BloodFeud.LOG.info("Blood Feud: {} picked up {} its {} at {}% ({} of {} steps)", pack.title(),
+                w.repair ? "rebuilding" : "building", SettlementTier.byLevel(w.toTier).key, w.percent(), job.index, w.total);
+    }
+
+    /**
      * Queues an incremental intact build/upgrade for a pack from {@code fromTier} to {@code toTier}.
      * If the existing built settlement is currently ruined, routes through {@link #queueRepair} so ruins are
      * restored cleanly as part of the build.
@@ -719,7 +1091,10 @@ public final class CampBuilder {
                 pack.title(), from, to, Mode.BUILD, automatic, shouldProtect, filtered.ops(),
                 ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
+        job.blockedZones = filtered.blockedZones();
+        job.blockedCols = filtered.blockedRingCols();
         if (!automatic) releaseTicket(level.getServer(), pack.id);
+        if (automatic) crewUp(job, pack, gameTime);
         jobs.put(pack.id, job);
         return new QueueResult(true, filtered.skippedZones(), filtered.skippedRingColumns());
     }
@@ -857,7 +1232,10 @@ public final class CampBuilder {
                 pack.title(), built, to, Mode.REPAIR, automatic, true, filtered.ops(),
                 ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
+        job.blockedZones = filtered.blockedZones();
+        job.blockedCols = filtered.blockedRingCols();
         if (!automatic) releaseTicket(level.getServer(), pack.id);
+        if (automatic) crewUp(job, pack, gameTime);
         jobs.put(pack.id, job);
         return new QueueResult(true, filtered.skippedZones(), filtered.skippedRingColumns());
     }
@@ -959,6 +1337,7 @@ public final class CampBuilder {
             if (job.automatic && !BloodFeud.config().buildCamps) {
                 it.remove();
                 releaseTicket(server, job.packId);
+                dismissCrew(server, job.packId);
                 continue;
             }
             Pack pack = null;
@@ -967,6 +1346,7 @@ public final class CampBuilder {
                 if (pack == null) {
                     it.remove();
                     releaseTicket(server, job.packId);
+                    dismissCrew(server, job.packId);
                     if (job.index > 0 && job.mode != Mode.RUIN) {
                         int coverTier = Math.max(job.fromTier, job.toTier);
                         if (coverTier > 0) {
@@ -985,6 +1365,37 @@ public final class CampBuilder {
             if (level == null) {
                 it.remove();
                 releaseTicket(server, job.packId);
+                dismissCrew(server, job.packId);
+                continue;
+            }
+
+            if (job.works != null && pack != null) {
+                Pack.AutoBuildAction wanted = pack.autoBuildAction();
+                boolean stillWanted = job.mode == Mode.REPAIR ? wanted == Pack.AutoBuildAction.REPAIR
+                        : wanted == Pack.AutoBuildAction.BUILD;
+                if (pack.works != job.works || !stillWanted) { // it fell to ruin before its crew finished, or moved on
+                    it.remove();
+                    releaseTicket(server, job.packId);
+                    dismissCrew(server, job.packId);
+                    if (pack.works == job.works) {
+                        pack.works = null;
+                        data.changed();
+                    }
+                    continue;
+                }
+                if (tickCrew(server, level, data, job, pack, gameTime)) {
+                    it.remove();
+                    releaseTicket(server, job.packId);
+                    dismissCrew(server, job.packId);
+                    pack.works = null;
+                    pack.builtTier = Math.max(pack.builtTier, job.toTier);
+                    pack.builtRuined = false;
+                    pack.buildStarted = false;
+                    data.changed();
+                    BloodFeud.LOG.info("Blood Feud: {} finished {} its {} at {} {} {}", pack.title(),
+                            job.mode == Mode.REPAIR ? "rebuilding" : "building", SettlementTier.byLevel(job.toTier).key,
+                            job.origin.getX(), job.origin.getY(), job.origin.getZ());
+                }
                 continue;
             }
 
@@ -1078,6 +1489,296 @@ public final class CampBuilder {
         if (completedCallbacks != null) {
             for (Runnable cb : completedCallbacks) cb.run();
         }
+    }
+
+    /**
+     * One tick of a crewed build. Returns true once every step is done.
+     * <p>
+     * While a player can see the site ({@link Sight}), its crew (hired as needed, unless a player killed the last of
+     * them lately) walks to each spot in turn and places its block, at the configured pace for however many builders
+     * are alive and not fighting; steps that need nothing placed cost nothing. While nobody can, it is built off screen
+     * ({@link #buildOffscreen}). It is the same job either way, so it goes on from the same step when that changes.
+     */
+    private boolean tickCrew(MinecraftServer server, ServerLevel level, FeudData data, BuildJob job, Pack pack, long gameTime) {
+        Pack.Works w = job.works;
+        Crew crew = crews.computeIfAbsent(pack.id, k -> new Crew());
+        int radius = SettlementTier.byLevel(Math.max(job.fromTier, job.toTier)).radius;
+        FamilyPalette palette = FamilyPalette.of(job.family);
+        if (!sight.seen(server, level, job.origin, radius)) {
+            if (!crew.offscreen) {
+                crew.offscreen = true;
+                BloodFeud.LOG.info("Blood Feud: nobody can see {}'s site; building its {} off screen from step {} of {}",
+                        pack.title(), SettlementTier.byLevel(w.toTier).key, job.index, job.ops.size());
+            }
+            crew.loadedSince = -1;
+            crew.budget = 0;
+            crew.mobs.replaceAll((mob, seen) -> gameTime); // unloaded with the site, not lost: they come back with it
+            return buildOffscreen(server, level, data, job, pack, radius, palette, gameTime);
+        }
+        if (crew.offscreen) {
+            crew.offscreen = false;
+            BloodFeud.LOG.info("Blood Feud: {}'s site came into view; its crew carries on from step {} of {}",
+                    pack.title(), job.index, job.ops.size());
+        }
+        if (heldTickets.containsKey(pack.id) || cubeHolds.containsKey(pack.id)) releaseTicket(server, pack.id);
+        if (!SiteFinder.isSiteLoaded(level, job.origin, radius)) { // it is loading for the player who sees it
+            crew.loadedSince = -1;
+            crew.budget = 0;
+            crew.mobs.replaceAll((mob, seen) -> gameTime);
+            return false;
+        }
+        int perMinute = BloodFeud.config().campBlocksPerMinute;
+        if (crew.loadedSince < 0) crew.loadedSince = gameTime;
+        boolean mobsMove = level.isPositionEntityTicking(job.origin);
+
+        // Pass over steps that need nothing placed.
+        for (int skips = 0; skips < FREE_SKIPS_PER_TICK && job.index < job.ops.size(); skips++) {
+            CampBlueprint.Placement op = job.ops.get(job.index);
+            BlockPos pos = job.origin.offset(op.rx(), op.ry(), op.rz());
+            if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4) || !Earth.isLoaded(level, pos)) return false;
+            if (!isNoOp(level, pos, op, palette, job)) break;
+            job.index++;
+        }
+        if (job.index >= job.ops.size()) {
+            progressed(data, job, pack, w);
+            return true;
+        }
+        if (gameTime < w.stalledUntil) {
+            progressed(data, job, pack, w);
+            return false;
+        }
+
+        List<Mob> builders = builders(level, crew, gameTime);
+        int want = crewSize(pack, w.toTier);
+        // Builders can't walk where mobs don't tick (past the simulation distance), or exist in peaceful: the build
+        // still goes on at the crew's pace, without them.
+        boolean unseen = hiring == null || !mobsMove || crew.failedHires >= MAX_FAILED_HIRES
+                || level.getDifficulty() == Difficulty.PEACEFUL;
+        if (!unseen && builders.size() < want && hiring != null && gameTime - crew.loadedSince >= SETTLE_TICKS
+                && gameTime >= crew.nextHire) {
+            crew.nextHire = gameTime + HIRE_INTERVAL_TICKS;
+            Mob hired = hiring.hire(level, pack, job.origin, radius);
+            if (hired != null && hired.isAlive()) {
+                hired.addTag(TAG_BUILDER);
+                hired.restrictTo(job.origin, radius + 12);
+                crew.mobs.put(hired.getUUID(), gameTime);
+                builderPack.put(hired.getUUID(), pack.id);
+                builders.add(hired);
+                crew.failedHires = 0;
+            } else {
+                crew.failedHires++;
+            }
+        }
+        if (!crew.logged && !builders.isEmpty()) {
+            crew.logged = true;
+            BloodFeud.LOG.info("Blood Feud: {} has {} builders at its {} ({}%)", pack.title(), builders.size(),
+                    SettlementTier.byLevel(w.toTier).key, w.percent());
+        }
+        List<Mob> idle = new ArrayList<>();
+        for (Mob m : builders) {
+            keepWorking(m);
+            if (!fighting(m)) idle.add(m);
+        }
+        int workers = unseen ? want : idle.size();
+        if (gameTime - crew.lastReport >= 600) {
+            if (crew.reportedAt == job.index) {
+                CampBlueprint.Placement next = job.ops.get(job.index);
+                BloodFeud.LOG.debug("Blood Feud: {}'s build is waiting at step {} of {} ({} at {}): {} builders, {} fighting, {} unseen",
+                        pack.title(), job.index, job.ops.size(), next.material(),
+                        job.origin.offset(next.rx(), next.ry(), next.rz()).toShortString(),
+                        builders.size(), builders.size() - idle.size(), unseen);
+            }
+            crew.lastReport = gameTime;
+            crew.reportedAt = job.index;
+        }
+        if (workers == 0) return false;
+
+        crew.budget = Math.min(crew.budget + crewRate(workers, perMinute) / 20.0, 3.0);
+        if (gameTime % 10 == 0) steer(idle, job);
+        while (crew.budget >= 1.0 && job.index < job.ops.size()) {
+            CampBlueprint.Placement op = job.ops.get(job.index);
+            BlockPos pos = job.origin.offset(op.rx(), op.ry(), op.rz());
+            if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4) || !Earth.isLoaded(level, pos)) break;
+            if (isNoOp(level, pos, op, palette, job)) {
+                job.index++;
+                continue;
+            }
+            Mob worker = nearest(idle, pos);
+            if (worker != null && worker.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) > REACH * REACH) {
+                if (crew.waitingSince < 0) crew.waitingSince = gameTime;
+                if (gameTime - crew.waitingSince < PLACE_ANYWAY_TICKS) {
+                    if (gameTime % 10 == 0) worker.getNavigation().moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 1.0);
+                    break;
+                }
+            }
+            crew.waitingSince = -1;
+            placeInView(level, pos, op, palette, job, worker);
+            job.index++;
+            crew.budget -= 1.0;
+        }
+        progressed(data, job, pack, w);
+        return job.index >= job.ops.size();
+    }
+
+    /**
+     * Builds off screen, as fast as other off-screen work ({@value #OFFSCREEN_OPS_PER_TICK} steps a tick), on ticks
+     * where the whole site is loaded. It is loaded for this build only: a chunk ticket, and on the Earth its cubes
+     * asked for, and kept where Earth Platform can keep them (build 78 and later). Both go when the build is done or
+     * someone comes into view.
+     */
+    private boolean buildOffscreen(MinecraftServer server, ServerLevel level, FeudData data, BuildJob job, Pack pack,
+                                   int radius, FamilyPalette palette, long gameTime) {
+        if (gameTime < job.works.stalledUntil) { // a player killed its builders; no one builds until the pack sends more
+            if (heldTickets.containsKey(pack.id) || cubeHolds.containsKey(pack.id)) releaseTicket(server, pack.id);
+            return false;
+        }
+        if (!heldTickets.containsKey(pack.id) && heldTickets.size() >= MAX_CONCURRENT_AUTO) return false; // waits its turn
+        acquireOrRenewTicket(server, pack.id, level, job.origin.getX(), job.origin.getZ(), radius, radius,
+                gameTime, TicketPurpose.BUILD);
+        keepCubes(level, pack.id, job.origin, radius);
+        if (!SiteFinder.isSiteReady(level, job.origin, radius)) return false; // asks for what is missing
+        int n = 0;
+        while (n < OFFSCREEN_OPS_PER_TICK && job.index < job.ops.size()) {
+            CampBlueprint.Placement op = job.ops.get(job.index);
+            BlockPos pos = job.origin.offset(op.rx(), op.ry(), op.rz());
+            if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4) || !Earth.isLoaded(level, pos)) break;
+            applyOp(level, pos, op, palette, job);
+            job.index++;
+            n++;
+        }
+        progressed(data, job, pack, job.works);
+        return job.index >= job.ops.size();
+    }
+
+    private static void progressed(FeudData data, BuildJob job, Pack pack, Pack.Works w) {
+        if (w.done != job.index) {
+            w.done = job.index;
+            if (pack.builtTier == 0 && !pack.buildStarted && job.index > 0) pack.buildStarted = true;
+            data.changed();
+        }
+    }
+
+    /** The crew's builders that are loaded and alive; ones gone a while are struck off. */
+    private List<Mob> builders(ServerLevel level, Crew crew, long gameTime) {
+        List<Mob> out = new ArrayList<>();
+        for (Iterator<Map.Entry<UUID, Long>> it = crew.mobs.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<UUID, Long> e = it.next();
+            Entity entity = level.getEntity(e.getKey());
+            if (entity instanceof Mob m && m.isAlive() && !m.isRemoved()) {
+                e.setValue(gameTime);
+                out.add(m);
+            } else if (gameTime - e.getValue() > LOST_BUILDER_TICKS || (entity != null && !entity.isAlive())) {
+                it.remove();
+                builderPack.remove(e.getKey());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Builders mind their work while a player watches from a distance: they only turn on one who comes within
+     * {@value #BUILDER_CALM_RANGE} blocks or hits them.
+     */
+    private static void keepWorking(Mob m) {
+        LivingEntity target = m.getTarget();
+        if (!(target instanceof Player p) || !p.isAlive()) return;
+        if (m.getLastHurtByMob() == p) return;
+        if (m.distanceToSqr(p) <= BUILDER_CALM_RANGE * BUILDER_CALM_RANGE) return;
+        m.setTarget(null);
+        m.getNavigation().stop();
+    }
+
+    /** How close a player may come before builders drop their work and fight. */
+    private static final double BUILDER_CALM_RANGE = 8.0;
+
+    private static boolean fighting(Mob m) {
+        LivingEntity target = m.getTarget();
+        return target != null && target.isAlive() && (!(target instanceof Player p) || !p.isSpectator());
+    }
+
+    private static Mob nearest(List<Mob> mobs, BlockPos pos) {
+        Mob best = null;
+        double bestD = Double.MAX_VALUE;
+        for (Mob m : mobs) {
+            double d = m.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+            if (d < bestD) {
+                bestD = d;
+                best = m;
+            }
+        }
+        return best;
+    }
+
+    /** Spreads idle builders over the next few spots, so the crew works the site together. */
+    private static void steer(List<Mob> idle, BuildJob job) {
+        for (int i = 0; i < idle.size(); i++) {
+            int at = Math.min(job.ops.size() - 1, job.index + i * 6);
+            CampBlueprint.Placement op = job.ops.get(at);
+            BlockPos pos = job.origin.offset(op.rx(), op.ry(), op.rz());
+            Mob m = idle.get(i);
+            if (m.distanceToSqr(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5) > 9.0) {
+                m.getNavigation().moveTo(pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5, 1.0);
+            }
+        }
+    }
+
+    /** Places a step's block where everyone can see it: the builder swings, the block makes its sound and dust. */
+    private static void placeInView(ServerLevel level, BlockPos pos, CampBlueprint.Placement op, FamilyPalette palette,
+                                    BuildJob job, Mob worker) {
+        BlockState before = level.getBlockState(pos);
+        applyOp(level, pos, op, palette, job);
+        BlockState after = level.getBlockState(pos);
+        BlockPos shown = pos;
+        if (after == before && op.material() == CampBlueprint.Material.FOUNDATION_COLUMN) {
+            shown = pos.below();
+            after = level.getBlockState(shown);
+        }
+        if (worker != null) {
+            worker.getLookControl().setLookAt(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+            if (worker.getMainHandItem().isEmpty() || worker.getTags().contains(TAG_BUILDER_HOLDS)) {
+                ItemStack held = after.isAir() ? ItemStack.EMPTY : new ItemStack(after.getBlock().asItem());
+                worker.setItemSlot(EquipmentSlot.MAINHAND, held);
+                worker.setDropChance(EquipmentSlot.MAINHAND, 0f);
+                worker.addTag(TAG_BUILDER_HOLDS);
+            }
+            worker.swing(InteractionHand.MAIN_HAND);
+        }
+        if (after.isAir()) {
+            if (!before.isAir()) level.levelEvent(2001, pos, Block.getId(before)); // break sound and dust
+            return;
+        }
+        SoundType sound = after.getSoundType();
+        level.playSound(null, shown, sound.getPlaceSound(), SoundSource.BLOCKS,
+                (sound.getVolume() + 1.0f) / 2.0f, sound.getPitch() * 0.8f);
+        level.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, after),
+                shown.getX() + 0.5, shown.getY() + 0.5, shown.getZ() + 0.5, 6, 0.3, 0.3, 0.3, 0.05);
+    }
+
+    /** Builders that hold the block they place carry this tag (their hands were empty when hired). */
+    private static final String TAG_BUILDER_HOLDS = "bloodfeud.builder_holds";
+
+    /** Whether a step would leave the world as it is: the block is already right, or the spot isn't the camp's to change. */
+    static boolean isNoOp(ServerLevel level, BlockPos pos, CampBlueprint.Placement op, FamilyPalette palette, BuildJob job) {
+        if (pos.getY() <= Earth.bottom(level) || pos.getY() >= Earth.top(level) - 1) return true;
+        BlockState existing = level.getBlockState(pos);
+        if (op.material() == CampBlueprint.Material.FOUNDATION_COLUMN) {
+            if (existing.blocksMotion() && existing.getFluidState().isEmpty() && !existing.canBeReplaced()) return true;
+            return SiteFinder.isIndestructibleBlock(existing) || SiteFinder.isNonEmptyContainer(level, pos, existing)
+                    || (job.protectPlayerBlocks && SiteFinder.isPlayerBlockAt(level, job.origin, pos, job.ownedPositions, job.ownedContainers));
+        }
+        if (SiteFinder.isIndestructibleBlock(existing) || SiteFinder.isNonEmptyContainer(level, pos, existing)) return true;
+        if (job.protectPlayerBlocks && SiteFinder.isPlayerBlockAt(level, job.origin, pos, job.ownedPositions, job.ownedContainers)) {
+            return true;
+        }
+        if (op.material().isChest() && existing.getBlock() instanceof AbstractChestBlock<?>) return true;
+        if (op.material() == CampBlueprint.Material.BARREL && existing.getBlock() instanceof BarrelBlock) return true;
+        BlockState target = palette.resolve(op, job.packColor);
+        if (op.material() == CampBlueprint.Material.AIR) {
+            return existing.isAir() || existing.getBlock() instanceof AbstractChestBlock<?>
+                    || existing.getBlock() instanceof BarrelBlock || SiteFinder.isContainerBlock(level, pos, existing);
+        }
+        if (op.material().pass == CampBlueprint.PASS_DECOR && !target.canSurvive(level, pos)) return true;
+        return existing == target;
     }
 
     private static void applyOp(ServerLevel level, BlockPos pos, CampBlueprint.Placement op,

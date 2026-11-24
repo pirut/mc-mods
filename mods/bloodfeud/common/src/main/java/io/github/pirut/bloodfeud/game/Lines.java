@@ -44,6 +44,7 @@ public final class Lines {
                 case IT_FLED -> sections.add("greet.it_fled");
                 case STOLE -> sections.add("greet.stole");
                 case SAW_KILLS -> sections.add("greet.saw_kills");
+                case WRECKED_CAMP -> sections.add("greet.wrecked_camp");
             }
         }
         if (sections.isEmpty()) {

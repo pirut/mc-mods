@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.0-beta.2
+
+- **Camps get built whether or not you stay near.** Up to beta.1 a settlement was only built once every player was
+  past a standoff distance (about 270 blocks at the default view distance), so a pack whose home you stayed around
+  never got its camp or stronghold, though the Ledger said it had one.
+- **You can watch them build.** While you can see the site, a crew of the pack's own mobs puts its new camp, upgrade or
+  repair up block by block, a few blocks a second. While nobody can, it is built off screen, quickly, on ground loaded
+  just for the build and let go after. It's one saved build either way: it carries on from the same step when you come
+  into view, leave, or the server restarts.
+- On the Earth, a site nobody can see has its cubes asked for, and with Earth Platform build 78 or later kept loaded,
+  just for its build. Nothing is ever written to ground that isn't loaded, or to the Earth's void air.
+- Killing a pack's builders stalls its build until the pack sends a new crew, about five minutes later. Its Brutes
+  remember who killed their builders and say so.
+- The Ledger, `/bloodfeud packs` and the maps say how far along a settlement is: "Camp, being built (40%)", or "Camp
+  (not built yet)" before a pack has picked its site.
+- New setting `campBlocksPerMinute`: each builder's pace (default 60).
+- Builders never replace a block a player put in the site, and stashes are filled as they are placed.
+
 ## 0.1.0-beta.1
 
 - Blood Feud is now in beta. This release has the same code as 0.1.0-alpha.6; see its notes below.

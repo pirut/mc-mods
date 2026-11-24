@@ -152,7 +152,7 @@ public final class FeudCommand {
         for (Pack pk : near) {
             Brute boss = f.brute(pk.boss);
             Pack top = f.top(pk);
-            String tierTitle = pk.displayTierTitle(BloodFeud.config().buildCamps);
+            String tierTitle = pk.settlementLabel(BloodFeud.config().buildCamps);
             String tierNote = tierTitle.isEmpty() ? "" : " — " + tierTitle;
             MutableComponent line = Component.literal("■ ").withStyle(s -> s.withColor(DyeColor.byId(pk.color).getTextColor()))
                     .append(Component.literal(cap(pk.title())).withStyle(ChatFormatting.WHITE, ChatFormatting.BOLD))
@@ -249,6 +249,7 @@ public final class FeudCommand {
             case PLAYER_FLED -> "You ran from it.";
             case IT_FLED -> "It ran from you.";
             case STOLE -> "It took your " + d + ".";
+            case WRECKED_CAMP -> "You killed the builders of its pack's camp.";
         };
     }
 
@@ -411,7 +412,7 @@ public final class FeudCommand {
                 + f.brutes.values().stream().filter(b -> b.alive).count() + " alive).").withStyle(ChatFormatting.GOLD));
         for (Pack pk : f.packs.values()) {
             Brute boss = f.brute(pk.boss);
-            String tierTitle = pk.displayTierTitle(campsOn);
+            String tierTitle = pk.settlementLabel(campsOn);
             String tierPart = tierTitle.isEmpty() ? "" : " [" + tierTitle + (pk.builtTier > 0 ? " built" : "") + "]";
             source.sendSystemMessage(Component.literal(cap(pk.title()) + " [" + pk.family.key() + "]" + tierPart + " " + pk.dimension + " "
                     + pk.campX() + " " + pk.campZ() + ": " + (boss == null ? "?" : boss.fullName() + " L" + boss.level) + ", "

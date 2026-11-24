@@ -150,6 +150,39 @@ public final class FeudData extends SavedData {
         return t;
     }
 
+    private static CompoundTag saveWorks(Pack.Works w) {
+        CompoundTag t = new CompoundTag();
+        t.putBoolean("repair", w.repair);
+        t.putInt("from", w.fromTier);
+        t.putInt("to", w.toTier);
+        t.putInt("color", w.color);
+        t.putIntArray("vassalColors", w.vassalColors.stream().mapToInt(Integer::intValue).toArray());
+        t.put("skipZones", strings(new ArrayList<>(w.skipZones)));
+        t.putLongArray("skipColumns", w.skipColumns.stream().mapToLong(Long::longValue).toArray());
+        t.putInt("done", w.done);
+        t.putInt("total", w.total);
+        t.putLong("stalledUntil", w.stalledUntil);
+        if (w.wreckedBy != null) t.putUUID("wreckedBy", w.wreckedBy);
+        return t;
+    }
+
+    private static Pack.Works loadWorks(CompoundTag t) {
+        List<Integer> vassals = new ArrayList<>();
+        for (int c : t.getIntArray("vassalColors")) vassals.add(c);
+        java.util.Set<String> zones = new java.util.HashSet<>();
+        for (Tag s : t.getList("skipZones", Tag.TAG_STRING)) zones.add(s.getAsString());
+        java.util.Set<Long> cols = new java.util.HashSet<>();
+        for (long c : t.getLongArray("skipColumns")) cols.add(c);
+        int from = Math.max(0, Math.min(SettlementTier.TOWN.level, t.getInt("from")));
+        int to = Math.max(1, Math.min(SettlementTier.TOWN.level, t.getInt("to")));
+        Pack.Works w = new Pack.Works(t.getBoolean("repair"), from, Math.max(from, to), t.getInt("color"), vassals, zones, cols);
+        w.done = Math.max(0, t.getInt("done"));
+        w.total = Math.max(0, t.getInt("total"));
+        w.stalledUntil = t.getLong("stalledUntil");
+        if (t.hasUUID("wreckedBy")) w.wreckedBy = t.getUUID("wreckedBy");
+        return w;
+    }
+
     private static CompoundTag savePack(Pack p) {
         CompoundTag t = new CompoundTag();
         t.putUUID("id", p.id);
@@ -190,6 +223,7 @@ public final class FeudData extends SavedData {
         ListTag met = new ListTag();
         for (UUID u : p.met) met.add(StringTag.valueOf(u.toString()));
         t.put("met", met);
+        if (p.works != null) t.put("works", saveWorks(p.works));
         ListTag chronicle = new ListTag();
         for (Pack.Event e : p.chronicle) {
             CompoundTag c = new CompoundTag();
@@ -303,6 +337,7 @@ public final class FeudData extends SavedData {
                     legacyPacks.add(p);
                 }
                 for (Tag s : t.getList("met", Tag.TAG_STRING)) p.met.add(UUID.fromString(s.getAsString()));
+                if (p.siteSet && t.contains("works", Tag.TAG_COMPOUND)) p.works = loadWorks(t.getCompound("works"));
                 for (Tag c : t.getList("chronicle", Tag.TAG_COMPOUND)) {
                     p.remember(((CompoundTag) c).getLong("t"), ((CompoundTag) c).getString("s"));
                 }

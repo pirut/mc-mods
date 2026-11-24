@@ -34,6 +34,17 @@ public final class ServerCubeWorld extends CubeWorld {
         return ready;
     }
 
+    /** What build 78 keeps loaded for whom: the holder and the block it keeps cubes round. */
+    public final java.util.Map<Object, BlockPos> kept = new java.util.HashMap<>();
+
+    public void keepAround(Object holder, BlockPos at) {
+        kept.put(holder, at);
+    }
+
+    public void release(Object holder) {
+        kept.remove(holder);
+    }
+
     public void deliver() {
         for (BlockPos cube : requested) loaded.put(cube, new Cube());
         requested.clear();

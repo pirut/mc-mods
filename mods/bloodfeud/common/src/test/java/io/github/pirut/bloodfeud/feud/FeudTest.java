@@ -41,6 +41,27 @@ class FeudTest {
     }
 
     @Test
+    void killingAPacksBuildersIsRememberedByEveryBruteInIt() {
+        Feud f = new Feud(new Random(3));
+        Brute boss = zombie(f, 0, 0);
+        Pack p = f.form(boss, PLACES, 0, 4);
+        Brute other = f.rise("minecraft:zombie", Family.ROTTEN, OW, 0, 0, null, null, null, p.id, 0);
+        UUID wrecker = new UUID(2, 2);
+        f.drainNews();
+        f.wreckedBuild(p, wrecker, "Wrecker", "camp", 500);
+        for (Brute b : f.members(p)) {
+            Memory last = b.relation(wrecker).last();
+            assertNotNull(last, b.name + " remembers");
+            assertEquals(Memory.Kind.WRECKED_CAMP, last.kind());
+            assertTrue(b.relation(wrecker).met);
+        }
+        assertTrue(f.members(p).contains(other));
+        assertTrue(p.met.contains(wrecker));
+        assertTrue(p.chronicle.getLast().text().contains("Wrecker killed the builders"));
+        assertTrue(f.drainNews().stream().anyMatch(n -> n.text().contains("builders")));
+    }
+
+    @Test
     void twoLoneBrutesMeetAndFormAPack() {
         Feud f = new Feud(new Random(2));
         Brute a = zombie(f, 0, 0);

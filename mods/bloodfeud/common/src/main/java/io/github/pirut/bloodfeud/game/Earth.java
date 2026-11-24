@@ -50,7 +50,7 @@ public final class Earth {
     private record Api(Method cubesOf, Method cubesAt, Method isLoaded, Method cubeAt, Method columnTops,
                        Method blockEntities, Method readyAround, Method generator, Method surfaceY, Method waterY,
                        Method skyTopY, Method arrival, Field session, Field sessionServer, Field sessionLanding,
-                       int minY, int maxY) {
+                       int minY, int maxY, Method keepAround, Method release, int maxWatchRadius, int verticalRadius) {
         static Api find() throws ReflectiveOperationException {
             Class<?> cubicLevel = type("CubicLevel");
             Class<?> world = type("CubeWorld");
@@ -77,7 +77,28 @@ public final class Earth {
                     generator.getMethod("arrival"),
                     session, server, landing,
                     world.getField("MIN_Y").getInt(null),
-                    world.getField("MAX_Y").getInt(null));
+                    world.getField("MAX_Y").getInt(null),
+                    optional(serverWorld, "keepAround", Object.class, BlockPos.class),
+                    optional(serverWorld, "release", Object.class),
+                    constant("Cubic", "MAX_HORIZONTAL_RADIUS", 12),
+                    constant("Cubic", "VERTICAL_RADIUS", 6));
+        }
+
+        /** A method newer builds have (build 78 keeps cubes for a holder), or null. */
+        private static Method optional(Class<?> owner, String name, Class<?>... args) {
+            try {
+                return owner.getMethod(name, args);
+            } catch (NoSuchMethodException e) {
+                return null;
+            }
+        }
+
+        private static int constant(String owner, String name, int fallback) {
+            try {
+                return type(owner).getField(name).getInt(null);
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                return fallback;
+            }
         }
 
         private static Class<?> type(String name) throws ClassNotFoundException {
@@ -146,6 +167,32 @@ public final class Earth {
         try {
             Object cubes = a.cubesAt().invoke(null, level, pos.getX(), pos.getZ());
             return cubes != null && (boolean) a.isLoaded().invoke(cubes, pos);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+            return false;
+        }
+    }
+
+    /**
+     * Whether every cube in the box is loaded on this tick, without asking for any. Only cubes a player keeps loaded
+     * pass, and they hold real blocks: an unloaded cube's void air never counts as ground here.
+     */
+    public static boolean loaded(ServerLevel level, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        if (!is(level)) return true;
+        Api a = api();
+        if (a == null || minY < a.minY() || maxY > a.maxY()) return false;
+        try {
+            Object cubes = a.cubesAt().invoke(null, level, minX, minZ);
+            if (cubes == null || a.cubesAt().invoke(null, level, maxX, maxZ) != cubes) return false;
+            BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+            for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
+                for (int cy = minY >> 4; cy <= maxY >> 4; cy++) {
+                    for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {
+                        if (!(boolean) a.isLoaded().invoke(cubes, pos.set(cx << 4, cy << 4, cz << 4))) return false;
+                    }
+                }
+            }
+            return true;
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             fail(e);
             return false;
@@ -328,6 +375,80 @@ public final class Earth {
         }
     }
 
+    /** Cubes kept for each owner: how many holders (one per 3x5x3-cube tile) it took. */
+    private static final Map<Object, Integer> kept = new HashMap<>();
+
+    /** One tile of an owner's kept box: Earth Platform keeps 3x3 columns, one cube below to three above, per holder. */
+    private record Hold(Object owner, int tile) {
+    }
+
+    /** Whether this Earth Platform can keep unwatched cubes loaded (build 78 and later). */
+    public static boolean canKeep(Level level) {
+        Api a = is(level) ? api() : null;
+        return a != null && a.keepAround() != null && a.release() != null;
+    }
+
+    /**
+     * Keeps every cube of the box loaded for {@code owner} though no player is near, until {@link #release}d. It
+     * doesn't load them: {@link #ready} asks for them. False where this Earth Platform can't keep cubes.
+     */
+    public static boolean keep(ServerLevel level, Object owner, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        if (!canKeep(level)) return false;
+        Api a = api();
+        try {
+            Object cubes = a.cubesOf().invoke(null, level);
+            if (cubes == null) return false;
+            int tile = 0;
+            // Each holder keeps cubes cx-1..cx+1, cy-1..cy+3, cz-1..cz+3 round the cube of the block it is given.
+            for (int cx = (minX >> 4) + 1; ; cx += 3) {
+                for (int cy = (minY >> 4) + 1; ; cy += 5) {
+                    for (int cz = (minZ >> 4) + 1; ; cz += 3) {
+                        a.keepAround().invoke(cubes, new Hold(owner, tile++), new BlockPos(cx << 4, cy << 4, cz << 4));
+                        if (cz + 1 >= maxZ >> 4) break;
+                    }
+                    if (cy + 3 >= maxY >> 4) break;
+                }
+                if (cx + 1 >= maxX >> 4) break;
+            }
+            Integer before = kept.put(owner, tile);
+            if (before != null) for (int i = tile; i < before; i++) a.release().invoke(cubes, new Hold(owner, i));
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+            return false;
+        }
+    }
+
+    /** Lets go of the cubes {@link #keep} kept for {@code owner}; the Earth unloads them once no player is near. */
+    public static void release(ServerLevel level, Object owner) {
+        Integer tiles = kept.remove(owner);
+        if (tiles == null || !canKeep(level)) return;
+        Api a = api();
+        try {
+            Object cubes = a.cubesOf().invoke(null, level);
+            if (cubes == null) return;
+            for (int i = 0; i < tiles; i++) a.release().invoke(cubes, new Hold(owner, i));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+        }
+    }
+
+    /** Whether {@code owner} has cubes kept. */
+    public static boolean keeps(Object owner) {
+        return kept.containsKey(owner);
+    }
+
+    /** How far (in cubes, across) the Earth sends cubes round a player at this view distance; and how far up and down. */
+    public static int watchRadius(Level level, int viewDistance) {
+        Api a = is(level) ? api() : null;
+        return Math.max(2, Math.min(a == null ? 12 : a.maxWatchRadius(), viewDistance));
+    }
+
+    public static int watchVertical(Level level) {
+        Api a = is(level) ? api() : null;
+        return a == null ? 6 : a.verticalRadius();
+    }
+
     /** Block entities of the loaded cubes around {@code at}. The carrier chunk holds none. */
     static List<BlockEntity> blockEntitiesAround(ServerLevel level, BlockPos at) {
         Api a = api();
@@ -356,5 +477,6 @@ public final class Earth {
     static void stopped() {
         warmColumns.clear();
         warmWorld = null;
+        kept.clear();
     }
 }

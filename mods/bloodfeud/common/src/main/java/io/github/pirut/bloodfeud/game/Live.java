@@ -148,6 +148,19 @@ public final class Live {
         this.server = server;
         this.data = FeudData.get(server);
         this.data.feud.campsEnabled = BloodFeud.config().buildCamps;
+        campBuilder.setHiring(this::hireBuilder);
+    }
+
+    /** One builder for a pack's settlement: a grunt of its kind, standing near the site. */
+    private Mob hireBuilder(ServerLevel level, Pack pack, BlockPos near, int radius) {
+        Brute boss = data.feud.brute(pack.boss);
+        String type = boss != null ? boss.entityType : pack.family.defaultType;
+        Mob mob = spawnGrunt(level, pack, type, near, pack.id, false);
+        if (mob == null) {
+            BlockPos at = Spots.near(level, near, 2, Math.max(8, Math.min(16, radius)), level.getRandom());
+            if (at != null) mob = spawnGrunt(level, pack, type, at, pack.id, false);
+        }
+        return mob;
     }
 
     public static Live get(MinecraftServer server) {
@@ -243,6 +256,14 @@ public final class Live {
         gruntLevel.remove(mob.getUUID());
         if (owner != null) {
             Pack p = data.feud.pack(owner);
+            ServerPlayer playerKiller = source.getEntity() instanceof ServerPlayer sp ? sp : null;
+            if (p != null && campBuilder.isBuilder(mob.getUUID())
+                    && campBuilder.builderDied(p, mob.getUUID(), playerKiller == null ? null : playerKiller.getUUID(), gameTime())) {
+                String what = p.works == null ? "camp" : SettlementTier.byLevel(p.works.toTier).key;
+                data.feud.wreckedBuild(p, playerKiller.getUUID(), playerKiller.getName().getString(), what, now());
+                playerKiller.sendSystemMessage(Component.literal("You killed the last of " + p.title() + "'s builders. Its "
+                        + what + " stands half built, until it sends more.").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+            }
             if (p != null) {
                 data.feud.gruntKilled(p, now());
                 announce(data.feud.drainNews());
@@ -669,6 +690,7 @@ public final class Live {
         }
         for (Iterator<Map.Entry<UUID, UUID>> it = grunts.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<UUID, UUID> g = it.next();
+            if (campBuilder.isBuilder(g.getKey())) continue; // it goes when its build is done
             ServerLevel level = server.getLevel(gruntLevel.getOrDefault(g.getKey(), net.minecraft.world.level.Level.OVERWORLD));
             if (owners.contains(g.getValue())) {
                 Pack pk = data.feud.pack(g.getValue());

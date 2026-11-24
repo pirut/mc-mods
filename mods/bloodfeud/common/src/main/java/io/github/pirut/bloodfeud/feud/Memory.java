@@ -24,7 +24,9 @@ public record Memory(Kind kind, long time, String detail) {
         /** It saw the player kill its own kind and walked away. */
         SAW_KILLS,
         /** It came back from the dead. */
-        RETURNED;
+        RETURNED,
+        /** The player killed the builders of its pack's settlement. */
+        WRECKED_CAMP;
 
         public String key() {
             return name().toLowerCase(java.util.Locale.ROOT);
