@@ -65,13 +65,14 @@ Every family builds in its own vanilla block palette, foundations adapt to hills
 player-built bases and world spawn.
 
 **You can watch them build.** While you can see a pack's site, a new camp, an upgrade or a repair goes up block by
-block: a crew of the pack's own mobs walks to each spot and puts the block there, ground first, then walls and roofs,
-with the stash and banners last. A crew of three places up to three blocks a second (less when it has to walk), and
-a bigger pack sends more builders. A builder has to reach a block and see it to place it: it never builds through a wall or from afar, and one
-that can't walk to its spot is moved to where it can reach it. They mind their work while you watch from a distance,
-and turn on you if you come within about 8 blocks or hit them. While nobody can see the site, it is built off screen instead, quickly, so you find it finished, or well
-along, when you get there. It's one build either way: walk into view in the middle of it and the crew carries on from
-the same block. The Ledger, `/bloodfeud packs` and the map say how far along a build is ("Camp, being built (40%)").
+block: a crew of the pack's own mobs clears the site, then walks to each spot and puts the block there, ground first,
+then walls and roofs, with the stash and banners last. A crew of three places up to three blocks a second (less when
+it has to walk), and a bigger pack sends more builders. A builder has to reach a block and see it to place it: it
+never builds through a wall or from afar, and one that can't walk to its spot is moved to where it can reach it. They
+mind their work while you watch from a distance, and turn on you if you come within about 8 blocks or hit them.
+While nobody can see the site, it is built off screen instead, quickly, so you find it finished, or well along, when
+you get there. It's one build either way: walk into view in the middle of it and the crew carries on from the same
+block. The Ledger, `/bloodfeud packs` and the map say how far along a build is ("Camp, being built (40%)").
 
 Kill the builders and the build stalls, half built, in view or not. The pack sends a new crew about five minutes later
 if it's still around, and its Brutes remember who killed their builders. Builders are grunts, so killing them also
