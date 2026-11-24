@@ -235,6 +235,9 @@ public final class CampBuilder {
         long nextHire;
         double budget;
         long waitingSince = -1;
+        /** Where a builder can reach the current step from, worked out once for it (null: from nowhere). */
+        BlockPos vantage;
+        int vantageFor = -1;
         /** Building off screen right now (nobody can see the site). */
         boolean offscreen;
         int failedHires;
@@ -1072,7 +1075,22 @@ public final class CampBuilder {
                 : CampBlueprint.plan(pack.id, pack.family, w.color, w.vassalColors, pack.siteFacing, w.fromTier, w.toTier);
         plan = CampBlueprint.withoutSkipped(plan, pack.skippedZones, pack.skippedColumns);
         plan = CampBlueprint.withoutSkipped(plan, w.skipZones, w.skipColumns);
-        return plan.placements();
+        return crewOrder(plan.placements());
+    }
+
+    /**
+     * The order a crew builds in: first it clears the site, top down, so every block after is one a builder can see
+     * and reach; then the blueprint's own order (ground, then walls and roofs bottom up, the stash and banners last).
+     * The same steps in the same order every time, so a saved build resumes at the right one.
+     */
+    public static List<CampBlueprint.Placement> crewOrder(List<CampBlueprint.Placement> ops) {
+        List<CampBlueprint.Placement> clear = new ArrayList<>();
+        List<CampBlueprint.Placement> rest = new ArrayList<>(ops.size());
+        for (CampBlueprint.Placement op : ops) (op.material() == CampBlueprint.Material.AIR ? clear : rest).add(op);
+        clear.sort(java.util.Comparator.comparingInt(CampBlueprint.Placement::ry).reversed()
+                .thenComparingInt(CampBlueprint.Placement::rx).thenComparingInt(CampBlueprint.Placement::rz));
+        clear.addAll(rest);
+        return List.copyOf(clear);
     }
 
     /** Picks up a pack's saved works (after a restart): the same steps, from where its crew stopped. */
@@ -1167,7 +1185,8 @@ public final class CampBuilder {
         pack.skippedColumns.addAll(filtered.blockedRingCols());
 
         BuildJob job = new BuildJob(pack.id, level.dimension(), origin, pack.siteFacing, pack.family, displayColor,
-                pack.title(), from, to, Mode.BUILD, automatic, shouldProtect, filtered.ops(),
+                pack.title(), from, to, Mode.BUILD, automatic, shouldProtect,
+                automatic ? crewOrder(filtered.ops()) : filtered.ops(),
                 ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
         job.blockedZones = filtered.blockedZones();
@@ -1309,7 +1328,8 @@ public final class CampBuilder {
         }
 
         BuildJob job = new BuildJob(pack.id, level.dimension(), origin, pack.siteFacing, pack.family, displayColor,
-                pack.title(), built, to, Mode.REPAIR, automatic, true, filtered.ops(),
+                pack.title(), built, to, Mode.REPAIR, automatic, true,
+                automatic ? crewOrder(filtered.ops()) : filtered.ops(),
                 ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
         job.blockedZones = filtered.blockedZones();
@@ -1715,23 +1735,34 @@ public final class CampBuilder {
             }
             Mob worker = unseen ? null : nearest(idle, pos);
             if (worker != null && !canReach(level, worker.getEyePosition(), pos, worker)) {
-                if (crew.waitingSince < 0) crew.waitingSince = gameTime;
-                if (gameTime - crew.waitingSince < PLACE_ANYWAY_TICKS) {
-                    if (gameTime % 10 == 0) worker.getNavigation().moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 1.0);
-                    break;
+                if (crew.vantageFor != job.index) {
+                    crew.vantageFor = job.index;
+                    crew.vantage = vantage(level, pos, worker.position(), worker.getEyeHeight());
+                    crew.waitingSince = gameTime;
+                    BloodFeud.LOG.debug("Blood Feud: {}'s nearest builder is {} blocks from step {} ({} at {}); {}",
+                            pack.title(), String.format("%.1f", Math.sqrt(worker.distanceToSqr(Vec3.atCenterOf(pos)))),
+                            job.index, op.material(), pos.toShortString(),
+                            crew.vantage == null ? "nowhere to reach it from" : "it walks to " + crew.vantage.toShortString());
                 }
-                // It couldn't walk there: move it to a spot it can reach the block from, or leave the step out.
-                BlockPos spot = vantage(level, pos, worker.position(), worker.getEyeHeight());
-                crew.waitingSince = -1;
-                if (spot == null) {
-                    BloodFeud.LOG.debug("Blood Feud: no builder of {} can reach {} ({}); left out", pack.title(),
-                            pos.toShortString(), op.material());
+                if (crew.vantage == null) {
+                    // Nobody could reach or see it from anywhere near (buried under ground the camp keeps): left out.
                     job.index++;
                     stepBudget--;
                     continue;
                 }
+                if (gameTime - crew.waitingSince < PLACE_ANYWAY_TICKS) {
+                    if (gameTime % 10 == 0) {
+                        worker.getNavigation().moveTo(crew.vantage.getX() + 0.5, crew.vantage.getY(), crew.vantage.getZ() + 0.5, 1.0);
+                    }
+                    break;
+                }
+                // It couldn't walk there: it is moved to where it can reach the block from.
                 worker.getNavigation().stop();
-                worker.teleportTo(spot.getX() + 0.5, spot.getY(), spot.getZ() + 0.5);
+                worker.teleportTo(crew.vantage.getX() + 0.5, crew.vantage.getY(), crew.vantage.getZ() + 0.5);
+                if (!canReach(level, worker.getEyePosition(), pos, worker)) {
+                    crew.vantageFor = -1; // something moved in the way; look again next time
+                    break;
+                }
             }
             crew.waitingSince = -1;
             placeInView(level, pos, op, palette, job, worker);
@@ -1818,13 +1849,30 @@ public final class CampBuilder {
         }
     }
 
-    /** Whether a builder with its eyes at {@code eye} can put a block at {@code pos}: within reach, nothing in between. */
+    /**
+     * Whether a builder with its eyes at {@code eye} can put a block at {@code pos}, as a player would: within reach, it
+     * sees the spot itself, or a face of a neighbour the new block would sit against, with nothing in between.
+     */
     public static boolean canReach(net.minecraft.world.level.BlockGetter level, Vec3 eye, BlockPos pos, Entity who) {
-        Vec3 target = Vec3.atCenterOf(pos);
-        if (eye.distanceToSqr(target) > REACH * REACH) return false;
-        BlockHitResult hit = level.clip(new ClipContext(eye, target, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE,
-                who == null ? CollisionContext.empty() : CollisionContext.of(who)));
-        return hit.getType() == HitResult.Type.MISS || hit.getBlockPos().equals(pos);
+        Vec3 centre = Vec3.atCenterOf(pos);
+        if (eye.distanceToSqr(centre) > REACH * REACH) return false;
+        CollisionContext context = who == null ? CollisionContext.empty() : CollisionContext.of(who);
+        if (sees(level, eye, centre, pos, context)) return true;
+        for (net.minecraft.core.Direction face : net.minecraft.core.Direction.values()) {
+            // Just outside each face of the spot: the side a block placed there would be put against.
+            Vec3 aim = centre.add(face.getStepX() * 0.49, face.getStepY() * 0.49, face.getStepZ() * 0.49);
+            if (eye.distanceToSqr(aim) <= REACH * REACH && sees(level, eye, aim, pos, context)) return true;
+        }
+        return false;
+    }
+
+    /** Whether the line from the eye to {@code aim} reaches the spot: nothing in the way, or what it meets touches it. */
+    private static boolean sees(net.minecraft.world.level.BlockGetter level, Vec3 eye, Vec3 aim, BlockPos pos,
+                                CollisionContext context) {
+        BlockHitResult hit = level.clip(new ClipContext(eye, aim, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, context));
+        if (hit.getType() == HitResult.Type.MISS) return true;
+        BlockPos at = hit.getBlockPos();
+        return at.equals(pos) || at.relative(hit.getDirection()).equals(pos);
     }
 
     /**

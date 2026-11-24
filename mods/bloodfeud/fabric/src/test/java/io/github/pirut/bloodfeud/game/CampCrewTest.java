@@ -548,6 +548,20 @@ class CampCrewTest {
     }
 
     @Test
+    void aCrewClearsTheSiteTopDownBeforeItBuilds() {
+        List<CampBlueprint.Placement> plan = CampBlueprint.plan(new UUID(5, 6), Family.ROTTEN, 3, List.of(), 0, 0, 1).placements();
+        List<CampBlueprint.Placement> order = CampBuilder.crewOrder(plan);
+        assertEquals(plan.size(), order.size());
+        int clears = (int) plan.stream().filter(op -> op.material() == CampBlueprint.Material.AIR).count();
+        assertTrue(clears > 0);
+        for (int i = 0; i < order.size(); i++) {
+            assertEquals(i < clears, order.get(i).material() == CampBlueprint.Material.AIR, "clearing comes first, at " + i);
+            if (i > 0 && i < clears) assertTrue(order.get(i).ry() <= order.get(i - 1).ry(), "top down");
+        }
+        assertEquals(order, CampBuilder.crewOrder(plan), "the same order every time");
+    }
+
+    @Test
     void aBuilderOnlyReachesABlockItCanSee() {
         Site s = site();
         BlockPos target = new BlockPos(X + 3, 72, Z);
