@@ -52,6 +52,12 @@ public final class Pack {
     public final Set<UUID> met = new HashSet<>();
     /** The settlement its builders are putting up right now, or null. Saved, so a build picks up where it stopped. */
     public Works works;
+    /**
+     * Every block the pack's settlement has put down and is still answerable for: the offset from the site
+     * ({@code BlockPos.asLong}) to the block's id. A position is the pack's only while this block still stands there.
+     * Empty for settlements built before 0.1.0-beta.2, which fall back to their blueprint.
+     */
+    public final java.util.Map<Long, String> placed = new java.util.HashMap<>();
 
     /**
      * A settlement under construction: which plan, and how far the builders got. The plan's steps come from the
@@ -71,13 +77,13 @@ public final class Pack {
         public int done;
         /** Steps in the whole plan, for "40% built". */
         public int total;
-        /** The tier of the settlement whose blocks counted as the pack's own when the build began. */
-        public int ownedTier;
+        /** Blocks this build has put down, so a cut-short build can tell whether it changed anything. */
+        public int placedCount;
         /**
-         * Relative positions ({@code BlockPos.asLong} of the offset from the site) where this build has put a block.
-         * Those, and only those, become the pack's own as the build goes, after a restart too.
+         * Steps its crew couldn't place safely (no builder could reach or see them, or a move there wasn't safe),
+         * in plan order. They are placed off screen once nobody can see the site.
          */
-        public final Set<Long> placed = new HashSet<>();
+        public final java.util.TreeSet<Integer> deferred = new java.util.TreeSet<>();
         /** No builders come before this game time: a player killed the last of them. */
         public long stalledUntil;
         /** The player who killed the last builders, or null. */

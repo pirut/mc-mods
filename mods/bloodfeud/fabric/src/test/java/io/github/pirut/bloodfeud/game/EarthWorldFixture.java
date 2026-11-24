@@ -274,7 +274,11 @@ public final class EarthWorldFixture {
         @Override
         public <T> void addRegionTicket(net.minecraft.server.level.TicketType<T> type, ChunkPos pos, int distance, T value) {
             tickets.add(pos);
+            ticketAdds++;
         }
+
+        /** How many times a ticket was added or renewed. */
+        public int ticketAdds;
 
         @Override
         public <T> void removeRegionTicket(net.minecraft.server.level.TicketType<T> type, ChunkPos pos, int distance, T value) {

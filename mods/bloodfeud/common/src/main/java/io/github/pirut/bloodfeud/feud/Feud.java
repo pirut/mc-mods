@@ -2,6 +2,7 @@ package io.github.pirut.bloodfeud.feud;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,13 +55,23 @@ public final class Feud {
 
     private final Random random;
     /** Built settlement left behind by a disbanded pack, waiting to be crumbled into ruins in the world. */
+    /** A settlement whose pack is gone: it crumbles off screen. {@code placed} is what the pack had put down there. */
     public record AbandonedSite(UUID packId, Family family, int color, String dimension,
                                 int siteX, int siteY, int siteZ, int siteFacing, int builtTier,
-                                List<Integer> vassalColors, Set<String> skippedZones, Set<Long> skippedColumns) {
+                                List<Integer> vassalColors, Set<String> skippedZones, Set<Long> skippedColumns,
+                                Map<Long, String> placed) {
+        public AbandonedSite(UUID packId, Family family, int color, String dimension, int siteX, int siteY, int siteZ,
+                             int siteFacing, int builtTier, List<Integer> vassalColors, Set<String> skippedZones,
+                             Set<Long> skippedColumns) {
+            this(packId, family, color, dimension, siteX, siteY, siteZ, siteFacing, builtTier, vassalColors,
+                    skippedZones, skippedColumns, Map.of());
+        }
+
         public AbandonedSite {
             vassalColors = vassalColors == null ? List.of() : List.copyOf(vassalColors);
             skippedZones = skippedZones == null ? Set.of() : Set.copyOf(skippedZones);
             skippedColumns = skippedColumns == null ? Set.of() : Set.copyOf(skippedColumns);
+            placed = placed == null ? Map.of() : Map.copyOf(placed);
         }
     }
 
@@ -83,10 +94,12 @@ public final class Feud {
                 mergedZones.addAll(site.skippedZones());
                 Set<Long> mergedCols = new HashSet<>(cur.skippedColumns());
                 mergedCols.addAll(site.skippedColumns());
+                Map<Long, String> mergedPlaced = new HashMap<>(cur.placed());
+                mergedPlaced.putAll(site.placed());
                 abandonedSites.set(i, new AbandonedSite(
                         cur.packId(), cur.family(), cur.color(), cur.dimension(),
                         cur.siteX(), cur.siteY(), cur.siteZ(), cur.siteFacing(), mergedTier,
-                        mergedVassals, mergedZones, mergedCols));
+                        mergedVassals, mergedZones, mergedCols, mergedPlaced));
                 return;
             }
         }
@@ -816,10 +829,13 @@ public final class Feud {
     }
 
     private void disband(Pack p, boolean announce, List<Integer> vassalColors) {
-        if (campsEnabled && p.siteSet && p.builtTier > 0 && !p.builtRuined) {
+        // Something to crumble: a built settlement, or blocks a build put down before the pack fell.
+        boolean built = p.builtTier > 0 && !p.builtRuined;
+        if (campsEnabled && p.siteSet && (built || !p.placed.isEmpty())) {
+            int tier = Math.max(p.builtTier, p.works != null ? p.works.toTier : 1);
             recordAbandonedSite(new AbandonedSite(p.id, p.family, p.color, p.dimension,
-                    p.siteX, p.siteY, p.siteZ, p.siteFacing, p.builtTier,
-                    vassalColors, p.skippedZones, p.skippedColumns));
+                    p.siteX, p.siteY, p.siteZ, p.siteFacing, Math.max(1, tier),
+                    vassalColors, p.skippedZones, p.skippedColumns, p.placed));
         }
         packs.remove(p.id);
         if (p.liege != null) {

@@ -156,8 +156,10 @@ public final class CampBuilder {
         Pack.Works works;
         Set<String> blockedZones = Set.of();
         Set<Long> blockedCols = Set.of();
-        /** The tier whose blocks counted as the pack's own when the job was made. */
-        int ownedTier;
+        /** Where the blocks it puts down are noted as the pack's (null for an old settlement with no record). */
+        Map<Long, String> placedSink;
+        /** Since when the ground it holds hasn't all loaded, or -1. */
+        long terrainWaitSince = -1;
 
         BuildJob(UUID packId, ResourceKey<Level> dimension, BlockPos origin, int siteFacing, Family family, int packColor,
                  String packTitle, int fromTier, int toTier, Mode mode, boolean automatic, boolean protectPlayerBlocks,
@@ -332,6 +334,11 @@ public final class CampBuilder {
             boolean gone = server == null || server.getLevel(dimension) == null;
             if (gone || (!jobs.containsKey(id) && !heldTickets.containsKey(id))) releaseCubes(server, id);
         }
+    }
+
+    /** Whether a site search on the Earth is under way for this pack. For tests and checks. */
+    public boolean searching(UUID packId) {
+        return searches.containsKey(packId);
     }
 
     /** How many packs have Earth cubes kept for their builds. For tests and checks. */
@@ -602,13 +609,6 @@ public final class CampBuilder {
         }
     }
 
-    private static Set<Integer> abandonedColors(int color, List<Integer> vassals) {
-        Set<Integer> colors = new HashSet<>();
-        colors.add(color);
-        if (vassals != null) colors.addAll(vassals);
-        return colors;
-    }
-
     private static boolean hasAbandonedSite(Feud feud, UUID packId) {
         for (Feud.AbandonedSite site : feud.abandonedSites) {
             if (site.packId().equals(packId)) return true;
@@ -695,6 +695,7 @@ public final class CampBuilder {
      */
     public void checkAutoBuilds(MinecraftServer server, FeudData data, long gameTime, boolean scheduled) {
         Feud feud = data.feud;
+        searches.keySet().removeIf(id -> feud.pack(id) == null); // a dead pack's site search stops
 
         // 1. Flush pending faction re-bannering off-screen only
         boolean dirtiedData = false;
@@ -905,13 +906,14 @@ public final class CampBuilder {
             CampBlueprint.Plan diff = CampBlueprint.ruinDiffPlan(site.packId(), site.family(), site.color(),
                     site.vassalColors(), site.siteFacing(), site.builtTier());
             diff = CampBlueprint.withoutSkipped(diff, site.skippedZones(), site.skippedColumns());
-            Set<CampBlueprint.Spot> ownedPositions = new SiteFinder.Owned(CampBlueprint.ownedMaterials(
-                    site.packId(), site.family(), site.color(), site.vassalColors(), site.siteFacing(),
-                    site.builtTier(), site.skippedZones(), site.skippedColumns()), site.family(),
-                    abandonedColors(site.color(), site.vassalColors()));
-            Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(
-                    site.packId(), site.family(), site.color(), site.vassalColors(), site.siteFacing(),
-                    site.builtTier(), site.skippedZones(), site.skippedColumns());
+            Map<Long, String> sitePlaced = site.placed().isEmpty() ? null : new HashMap<>(site.placed());
+            Set<CampBlueprint.Spot> ownedPositions = sitePlaced != null ? new SiteFinder.Owned(sitePlaced)
+                    : new SiteFinder.Owned(CampBlueprint.ownedMaterials(site.packId(), site.family(), site.color(),
+                            site.vassalColors(), site.siteFacing(), site.builtTier(), site.skippedZones(),
+                            site.skippedColumns()), site.family());
+            Set<CampBlueprint.Spot> ownedContainers = sitePlaced != null ? ownedPositions
+                    : CampBlueprint.containerPositions(site.packId(), site.family(), site.color(), site.vassalColors(),
+                            site.siteFacing(), site.builtTier(), site.skippedZones(), site.skippedColumns());
             BlockPos origin = new BlockPos(site.siteX(), site.siteY(), site.siteZ());
             FilterResult filtered = filterPlan(level, origin, diff, null, ownedPositions, ownedContainers);
             if (filtered.ops().isEmpty()) {
@@ -925,6 +927,7 @@ public final class CampBuilder {
                     site.family(), site.color(), "", site.builtTier(), site.builtTier(),
                     Mode.ABANDONED_RUIN, true, true, filtered.ops(), ownedPositions, ownedContainers,
                     site.vassalColors(), site.skippedZones(), site.skippedColumns(), gameTime, null);
+            job.placedSink = sitePlaced;
             jobs.put(site.packId(), job);
             acquireOrRenewTicket(server, site.packId(), level, site.siteX(), site.siteZ(),
                     built.radius, built.radius, gameTime, TicketPurpose.BUILD);
@@ -1035,28 +1038,37 @@ public final class CampBuilder {
         }
     }
 
-    /** The dye colors a pack's colored blocks can be in: its own, its liege's, its build's, and its vassals'. */
-    static Set<Integer> colors(Pack pack, int displayColor, int buildColor, List<Integer> vassalColors) {
-        Set<Integer> colors = new HashSet<>();
-        colors.add(pack.color);
-        colors.add(displayColor);
-        colors.add(buildColor);
-        if (vassalColors != null) colors.addAll(vassalColors);
-        return colors;
-    }
-
     /**
-     * Lets a pack's unfinished build go. An upgrade (or a repair to a higher tier) that put blocks down counts as built
-     * to its tier from then on, so a later ruin or repair covers the part-built extension instead of taking it for a
-     * player's build. A first camp keeps {@code buildStarted}, so its ruin covers the whole footprint, as before.
+     * Lets a pack's unfinished build go. One rule: an upgrade or repair that put blocks down leaves an intact settlement
+     * of its target tier on record (built to it, not ruined), so the next ruin or repair covers everything it put up. A
+     * first camp keeps {@code buildStarted} instead, so its ruin covers the whole footprint, as before.
      */
     public static void abandonWorks(Pack pack) {
         Pack.Works w = pack.works;
         if (w == null) return;
         pack.works = null;
-        if (!w.placed.isEmpty() && w.fromTier > 0 && w.toTier > w.fromTier) {
+        if (w.placedCount > 0 && (w.fromTier > 0 || w.repair)) {
             pack.builtTier = Math.max(pack.builtTier, w.toTier);
+            pack.builtRuined = false;
         }
+    }
+
+    /** What of a pack's site is its own, which containers there are its stashes, and where its new blocks are noted. */
+    private record Ownership(Set<CampBlueprint.Spot> positions, Set<CampBlueprint.Spot> containers, Map<Long, String> sink) {
+    }
+
+    /**
+     * Exact (see {@link SiteFinder.Owned}) for a settlement with a record of what it placed, or none built yet: a
+     * position is the pack's only while the block it put there still stands. A settlement built before there was a
+     * record goes by its blueprint, and goes on without one.
+     */
+    private static Ownership ownership(Pack pack, java.util.function.Supplier<Map<CampBlueprint.Spot, Set<CampBlueprint.Material>>> blueprint,
+                                       java.util.function.Supplier<Set<CampBlueprint.Spot>> blueprintContainers) {
+        if (!pack.placed.isEmpty() || pack.builtTier == 0) {
+            SiteFinder.Owned exact = new SiteFinder.Owned(pack.placed);
+            return new Ownership(exact, exact, pack.placed);
+        }
+        return new Ownership(new SiteFinder.Owned(blueprint.get(), pack.family), blueprintContainers.get(), null);
     }
 
     /** Saves a new automatic job as the pack's works, for its crew to carry out. */
@@ -1064,7 +1076,6 @@ public final class CampBuilder {
         Pack.Works w = new Pack.Works(job.mode == Mode.REPAIR, job.fromTier, job.toTier, job.packColor,
                 job.vassalColors, job.blockedZones, job.blockedCols);
         w.total = job.ops.size();
-        w.ownedTier = job.ownedTier;
         pack.works = w;
         job.works = w;
         BloodFeud.LOG.info("Blood Feud: {} began {} its {} at {} {} {} ({} steps)", pack.title(),
@@ -1101,28 +1112,16 @@ public final class CampBuilder {
     private void resumeWorks(ServerLevel level, Feud feud, Pack pack, long gameTime) {
         Pack.Works w = pack.works;
         List<CampBlueprint.Placement> ops = worksSteps(pack, w);
-        Set<Integer> colors = colors(pack, feud.top(pack).color, w.color, w.vassalColors);
-        // Exactly what the build counted as the pack's when it began, and then only what it has put down since.
-        SiteFinder.Owned ownedPositions = new SiteFinder.Owned(w.repair
-                ? CampBlueprint.ownedRuinedMaterials(pack.id, pack.family, w.color, w.vassalColors, pack.siteFacing,
-                        w.ownedTier, pack.skippedZones, pack.skippedColumns)
-                : CampBlueprint.ownedMaterials(pack.id, pack.family, w.color, w.vassalColors, pack.siteFacing,
-                        w.ownedTier, pack.skippedZones, pack.skippedColumns), pack.family, colors);
-        Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(pack.id, pack.family, w.color,
-                w.vassalColors, pack.siteFacing, w.ownedTier, pack.skippedZones, pack.skippedColumns);
-        FamilyPalette palette = FamilyPalette.of(pack.family);
-        for (int i = 0; i < Math.min(w.done, ops.size()); i++) {
-            CampBlueprint.Placement op = ops.get(i);
-            if (op.material() == CampBlueprint.Material.FOUNDATION_COLUMN) {
-                for (int depth = 0; depth < MAX_FOUNDATION_DEPTH; depth++) {
-                    if (w.placed.contains(BlockPos.asLong(op.rx(), op.ry() - depth, op.rz()))) {
-                        ownedPositions.placed(new CampBlueprint.Spot(op.rx(), op.ry() - depth, op.rz()), palette.foundation);
-                    }
-                }
-            } else if (w.placed.contains(BlockPos.asLong(op.rx(), op.ry(), op.rz()))) {
-                ownedPositions.placed(new CampBlueprint.Spot(op.rx(), op.ry(), op.rz()), palette.resolve(op, w.color).getBlock());
-            }
-        }
+        Ownership own = ownership(pack,
+                () -> w.repair
+                        ? CampBlueprint.ownedRuinedMaterials(pack.id, pack.family, w.color, w.vassalColors, pack.siteFacing,
+                                w.fromTier, pack.skippedZones, pack.skippedColumns)
+                        : CampBlueprint.ownedMaterials(pack.id, pack.family, w.color, w.vassalColors, pack.siteFacing,
+                                w.fromTier, pack.skippedZones, pack.skippedColumns),
+                () -> CampBlueprint.containerPositions(pack.id, pack.family, w.color, w.vassalColors, pack.siteFacing,
+                        w.fromTier, pack.skippedZones, pack.skippedColumns));
+        Set<CampBlueprint.Spot> ownedPositions = own.positions();
+        Set<CampBlueprint.Spot> ownedContainers = own.containers();
         BuildJob job = new BuildJob(pack.id, level.dimension(), new BlockPos(pack.siteX, pack.siteY, pack.siteZ),
                 pack.siteFacing, pack.family, w.color, pack.title(), w.fromTier, w.toTier,
                 w.repair ? Mode.REPAIR : Mode.BUILD, true, true, ops, ownedPositions, ownedContainers,
@@ -1130,6 +1129,7 @@ public final class CampBuilder {
         job.blockedZones = w.skipZones;
         job.blockedCols = w.skipColumns;
         job.works = w;
+        job.placedSink = own.sink();
         job.index = Math.min(w.done, ops.size());
         w.total = ops.size();
         jobs.put(pack.id, job);
@@ -1163,19 +1163,21 @@ public final class CampBuilder {
         plan = CampBlueprint.withoutSkipped(plan, pack.skippedZones, pack.skippedColumns);
 
         int ownedTier = (from == 0 && pack.buildStarted) ? to : from;
-        Set<CampBlueprint.Spot> ownedPositions = new SiteFinder.Owned(CampBlueprint.ownedMaterials(
-                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, ownedTier,
-                pack.skippedZones, pack.skippedColumns), pack.family, colors(pack, displayColor, displayColor, vassalColors));
-        Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(
-                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, ownedTier,
-                pack.skippedZones, pack.skippedColumns);
+        Ownership own = ownership(pack,
+                () -> CampBlueprint.ownedMaterials(pack.id, pack.family, displayColor, vassalColors, pack.siteFacing,
+                        ownedTier, pack.skippedZones, pack.skippedColumns),
+                () -> CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassalColors, pack.siteFacing,
+                        ownedTier, pack.skippedZones, pack.skippedColumns));
+        Set<CampBlueprint.Spot> ownedPositions = own.positions();
+        Set<CampBlueprint.Spot> ownedContainers = own.containers();
 
         boolean shouldProtect = automatic || from > 0 || pack.buildStarted;
         if (shouldProtect && SiteFinder.isWaitingForGround(level, origin, SettlementTier.byLevel(to).radius)) {
             return new QueueResult(false, List.of(), 0);
         }
         FilterResult filtered = shouldProtect
-                ? filterPlan(level, origin, plan, from > 0 ? Set.of() : null, ownedPositions, ownedContainers)
+                ? filterPlan(level, origin, plan, from > 0 ? Set.of() : null, ownedPositions, ownedContainers,
+                        from > 0 ? SiteFinder.heldByOthers(feud, pack) : List.of(), null) // an upgrade keeps off neighbours
                 : new FilterResult(plan.placements(), Set.of(), Set.of(), List.of(), 0);
 
         if (automatic && from == 0 && filtered.blockedZones().contains("camp_core")) {
@@ -1195,7 +1197,7 @@ public final class CampBuilder {
                 gameTime, onComplete);
         job.blockedZones = filtered.blockedZones();
         job.blockedCols = filtered.blockedRingCols();
-        job.ownedTier = ownedTier;
+        job.placedSink = own.sink();
         if (!automatic) releaseTicket(level.getServer(), pack.id);
         if (automatic) crewUp(job, pack, gameTime);
         jobs.put(pack.id, job);
@@ -1233,20 +1235,19 @@ public final class CampBuilder {
         }
         int finalTier = inPlace ? pack.builtTier : to;
 
-        Set<CampBlueprint.Spot> ownedPositions = new SiteFinder.Owned(inPlace
-                ? CampBlueprint.ownedMaterials(pack.id, pack.family, displayColor, vassalColors,
-                        pack.siteFacing, pack.builtTier, pack.skippedZones, pack.skippedColumns)
-                : (pack.buildStarted
-                        ? CampBlueprint.ownedRuinedMaterials(pack.id, pack.family, displayColor, vassalColors,
-                                pack.siteFacing, to, pack.skippedZones, pack.skippedColumns)
-                        : Map.of()), pack.family, colors(pack, displayColor, displayColor, vassalColors));
-        Set<CampBlueprint.Spot> ownedContainers = inPlace
-                ? CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassalColors,
-                        pack.siteFacing, pack.builtTier, pack.skippedZones, pack.skippedColumns)
-                : (pack.buildStarted
-                        ? CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassalColors,
-                                pack.siteFacing, to, pack.skippedZones, pack.skippedColumns)
-                        : Set.of());
+        int ruinTier = inPlace ? pack.builtTier : to;
+        boolean blueprint = inPlace || pack.buildStarted;
+        List<Integer> vassals = vassalColors;
+        Ownership own = ownership(pack,
+                () -> !blueprint ? Map.of() : inPlace
+                        ? CampBlueprint.ownedMaterials(pack.id, pack.family, displayColor, vassals, pack.siteFacing,
+                                ruinTier, pack.skippedZones, pack.skippedColumns)
+                        : CampBlueprint.ownedRuinedMaterials(pack.id, pack.family, displayColor, vassals,
+                                pack.siteFacing, ruinTier, pack.skippedZones, pack.skippedColumns),
+                () -> !blueprint ? Set.of() : CampBlueprint.containerPositions(pack.id, pack.family, displayColor,
+                        vassals, pack.siteFacing, ruinTier, pack.skippedZones, pack.skippedColumns));
+        Set<CampBlueprint.Spot> ownedPositions = own.positions();
+        Set<CampBlueprint.Spot> ownedContainers = own.containers();
 
         List<CampBlueprint.Placement> ops = plan.placements();
         List<String> skippedZones = List.of();
@@ -1276,6 +1277,7 @@ public final class CampBuilder {
                 pack.title(), pack.builtTier, finalTier, Mode.RUIN, automatic, shouldProtect, ops,
                 ownedPositions, ownedContainers, vassalColors, pack.skippedZones, pack.skippedColumns,
                 gameTime, onComplete);
+        job.placedSink = own.sink();
         if (!automatic) releaseTicket(level.getServer(), pack.id);
         jobs.put(pack.id, job);
         return new QueueResult(true, skippedZones, skippedRingColumns);
@@ -1299,17 +1301,19 @@ public final class CampBuilder {
                 pack.siteFacing, built, to);
         plan = CampBlueprint.withoutSkipped(plan, pack.skippedZones, pack.skippedColumns);
 
-        Set<CampBlueprint.Spot> ownedPositions = new SiteFinder.Owned(CampBlueprint.ownedRuinedMaterials(
-                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, built,
-                pack.skippedZones, pack.skippedColumns), pack.family, colors(pack, displayColor, displayColor, vassalColors));
-        Set<CampBlueprint.Spot> ownedContainers = CampBlueprint.containerPositions(
-                pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, built,
-                pack.skippedZones, pack.skippedColumns);
+        Ownership own = ownership(pack,
+                () -> CampBlueprint.ownedRuinedMaterials(pack.id, pack.family, displayColor, vassalColors,
+                        pack.siteFacing, built, pack.skippedZones, pack.skippedColumns),
+                () -> CampBlueprint.containerPositions(pack.id, pack.family, displayColor, vassalColors,
+                        pack.siteFacing, built, pack.skippedZones, pack.skippedColumns));
+        Set<CampBlueprint.Spot> ownedPositions = own.positions();
+        Set<CampBlueprint.Spot> ownedContainers = own.containers();
 
         Set<String> existingZones = (to > built)
                 ? CampBlueprint.plan(pack.id, pack.family, displayColor, vassalColors, pack.siteFacing, 0, built).zones().keySet()
                 : null;
-        FilterResult filtered = filterPlan(level, origin, plan, existingZones, ownedPositions, ownedContainers);
+        FilterResult filtered = filterPlan(level, origin, plan, existingZones, ownedPositions, ownedContainers,
+                to > built ? SiteFinder.heldByOthers(feud, pack) : List.of(), existingZones);
         if (filtered.ops().isEmpty()) {
             return new QueueResult(false, filtered.skippedZones(), filtered.skippedRingColumns());
         }
@@ -1338,7 +1342,7 @@ public final class CampBuilder {
                 gameTime, onComplete);
         job.blockedZones = filtered.blockedZones();
         job.blockedCols = filtered.blockedRingCols();
-        job.ownedTier = built;
+        job.placedSink = own.sink();
         if (!automatic) releaseTicket(level.getServer(), pack.id);
         if (automatic) crewUp(job, pack, gameTime);
         jobs.put(pack.id, job);
@@ -1354,6 +1358,18 @@ public final class CampBuilder {
                                            Set<String> abyssExcludeZones,
                                            Set<CampBlueprint.Spot> ownedPositions,
                                            Set<CampBlueprint.Spot> ownedContainers) {
+        return filterPlan(level, origin, plan, abyssExcludeZones, ownedPositions, ownedContainers, List.of(), null);
+    }
+
+    /**
+     * As above, also leaving out every zone and ring column that would reach into {@code held} ground (another pack's
+     * reservation), except the zones in {@code builtZones}, which already stand.
+     */
+    private static FilterResult filterPlan(ServerLevel level, BlockPos origin, CampBlueprint.Plan plan,
+                                           Set<String> abyssExcludeZones,
+                                           Set<CampBlueprint.Spot> ownedPositions,
+                                           Set<CampBlueprint.Spot> ownedContainers,
+                                           List<int[]> held, Set<String> builtZones) {
         List<CampBlueprint.Placement> ops = plan.placements();
         Set<String> blockedZones = new HashSet<>();
         List<String> skippedZones = new ArrayList<>();
@@ -1363,6 +1379,13 @@ public final class CampBuilder {
             String zone = entry.getKey();
             if (CampBlueprint.isRingZone(zone)) continue;
             CampBlueprint.Box box = entry.getValue();
+            if (!held.isEmpty() && (builtZones == null || !builtZones.contains(zone))
+                    && SiteFinder.overlapsAny(held, origin.getX() + box.minX(), origin.getZ() + box.minZ(),
+                            origin.getX() + box.maxX(), origin.getZ() + box.maxZ())) {
+                blockedZones.add(zone);
+                skippedZones.add(zone + " (a neighbour's ground)");
+                continue;
+            }
             if (SiteFinder.isZoneBlockedByPlayer(level, origin, box, ownedPositions, ownedContainers)) {
                 blockedZones.add(zone);
                 skippedZones.add(zone);
@@ -1393,7 +1416,8 @@ public final class CampBuilder {
             for (Map.Entry<Long, int[]> e : ringColBounds.entrySet()) {
                 int[] info = e.getValue();
                 int rx = info[0], rz = info[1], minY = info[2], maxY = info[3];
-                boolean blocked = false;
+                boolean blocked = !held.isEmpty() && SiteFinder.overlapsAny(held, origin.getX() + rx - 1,
+                        origin.getZ() + rz - 1, origin.getX() + rx + 1, origin.getZ() + rz + 1);
                 for (int dx = -1; dx <= 1 && !blocked; dx++) {
                     for (int dz = -1; dz <= 1 && !blocked; dz++) {
                         int nx = rx + dx, nz = rz + dz;
@@ -1454,14 +1478,17 @@ public final class CampBuilder {
                     it.remove();
                     releaseTicket(server, job.packId);
                     dismissCrew(server, job.packId);
-                    if (job.index > 0 && job.mode != Mode.RUIN) {
+                    // Something to crumble only if the camp really put blocks down here.
+                    boolean placedSomething = job.placedSink != null ? !job.placedSink.isEmpty() : job.index > 0;
+                    if (placedSomething && job.mode != Mode.RUIN) {
                         int coverTier = Math.max(job.fromTier, job.toTier);
                         if (coverTier > 0) {
                             data.feud.recordAbandonedSite(new Feud.AbandonedSite(
                                     job.packId, job.family, job.packColor, job.dimension.location().toString(),
                                     job.origin.getX(), job.origin.getY(), job.origin.getZ(),
                                     job.siteFacing, coverTier,
-                                    job.vassalColors, job.skippedZones, job.skippedColumns));
+                                    job.vassalColors, job.skippedZones, job.skippedColumns,
+                                    job.placedSink == null ? Map.of() : job.placedSink));
                             data.changed();
                         }
                     }
@@ -1613,37 +1640,45 @@ public final class CampBuilder {
     /**
      * One tick of a crewed build. Returns true once every step is done.
      * <p>
-     * One rule holds in and out of view: while the build runs, whatever part of its site isn't loaded is held loaded for
-     * it ({@link #holdSite}), so no place a player stands can freeze it. While a player can see the site ({@link Sight}),
-     * its crew (hired as needed) walks to each spot in turn and places its block once that spot is loaded, at the
-     * configured pace for however many builders are alive and not fighting. While nobody can, it is built off screen
-     * ({@link #buildOffscreen}) on ticks where the whole site is loaded. It is the same job either way, so it goes on
-     * from the same step when that changes. After a player killed the last builders nothing is built either way.
+     * Holds: while a build is active it holds its site every tick ({@link #holdSite}), whatever is loaded already, so
+     * no place a player stands can freeze it. Only ground that won't load times out (see {@link #rotateSlots}).
+     * <p>
+     * While a player can see the site ({@link Sight}), its crew places each step a builder can reach and see; a step no
+     * builder can place safely is left out if nobody could ever see its spot, and otherwise deferred. While nobody can
+     * see it, it is built off screen ({@link #buildOffscreen}): deferred steps first, in plan order, then the rest.
+     * Once only deferred steps are left and someone can see the site, it waits for them to look away, holding nothing.
+     * After a player killed the last builders, nothing is built either way.
      */
     private boolean tickCrew(MinecraftServer server, ServerLevel level, FeudData data, BuildJob job, Pack pack, long gameTime) {
         Pack.Works w = job.works;
         Crew crew = crews.computeIfAbsent(pack.id, k -> new Crew());
         int radius = SettlementTier.byLevel(Math.max(job.fromTier, job.toTier)).radius;
         FamilyPalette palette = FamilyPalette.of(job.family);
-        if (gameTime < w.stalledUntil) {
+        boolean mainDone = job.index >= job.ops.size();
+        if (mainDone && w.deferred.isEmpty()) return true;
+        boolean seen = sight.seen(server, level, job.origin, radius);
+        if (gameTime < w.stalledUntil || (mainDone && seen)) {
+            // Waiting: for the pack to send builders, or for everyone to look away from what's left. It holds nothing.
             if (holding(pack.id)) releaseTicket(server, pack.id);
-            job.lastProgressTick = gameTime;
+            job.terrainWaitSince = -1;
             crew.budget = 0;
             return false;
         }
-        boolean seen = sight.seen(server, level, job.origin, radius);
         if (!seen && !crew.offscreen) {
             crew.offscreen = true;
-            BloodFeud.LOG.info("Blood Feud: nobody can see {}'s site; building its {} off screen from step {} of {}",
-                    pack.title(), SettlementTier.byLevel(w.toTier).key, job.index, job.ops.size());
+            BloodFeud.LOG.info("Blood Feud: nobody can see {}'s site; building its {} off screen from step {} of {} ({} deferred)",
+                    pack.title(), SettlementTier.byLevel(w.toTier).key, job.index, job.ops.size(), w.deferred.size());
         } else if (seen && crew.offscreen) {
             crew.offscreen = false;
             BloodFeud.LOG.info("Blood Feud: {}'s site came into view; its crew carries on from step {} of {}",
                     pack.title(), job.index, job.ops.size());
         }
-        boolean ready = SiteFinder.isSiteLoaded(level, job.origin, radius)
-                || (holdSite(server, level, pack.id, job.origin, radius, gameTime, TicketPurpose.BUILD)
-                        && SiteFinder.isSiteReady(level, job.origin, radius)); // asks for what is missing; never writes
+        boolean held = holdSite(server, level, pack.id, job.origin, radius, gameTime, TicketPurpose.BUILD);
+        boolean ready = held ? SiteFinder.isSiteReady(level, job.origin, radius) // asks for what is missing; never writes
+                : SiteFinder.isSiteLoaded(level, job.origin, radius);
+        // "The ground won't load" is only ever counted while the build holds a slot for it.
+        if (!held || ready) job.terrainWaitSince = -1;
+        else if (job.terrainWaitSince < 0) job.terrainWaitSince = gameTime;
         if (!seen) {
             crew.loadedSince = -1;
             crew.budget = 0;
@@ -1676,7 +1711,7 @@ public final class CampBuilder {
         }
         if (job.index >= job.ops.size()) {
             progressed(data, job, pack, w, gameTime, before);
-            return true;
+            return w.deferred.isEmpty();
         }
 
         List<Mob> builders = builders(level, crew, gameTime);
@@ -1749,9 +1784,7 @@ public final class CampBuilder {
                             crew.vantage == null ? "nowhere to reach it from" : "it walks to " + crew.vantage.toShortString());
                 }
                 if (crew.vantage == null) {
-                    // Nobody could reach or see it from anywhere near (buried under ground the camp keeps): left out.
-                    job.index++;
-                    stepBudget--;
+                    leaveOut(level, job, w, op, pos, pack, "no builder can reach it from anywhere");
                     continue;
                 }
                 if (gameTime - crew.waitingSince < PLACE_ANYWAY_TICKS) {
@@ -1760,31 +1793,52 @@ public final class CampBuilder {
                     }
                     break;
                 }
-                // It couldn't walk there: it is moved to where it can reach the block from.
+                // It couldn't walk there. It is moved there only if that is safe right now; never into a wall or the void.
+                crew.vantageFor = -1;
+                if (!safeToStand(level, crew.vantage, worker.getBbWidth(), worker.getBbHeight())) {
+                    leaveOut(level, job, w, op, pos, pack, "the spot to reach it from isn't safe to stand on");
+                    continue;
+                }
                 worker.getNavigation().stop();
                 worker.teleportTo(crew.vantage.getX() + 0.5, crew.vantage.getY(), crew.vantage.getZ() + 0.5);
                 if (!canReach(level, worker.getEyePosition(), pos, worker)) {
-                    crew.vantageFor = -1; // something moved in the way; look again next time
-                    break;
+                    leaveOut(level, job, w, op, pos, pack, "something is in the way");
+                    continue;
                 }
             }
             crew.waitingSince = -1;
-            placeInView(level, pos, op, palette, job, worker);
+            if (placeInView(level, pos, op, palette, job, worker)) w.deferred.add(job.index); // fill too deep to reach
             job.index++;
             stepBudget--;
             crew.budget -= 1.0;
         }
         progressed(data, job, pack, w, gameTime, before);
-        return job.index >= job.ops.size();
+        return job.index >= job.ops.size() && w.deferred.isEmpty();
     }
 
     /**
      * Builds off screen on a tick where the whole site is loaded, as many steps as the shared per-tick budget has left
-     * ({@value #OFFSCREEN_OPS_PER_TICK} a tick for every build together).
+     * ({@value #OFFSCREEN_OPS_PER_TICK} a tick for every build together): first the steps its crew deferred, in plan
+     * order, then the rest. The same player-block checks hold as anywhere.
      */
     private boolean buildOffscreen(ServerLevel level, FeudData data, BuildJob job, Pack pack, FamilyPalette palette,
                                    long gameTime) {
         int before = job.index;
+        Pack.Works w = job.works;
+        for (Iterator<Integer> it = w.deferred.iterator(); it.hasNext() && stepBudget > 0; ) {
+            int step = it.next();
+            if (step < 0 || step >= job.ops.size()) {
+                it.remove();
+                continue;
+            }
+            CampBlueprint.Placement op = job.ops.get(step);
+            BlockPos pos = job.origin.offset(op.rx(), op.ry(), op.rz());
+            if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4) || !Earth.isLoaded(level, pos)) break;
+            applyOp(level, pos, op, palette, job);
+            it.remove();
+            stepBudget--;
+            data.changed();
+        }
         while (stepBudget > 0 && job.index < job.ops.size()) {
             CampBlueprint.Placement op = job.ops.get(job.index);
             BlockPos pos = job.origin.offset(op.rx(), op.ry(), op.rz());
@@ -1793,8 +1847,8 @@ public final class CampBuilder {
             job.index++;
             stepBudget--;
         }
-        progressed(data, job, pack, job.works, gameTime, before);
-        return job.index >= job.ops.size();
+        progressed(data, job, pack, w, gameTime, before);
+        return job.index >= job.ops.size() && w.deferred.isEmpty();
     }
 
     /**
@@ -1823,8 +1877,8 @@ public final class CampBuilder {
     }
 
     /**
-     * Frees held slots fairly. A build whose ground hasn't let it place a step since it took its slot
-     * ({@link #PREP_TIMEOUT_TICKS}, longer on the Earth) lets go and backs off; one that has held a slot for
+     * Frees held slots fairly. A build whose held ground hasn't all loaded for {@link #PREP_TIMEOUT_TICKS} (longer on
+     * the Earth) lets go and backs off for {@link #RETRY_COOLDOWN_TICKS}. Any build that has held a slot for
      * {@link #HOLD_TURN_TICKS} while others wait hands it on. Either goes to the back of the queue.
      */
     private void rotateSlots(MinecraftServer server, long gameTime) {
@@ -1833,9 +1887,10 @@ public final class CampBuilder {
             HeldTicket ticket = e.getValue();
             BuildJob job = jobs.get(e.getKey());
             if (!ticket.crewed || job == null || job.works == null) continue;
-            long since = Math.max(job.lastProgressTick, ticket.acquiredAtTick);
             long limit = Earth.is(ticket.dimension) ? EARTH_PREP_TIMEOUT_TICKS : PREP_TIMEOUT_TICKS;
-            if (gameTime - since >= limit) {
+            // Only ground that won't load gives the slot up and backs off; a slow or fighting crew just waits its turn.
+            if (job.terrainWaitSince >= 0 && gameTime - job.terrainWaitSince >= limit) {
+                job.terrainWaitSince = -1;
                 BloodFeud.LOG.info("Blood Feud: a build's ground didn't load in {} s; it lets go of its slot and tries again later",
                         limit / 20);
                 releaseTicket(server, e.getKey());
@@ -1851,6 +1906,49 @@ public final class CampBuilder {
             BuildJob job = jobs.remove(id);
             if (job != null) jobs.put(id, job);
         }
+    }
+
+    /**
+     * A step the crew can't place safely. Left out for good only if nobody could ever see its spot (it is shut in by
+     * solid blocks: buried ground, stone behind a tent); otherwise deferred, to be placed off screen.
+     */
+    private void leaveOut(ServerLevel level, BuildJob job, Pack.Works w, CampBlueprint.Placement op, BlockPos pos,
+                                 Pack pack, String why) {
+        boolean omit = enclosed(level, pos);
+        if (!omit) w.deferred.add(job.index);
+        BloodFeud.LOG.debug("Blood Feud: {} {} step {} ({} at {}): {}", pack.title(), omit ? "leaves out" : "defers",
+                job.index, op.material(), pos.toShortString(), why);
+        job.index++;
+        stepBudget--;
+    }
+
+    /** Whether every side of {@code pos} is a loaded, solid block: nobody can see it from anywhere. */
+    public static boolean enclosed(ServerLevel level, BlockPos pos) {
+        for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+            BlockPos n = pos.relative(d);
+            if (!SiteFinder.isChunkReady(level, n.getX() >> 4, n.getZ() >> 4) || !Earth.isLoaded(level, n)) return false;
+            if (!level.getBlockState(n).blocksMotion()) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Whether a mob {@code width} wide and {@code height} tall can stand at {@code at} right now: the block under it is
+     * loaded and solid on top, and nothing loaded or solid is where its body would be.
+     */
+    public static boolean safeToStand(ServerLevel level, BlockPos at, float width, float height) {
+        BlockPos below = at.below();
+        if (!SiteFinder.isChunkReady(level, at.getX() >> 4, at.getZ() >> 4) || !Earth.isLoaded(level, below)) return false;
+        if (!level.getBlockState(below).isFaceSturdy(level, below, net.minecraft.core.Direction.UP)) return false;
+        net.minecraft.world.phys.AABB body = new net.minecraft.world.phys.AABB(at.getX() + 0.5 - width / 2, at.getY(),
+                at.getZ() + 0.5 - width / 2, at.getX() + 0.5 + width / 2, at.getY() + height, at.getZ() + 0.5 + width / 2);
+        for (BlockPos p : BlockPos.betweenClosed(BlockPos.containing(body.minX, body.minY, body.minZ),
+                BlockPos.containing(body.maxX - 1e-6, body.maxY - 1e-6, body.maxZ - 1e-6))) {
+            if (!SiteFinder.isChunkReady(level, p.getX() >> 4, p.getZ() >> 4) || !Earth.isLoaded(level, p)) return false;
+            net.minecraft.world.phys.shapes.VoxelShape shape = level.getBlockState(p).getCollisionShape(level, p);
+            if (!shape.isEmpty() && shape.bounds().move(p).intersects(body)) return false;
+        }
+        return true;
     }
 
     /**
@@ -1987,10 +2085,11 @@ public final class CampBuilder {
     }
 
     /** Places a step's block where everyone can see it: the builder swings, the block makes its sound and dust. */
-    private static void placeInView(ServerLevel level, BlockPos pos, CampBlueprint.Placement op, FamilyPalette palette,
-                                    BuildJob job, Mob worker) {
+    private static boolean placeInView(ServerLevel level, BlockPos pos, CampBlueprint.Placement op, FamilyPalette palette,
+                                       BuildJob job, Mob worker) {
         BlockState before = level.getBlockState(pos);
-        applyOp(level, pos, op, palette, job);
+        // A builder fills a foundation only as deep as it can reach from where it stands.
+        boolean cut = applyOp(level, pos, op, palette, job, worker == null ? Integer.MIN_VALUE : worker.getBlockY() - (int) REACH);
         BlockState after = level.getBlockState(pos);
         BlockPos shown = pos;
         if (after == before && op.material() == CampBlueprint.Material.FOUNDATION_COLUMN) {
@@ -2009,13 +2108,14 @@ public final class CampBuilder {
         }
         if (after.isAir()) {
             if (!before.isAir()) level.levelEvent(2001, pos, Block.getId(before)); // break sound and dust
-            return;
+            return cut;
         }
         SoundType sound = after.getSoundType();
         level.playSound(null, shown, sound.getPlaceSound(), SoundSource.BLOCKS,
                 (sound.getVolume() + 1.0f) / 2.0f, sound.getPitch() * 0.8f);
         level.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, after),
                 shown.getX() + 0.5, shown.getY() + 0.5, shown.getZ() + 0.5, 6, 0.3, 0.3, 0.3, 0.05);
+        return cut;
     }
 
     /** Builders that hold the block they place carry this tag (their hands were empty when hired). */
@@ -2047,22 +2147,39 @@ public final class CampBuilder {
 
     /** A crewed build put {@code state} at {@code pos}: from now on that block there is the pack's, after a restart too. */
     private static void placed(BuildJob job, BlockPos pos, BlockState state) {
-        if (job.works == null) return;
-        int rx = pos.getX() - job.origin.getX(), ry = pos.getY() - job.origin.getY(), rz = pos.getZ() - job.origin.getZ();
-        job.works.placed.add(BlockPos.asLong(rx, ry, rz));
-        if (job.ownedPositions instanceof SiteFinder.Owned owned) owned.placed(new CampBlueprint.Spot(rx, ry, rz), state.getBlock());
+        if (job.works != null) job.works.placedCount++;
+        if (job.placedSink == null) return;
+        long at = BlockPos.asLong(pos.getX() - job.origin.getX(), pos.getY() - job.origin.getY(), pos.getZ() - job.origin.getZ());
+        if (state.isAir()) job.placedSink.remove(at); // cleared: nothing of the pack's there any more
+        else job.placedSink.put(at, net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
     }
 
     private static void applyOp(ServerLevel level, BlockPos pos, CampBlueprint.Placement op,
                                 FamilyPalette palette, BuildJob job) {
-        if (pos.getY() <= Earth.bottom(level) || pos.getY() >= Earth.top(level) - 1) return;
+        applyOp(level, pos, op, palette, job, Integer.MIN_VALUE);
+    }
+
+    /**
+     * Applies one step. A foundation column stops above {@code minY} (how deep the builder placing it can reach) and
+     * returns true when it had more to fill below that, for the off-screen pass to finish; a column it filled before
+     * is passed through, not mistaken for the ground.
+     */
+    static boolean applyOp(ServerLevel level, BlockPos pos, CampBlueprint.Placement op,
+                           FamilyPalette palette, BuildJob job, int minY) {
+        if (pos.getY() <= Earth.bottom(level) || pos.getY() >= Earth.top(level) - 1) return false;
 
         if (op.material() == CampBlueprint.Material.FOUNDATION_COLUMN) {
             BlockState fill = palette.foundation.defaultBlockState();
+            String fillId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(palette.foundation).toString();
             BlockPos.MutableBlockPos cur = new BlockPos.MutableBlockPos(pos.getX(), pos.getY(), pos.getZ());
             for (int depth = 0; depth < MAX_FOUNDATION_DEPTH; depth++) {
                 if (cur.getY() <= Earth.bottom(level) + 1 || !Earth.isLoaded(level, cur)) break;
                 BlockState existing = level.getBlockState(cur);
+                if (existing.is(palette.foundation) && job.placedSink != null && fillId.equals(job.placedSink.get(
+                        BlockPos.asLong(cur.getX() - job.origin.getX(), cur.getY() - job.origin.getY(), cur.getZ() - job.origin.getZ())))) {
+                    cur.move(0, -1, 0); // its own fill from before: go on below it
+                    continue;
+                }
                 if (existing.blocksMotion() && existing.getFluidState().isEmpty() && !existing.canBeReplaced()) {
                     break;
                 }
@@ -2072,37 +2189,38 @@ public final class CampBuilder {
                 if (job.protectPlayerBlocks && SiteFinder.isPlayerBlockAt(level, job.origin, cur, job.ownedPositions, job.ownedContainers)) {
                     break;
                 }
+                if (cur.getY() < minY) return true; // deeper than the builder can reach
                 level.setBlock(cur, fill, Block.UPDATE_CLIENTS);
                 placed(job, cur, fill);
                 cur.move(0, -1, 0);
             }
-            return;
+            return false;
         }
 
         BlockState existing = level.getBlockState(pos);
-        if (SiteFinder.isIndestructibleBlock(existing)) return;
+        if (SiteFinder.isIndestructibleBlock(existing)) return false;
         // NEVER overwrite any non-empty container (even on manual operator builds)
-        if (SiteFinder.isNonEmptyContainer(level, pos, existing)) return;
+        if (SiteFinder.isNonEmptyContainer(level, pos, existing)) return false;
         if (job.protectPlayerBlocks && SiteFinder.isPlayerBlockAt(level, job.origin, pos, job.ownedPositions, job.ownedContainers)) {
-            return;
+            return false;
         }
 
         boolean wasChestOrBarrel = existing.getBlock() instanceof AbstractChestBlock<?>
                 || existing.getBlock() instanceof BarrelBlock;
 
         // Preserve existing containers on repair/rebuild so loot is never destroyed or infinitely refilled
-        if (op.material().isChest() && existing.getBlock() instanceof AbstractChestBlock<?>) return;
-        if (op.material() == CampBlueprint.Material.BARREL && existing.getBlock() instanceof BarrelBlock) return;
+        if (op.material().isChest() && existing.getBlock() instanceof AbstractChestBlock<?>) return false;
+        if (op.material() == CampBlueprint.Material.BARREL && existing.getBlock() instanceof BarrelBlock) return false;
 
         BlockState target = palette.resolve(op, job.packColor);
         if (op.material() == CampBlueprint.Material.AIR) {
             // Never destroy containers during teardown/clearing
-            if (wasChestOrBarrel || SiteFinder.isContainerBlock(level, pos, existing)) return;
+            if (wasChestOrBarrel || SiteFinder.isContainerBlock(level, pos, existing)) return false;
             if (!existing.isAir() && level.setBlock(pos, target, Block.UPDATE_CLIENTS)) placed(job, pos, target);
-            return;
+            return false;
         }
 
-        if (op.material().pass == CampBlueprint.PASS_DECOR && !target.canSurvive(level, pos)) return;
+        if (op.material().pass == CampBlueprint.PASS_DECOR && !target.canSurvive(level, pos)) return false;
         if (level.setBlock(pos, target, Block.UPDATE_ALL)) placed(job, pos, target);
 
         if (op.material().isChest() && !wasChestOrBarrel) {
@@ -2129,6 +2247,7 @@ public final class CampBuilder {
                 }
             }
         }
+        return false;
     }
 
     /**
@@ -2156,7 +2275,10 @@ public final class CampBuilder {
             if (!SiteFinder.isChunkReady(level, pos.getX() >> 4, pos.getZ() >> 4)) continue;
             BlockState existing = level.getBlockState(pos);
             Block block = existing.getBlock();
-            boolean replaceable = block instanceof BannerBlock || block instanceof WallBannerBlock
+            String mine = pack.placed.get(BlockPos.asLong(op.rx(), op.ry(), op.rz()));
+            boolean ours = pack.placed.isEmpty() // an old settlement with no record: any banner on its spot
+                    || (mine != null && mine.equals(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(block).toString()));
+            boolean replaceable = ((block instanceof BannerBlock || block instanceof WallBannerBlock) && ours)
                     || (!pack.builtRuined && op.material() == CampBlueprint.Material.VASSAL_BANNER && existing.isAir());
             if (!replaceable) continue;
             if (!pack.builtRuined && op.material() == CampBlueprint.Material.VASSAL_BANNER && existing.isAir()) {
@@ -2169,7 +2291,12 @@ public final class CampBuilder {
                     level.setBlock(base, palette.pillar.defaultBlockState(), Block.UPDATE_ALL);
                 }
             }
-            level.setBlock(pos, palette.resolve(op, displayColor), Block.UPDATE_ALL);
+            BlockState banner = palette.resolve(op, displayColor);
+            level.setBlock(pos, banner, Block.UPDATE_ALL);
+            if (!pack.placed.isEmpty()) { // its record follows the new banner, so the banner stays the pack's
+                pack.placed.put(BlockPos.asLong(op.rx(), op.ry(), op.rz()),
+                        net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(banner.getBlock()).toString());
+            }
         }
 
         // Clear stale vassal banners (and matching FENCE/PILLAR posts) beyond current vassals.size()

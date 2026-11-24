@@ -170,6 +170,7 @@ public final class Live {
             tag.putString("DeathLootTable", BuiltInLootTables.EMPTY.location().toString());
             mob.load(tag);
             mob.skipDropExperience();
+            for (EquipmentSlot slot : EquipmentSlot.values()) mob.setDropChance(slot, 0f); // its gear too (a brute's axe)
         }
         return mob;
     }

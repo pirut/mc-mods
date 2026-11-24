@@ -7,6 +7,7 @@ import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.SettlementTier;
 import io.github.pirut.bloodfeud.game.Earth;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
@@ -176,25 +177,52 @@ public final class SiteFinder {
     }
 
     /**
-     * Whether a footprint centred on {@code (x, z)} would overlap a site another pack has chosen (built or not; the
-     * choice reserves it) or an abandoned settlement. Null {@code feud} checks nothing.
+     * How far a chosen site reserves the ground round it: a Stronghold's footprint, or more if it is already bigger.
+     * Nothing else is built inside another pack's reservation.
      */
-    public static boolean claimedByAnother(Feud feud, Pack pack, int x, int z, int radius) {
-        if (feud == null) return false;
-        int margin = 2 * CampBlueprint.FOOTPRINT_MARGIN;
+    public static int reservedRadius(Pack pack) {
+        int tier = Math.max(pack.builtTier, pack.tier == null ? 1 : pack.tier.level);
+        if (pack.works != null) tier = Math.max(tier, pack.works.toTier);
+        return Math.max(SettlementTier.STRONGHOLD.radius, SettlementTier.byLevel(Math.max(1, tier)).radius)
+                + CampBlueprint.FOOTPRINT_MARGIN;
+    }
+
+    /**
+     * The ground other packs of {@code feud} hold, as {@code {minX, minZ, maxX, maxZ}}: their reservations, and
+     * abandoned settlements. Null {@code feud} holds nothing.
+     */
+    public static List<int[]> heldByOthers(Feud feud, Pack pack) {
+        List<int[]> held = new ArrayList<>();
+        if (feud == null) return held;
         for (Pack other : feud.packs.values()) {
             if (other == pack || !other.siteSet || !other.dimension.equals(pack.dimension)) continue;
-            int tier = Math.max(other.builtTier, other.tier == null ? 1 : other.tier.level);
-            if (other.works != null) tier = Math.max(tier, other.works.toTier);
-            int r = SettlementTier.byLevel(Math.max(1, tier)).radius;
-            if (Math.max(Math.abs(other.siteX - x), Math.abs(other.siteZ - z)) <= radius + r + margin) return true;
+            int r = reservedRadius(other);
+            held.add(new int[]{other.siteX - r, other.siteZ - r, other.siteX + r, other.siteZ + r});
         }
         for (Feud.AbandonedSite site : feud.abandonedSites) {
             if (!site.dimension().equals(pack.dimension)) continue;
-            int r = SettlementTier.byLevel(Math.max(1, site.builtTier())).radius;
-            if (Math.max(Math.abs(site.siteX() - x), Math.abs(site.siteZ() - z)) <= radius + r + margin) return true;
+            int r = SettlementTier.byLevel(Math.max(1, site.builtTier())).radius + CampBlueprint.FOOTPRINT_MARGIN;
+            held.add(new int[]{site.siteX() - r, site.siteZ() - r, site.siteX() + r, site.siteZ() + r});
+        }
+        return held;
+    }
+
+    /** Whether a rectangle {@code {minX, minZ, maxX, maxZ}} overlaps any of {@code held}. */
+    public static boolean overlapsAny(List<int[]> held, int minX, int minZ, int maxX, int maxZ) {
+        for (int[] h : held) {
+            if (minX <= h[2] && maxX >= h[0] && minZ <= h[3] && maxZ >= h[1]) return true;
         }
         return false;
+    }
+
+    /**
+     * Whether a camp of {@code radius} centred on {@code (x, z)} would reach into ground another pack of {@code feud}
+     * holds (see {@link #heldByOthers}). Null {@code feud} checks nothing.
+     */
+    public static boolean claimedByAnother(Feud feud, Pack pack, int x, int z, int radius) {
+        if (feud == null) return false;
+        int r = radius + CampBlueprint.FOOTPRINT_MARGIN;
+        return overlapsAny(heldByOthers(feud, pack), x - r, z - r, x + r, z + r);
     }
 
     static Site evaluateAutoCandidate(ServerLevel level, int cx, int cz, int radius, int facing) {
@@ -540,67 +568,65 @@ public final class SiteFinder {
     }
 
     /**
-     * A settlement's own positions, which know what the settlement puts at each: only those blocks (or natural ones)
-     * may be replaced there. A plain set of positions protects everything that isn't natural.
+     * A settlement's own positions. Exact (what the pack has put down, {@code Pack.placed}): a position is the pack's
+     * only while the very block it placed still stands there. Legacy (a settlement built before 0.1.0-beta.2, with no
+     * such record): the blocks its blueprint puts at each position, in any color.
      */
     public static final class Owned extends java.util.AbstractSet<CampBlueprint.Spot> {
         private final Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials;
         private final FamilyPalette palette;
-        /** The pack colors (dye ids) its colored blocks come in; null for any color. */
-        private final Set<Integer> colors;
-        private final Map<CampBlueprint.Material, Set<net.minecraft.world.level.block.Block>> colored = new java.util.EnumMap<>(CampBlueprint.Material.class);
-        /** Blocks a running build has put down itself, exactly: only that block counts as the pack's there. */
-        private final Map<CampBlueprint.Spot, net.minecraft.world.level.block.Block> exact = new java.util.HashMap<>();
+        private final Map<Long, String> placed;
 
+        /** Legacy: by blueprint. */
         public Owned(Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials, Family family) {
-            this(materials, family, null);
-        }
-
-        /**
-         * @param colors the dye colors the pack's wool, carpets and banners can be in (its own, its liege's, its
-         *               vassals'); a player's block in any other color is the player's
-         */
-        public Owned(Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials, Family family, Set<Integer> colors) {
             this.materials = materials;
             this.palette = FamilyPalette.of(family);
-            this.colors = colors == null ? null : Set.copyOf(colors);
+            this.placed = null;
         }
 
-        /** The build put {@code block} at {@code rel}: from now on that block there is the pack's. */
-        public void placed(CampBlueprint.Spot rel, net.minecraft.world.level.block.Block block) {
-            exact.put(rel, block);
+        /** Exact: a live view of what the pack has put down (offset {@code BlockPos.asLong} to block id). */
+        public Owned(Map<Long, String> placed) {
+            this.materials = Map.of();
+            this.palette = null;
+            this.placed = placed;
+        }
+
+        public boolean exact() {
+            return placed != null;
         }
 
         boolean isSettlementBlock(CampBlueprint.Spot rel, BlockState state) {
-            net.minecraft.world.level.block.Block mine = exact.get(rel);
-            if (mine != null && state.is(mine)) return true;
-            Set<CampBlueprint.Material> placed = materials.get(rel);
-            if (placed == null) return false;
-            for (CampBlueprint.Material m : placed) {
-                Set<net.minecraft.world.level.block.Block> blocks = colors == null ? palette.blocks(m)
-                        : colored.computeIfAbsent(m, k -> palette.blocks(k, colors));
-                if (blocks.contains(state.getBlock())) return true;
+            if (placed != null) {
+                String mine = placed.get(BlockPos.asLong(rel.rx(), rel.ry(), rel.rz()));
+                return mine != null && mine.equals(BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
+            }
+            Set<CampBlueprint.Material> here = materials.get(rel);
+            if (here == null) return false;
+            for (CampBlueprint.Material m : here) {
+                if (palette.blocks(m).contains(state.getBlock())) return true;
             }
             return false;
         }
 
         @Override
         public boolean contains(Object o) {
-            return materials.containsKey(o) || exact.containsKey(o);
+            if (placed != null) {
+                return o instanceof CampBlueprint.Spot spot && placed.containsKey(BlockPos.asLong(spot.rx(), spot.ry(), spot.rz()));
+            }
+            return materials.containsKey(o);
         }
 
         @Override
         public java.util.Iterator<CampBlueprint.Spot> iterator() {
-            Set<CampBlueprint.Spot> all = new java.util.HashSet<>(materials.keySet());
-            all.addAll(exact.keySet());
-            return all.iterator();
+            if (placed == null) return materials.keySet().iterator();
+            java.util.List<CampBlueprint.Spot> spots = new java.util.ArrayList<>(placed.size());
+            for (long k : placed.keySet()) spots.add(new CampBlueprint.Spot(BlockPos.getX(k), BlockPos.getY(k), BlockPos.getZ(k)));
+            return spots.iterator();
         }
 
         @Override
         public int size() {
-            int n = materials.size();
-            for (CampBlueprint.Spot spot : exact.keySet()) if (!materials.containsKey(spot)) n++;
-            return n;
+            return placed != null ? placed.size() : materials.size();
         }
     }
 

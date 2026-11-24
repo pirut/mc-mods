@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static io.github.pirut.bloodfeud.game.EarthWorldFixture.X;
@@ -142,7 +143,7 @@ class CampCrewTest {
         int placed = s.level.placeSounds;
         assertTrue(placed >= 20 && placed <= 45, "about three blocks a second, placed " + placed);
         assertTrue(s.done() > 0 && s.done() < total, "part built: " + s.done() + "/" + total);
-        assertTrue(s.level.chunks.tickets.isEmpty(), "nothing is held loaded for a build someone can see");
+        assertFalse(s.level.chunks.tickets.isEmpty(), "an active build holds its site, seen or not");
         s.tick(20 * 400);
         s.assertCampStands();
     }
@@ -482,6 +483,7 @@ class CampCrewTest {
         assertEquals(1, s.pack.builtTier);
         s.pack.tier = SettlementTier.OUTPOST;
         s.pack.grunts = 6;
+        java.util.Set<Long> campPlaced = new java.util.HashSet<>(s.pack.placed.keySet());
         java.util.Set<BlockPos> campSpots = new java.util.HashSet<>();
         for (CampBlueprint.Placement op : CampBlueprint.plan(s.pack.id, s.pack.family, s.pack.color, List.of(), s.pack.siteFacing, 0, 1).placements()) {
             campSpots.add(s.at(op));
@@ -495,12 +497,13 @@ class CampCrewTest {
             s.tick(1);
             if (s.pack.builtTier >= 2) break;
             if (s.pack.works == null) continue;
-            long walls = s.pack.works.placed.stream().filter(k -> upgradeOps.containsKey(k)
+            long walls = s.pack.placed.keySet().stream().filter(k -> !campPlaced.contains(k) && upgradeOps.containsKey(k)
                     && upgradeOps.get(k).pass() == CampBlueprint.PASS_STRUCTURE).count();
             if (walls >= 5) break;
         }
         assertNotNull(s.pack.works, "the upgrade is under way");
-        java.util.Set<Long> placed = new java.util.HashSet<>(s.pack.works.placed);
+        java.util.Set<Long> placed = new java.util.HashSet<>(s.pack.placed.keySet());
+        placed.removeAll(campPlaced);
         assertFalse(placed.isEmpty());
         s.pack.ruined = true; // beaten down before the outpost was done
         for (int i = 0; i < 5; i++) s.builder.tick(s.level.getServer(), s.data, s.clock++);
@@ -544,7 +547,9 @@ class CampCrewTest {
         s.tick(20); // one scheduled pass
         assertTrue(s.pack.siteSet && b.siteSet, "both chose a site");
         int apart = Math.max(Math.abs(s.pack.siteX - b.siteX), Math.abs(s.pack.siteZ - b.siteZ));
-        assertTrue(apart > 2 * SettlementTier.CAMP.radius + 2 * CampBlueprint.FOOTPRINT_MARGIN, "apart by " + apart);
+        // The first site reserved a Stronghold's ground; the second camp keeps out of it.
+        assertTrue(apart > SettlementTier.STRONGHOLD.radius + SettlementTier.CAMP.radius + 2 * CampBlueprint.FOOTPRINT_MARGIN,
+                "apart by " + apart);
     }
 
     @Test
@@ -622,5 +627,271 @@ class CampCrewTest {
         s.pack.tier = SettlementTier.CAMP;
         s.tick(20 * 400);
         assertEquals("Camp", s.pack.settlementLabel(true));
+    }
+
+    // ------------------------------------------------------------------ round 2 of review: one invariant each
+
+    @Test
+    void anActiveBuildRenewsItsHoldsEvenWhenItsSiteIsLoaded() {
+        Site s = site();
+        BloodFeud.config().campBlocksPerMinute = 10; // a build far longer than a ticket lasts
+        s.tick(60);
+        assertNotNull(s.pack.works);
+        int adds = s.level.chunks.ticketAdds;
+        for (int i = 0; i < 5; i++) {
+            s.tick(200);
+            assertFalse(s.level.chunks.tickets.isEmpty(), "still held after " + (i + 1) * 10 + " s");
+        }
+        assertTrue(s.level.chunks.ticketAdds >= adds + 5, "renewed as it went: " + adds + " -> " + s.level.chunks.ticketAdds);
+    }
+
+    @Test
+    void aCrewThatIsntGettingAnywhereKeepsItsSlot() {
+        Site s = site();
+        BloodFeud.config().campBlocksPerMinute = 1; // a crew busy fighting, or idle: next to no progress
+        s.tick(60);
+        assertNotNull(s.pack.works);
+        for (int i = 0; i < 6; i++) {
+            s.tick(200);
+            assertEquals(1, s.level.chunks.tickets.size(), "its ground is loaded, so it keeps its slot (" + i + ")");
+        }
+    }
+
+    @Test
+    void aBuilderIsOnlyMovedWhereItCanStand() {
+        Site s = site();
+        BlockPos at = new BlockPos(X + 3, 71, Z);
+        assertTrue(CampBuilder.safeToStand(s.level, at, 0.6f, 1.95f), "open ground");
+        s.level.setBlock(at.above(), Blocks.STONE.defaultBlockState(), 3);
+        assertFalse(CampBuilder.safeToStand(s.level, at, 0.6f, 1.95f), "walled in");
+        s.level.setBlock(at.above(), Blocks.AIR.defaultBlockState(), 3);
+        s.level.setBlock(at.below(), Blocks.AIR.defaultBlockState(), 3);
+        assertFalse(CampBuilder.safeToStand(s.level, at, 0.6f, 1.95f), "its support is gone");
+        s.level.setBlock(at.below(), Blocks.GRAVEL.defaultBlockState(), 3);
+        s.level.chunks.loaded = false;
+        assertFalse(CampBuilder.safeToStand(s.level, at, 0.6f, 1.95f), "not loaded");
+
+        Site e = earth();
+        BlockPos high = new BlockPos(X, 1531, Z);
+        assertFalse(CampBuilder.safeToStand(e.level, high, 0.6f, 1.95f), "the Earth's void");
+        e.level.load(high, 4, 4, 4);
+        assertTrue(CampBuilder.safeToStand(e.level, high, 0.6f, 1.95f));
+    }
+
+    @Test
+    void aStepNobodyCouldSeeIsLeftOutAndAnyOtherIsNot() {
+        Site s = site();
+        BlockPos buried = new BlockPos(X + 3, 65, Z);
+        assertTrue(CampBuilder.enclosed(s.level, buried), "under the ground on every side");
+        assertFalse(CampBuilder.enclosed(s.level, new BlockPos(X + 3, 70, Z)), "the top of the ground can be seen");
+    }
+
+    private static int stepOf(List<CampBlueprint.Placement> steps, CampBlueprint.Material material) {
+        for (int i = 0; i < steps.size(); i++) if (steps.get(i).material() == material) return i;
+        throw new AssertionError("no " + material);
+    }
+
+    @Test
+    void deferredStepsWaitForEveryoneToLookAwayThenGoUpOffScreen() {
+        Site s = site();
+        List<CampBlueprint.Placement> steps = CampBuilder.crewOrder(CampBlueprint.plan(s.pack.id, s.pack.family,
+                s.pack.color, List.of(), s.pack.siteFacing, 0, 1).placements());
+        int fire = stepOf(steps, CampBlueprint.Material.CAMPFIRE);
+        int stash = stepOf(steps, CampBlueprint.Material.CHEST_CAMP);
+        Pack.Works w = new Pack.Works(false, 0, 1, s.pack.color, List.of(), Set.of(), Set.of());
+        w.total = steps.size();
+        w.done = steps.size(); // its crew got through everything but two steps it couldn't place
+        w.deferred.add(fire);
+        w.deferred.add(stash);
+        s.pack.works = w;
+        s.pack.buildStarted = true;
+        s.tick(200);
+        assertTrue(s.level.getBlockState(s.at(steps.get(fire))).isAir(), "deferred steps wait while someone can see the site");
+        assertTrue(s.level.chunks.tickets.isEmpty(), "holding nothing while it waits");
+        assertEquals(0, s.pack.builtTier);
+        s.seen = false;
+        s.level.chunks.loaded = false;
+        s.tick(80);
+        assertTrue(s.level.getBlockState(s.at(steps.get(fire))).getBlock() instanceof CampfireBlock, "then go up off screen");
+        assertFalse(((Container) s.level.getBlockEntity(s.at(steps.get(stash)))).isEmpty(), "the stash filled as placed");
+        assertEquals(1, s.pack.builtTier);
+        assertTrue(s.level.chunks.tickets.isEmpty());
+    }
+
+    @Test
+    void aFoundationTooDeepForItsBuilderIsFinishedOffScreen() {
+        FakeLevel level = EarthWorldFixture.level(64, -64, 320); // the ground is six blocks under the site
+        level.key = Level.OVERWORLD;
+        level.cubes = null;
+        level.difficulty = Difficulty.PEACEFUL;
+        FeudData data = new FeudData();
+        Pack pack = new Pack(new UUID(5, 6), Family.ROTTEN, "minecraft:overworld", "Test", 3, X, Z, 0);
+        pack.grunts = 3;
+        pack.siteSet = true;
+        pack.siteX = X;
+        pack.siteY = 71;
+        pack.siteZ = Z;
+        data.feud.packs.put(pack.id, pack);
+        Site s = new Site(level, data, pack);
+        List<CampBlueprint.Placement> steps = CampBuilder.crewOrder(CampBlueprint.plan(pack.id, pack.family,
+                pack.color, List.of(), pack.siteFacing, 0, 1).placements());
+        int column = stepOf(steps, CampBlueprint.Material.FOUNDATION_COLUMN);
+        CampBlueprint.Placement op = steps.get(column);
+        BlockPos top = s.at(op);
+        net.minecraft.world.level.block.Block fill = io.github.pirut.bloodfeud.game.camp.FamilyPalette.of(pack.family).foundation;
+        // Its builder filled the top two blocks it could reach, and deferred the rest.
+        for (int d = 0; d < 2; d++) {
+            level.setBlock(top.below(d), fill.defaultBlockState(), 3);
+            pack.placed.put(BlockPos.asLong(op.rx(), op.ry() - d, op.rz()),
+                    net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(fill).toString());
+        }
+        Pack.Works w = new Pack.Works(false, 0, 1, pack.color, List.of(), Set.of(), Set.of());
+        w.total = steps.size();
+        w.done = steps.size();
+        w.placedCount = 2;
+        w.deferred.add(column);
+        pack.works = w;
+        pack.buildStarted = true;
+        s.seen = false;
+        level.chunks.loaded = false;
+        s.tick(80);
+        for (int y = top.getY(); y > 64; y--) {
+            assertTrue(level.getBlockState(new BlockPos(top.getX(), y, top.getZ())).is(fill), "filled down to the ground at " + y);
+        }
+    }
+
+    private static int wool(Site s, net.minecraft.world.level.block.Block wool) {
+        int n = 0;
+        for (CampBlueprint.Placement op : CampBlueprint.plan(s.pack.id, s.pack.family, s.pack.color, List.of(), s.pack.siteFacing, 0, 1).placements()) {
+            if (s.level.getBlockState(s.at(op)).is(wool)) n++;
+        }
+        return n;
+    }
+
+    @Test
+    void aVassalThatGoesFreeStillRuinsTheWoolItPutUpInItsLiegesColor() {
+        Site s = site();
+        Pack king = extraPack(s, new UUID(8, 8), X + 300); // color 9, cyan
+        s.pack.liege = king.id; // built as the King's vassal: in the King's color
+        s.tick(20 * 400);
+        assertEquals(1, s.pack.builtTier);
+        int before = wool(s, Blocks.CYAN_WOOL);
+        assertTrue(before > 20, "built in its liege's cyan: " + before);
+        s.pack.liege = null; // it goes free
+        s.pack.ruined = true;
+        CampBuilder manual = s.newBuilder();
+        assertTrue(manual.queueRuin(s.level, s.data.feud, s.pack, 1, false, s.clock, null).queued());
+        for (int i = 0; i < 400 && manual.isBuilding(s.pack.id); i++) manual.tick(s.level.getServer(), s.data, s.clock++);
+        int after = wool(s, Blocks.CYAN_WOOL) + wool(s, Blocks.LIGHT_BLUE_WOOL);
+        assertTrue(after < before / 2, "its own wool fell to ruin, whatever color: " + before + " -> " + after);
+    }
+
+    @Test
+    void anOldSettlementWithNoRecordStillRuinsByItsBlueprint() {
+        Site s = site();
+        s.tick(20 * 400);
+        assertEquals(1, s.pack.builtTier);
+        s.pack.placed.clear(); // as built by 0.1.0-beta.1
+        int before = wool(s, Blocks.LIGHT_BLUE_WOOL);
+        s.pack.ruined = true;
+        CampBuilder manual = s.newBuilder();
+        assertTrue(manual.queueRuin(s.level, s.data.feud, s.pack, 1, false, s.clock, null).queued());
+        for (int i = 0; i < 400 && manual.isBuilding(s.pack.id); i++) manual.tick(s.level.getServer(), s.data, s.clock++);
+        assertTrue(wool(s, Blocks.LIGHT_BLUE_WOOL) < before / 2);
+        assertTrue(s.pack.placed.isEmpty(), "and it goes on without a record");
+    }
+
+    @Test
+    void anUpgradeBesideANeighbourKeepsOutOfItsGround() {
+        Site s = site();
+        Pack neighbour = extraPack(s, new UUID(5, 9), X + 24); // two camps 24 blocks apart, from an older version
+        s.tick(20 * 400);
+        assertEquals(1, s.pack.builtTier);
+        assertEquals(1, neighbour.builtTier);
+        java.util.Set<Long> camp = new java.util.HashSet<>(s.pack.placed.keySet());
+        s.pack.tier = SettlementTier.STRONGHOLD;
+        s.pack.grunts = 20;
+        s.seen = false; // built off screen, quickly
+        for (int i = 0; i < 20 * 600 && s.pack.builtTier < 3; i++) s.tick(1);
+        assertEquals(3, s.pack.builtTier, "the stronghold went up");
+        int r = io.github.pirut.bloodfeud.game.camp.SiteFinder.reservedRadius(neighbour);
+        int inside = 0;
+        for (long k : s.pack.placed.keySet()) {
+            if (camp.contains(k)) continue; // its own camp, from before
+            int x = s.pack.siteX + BlockPos.getX(k), z = s.pack.siteZ + BlockPos.getZ(k);
+            if (Math.abs(x - neighbour.siteX) <= r && Math.abs(z - neighbour.siteZ) <= r) inside++;
+        }
+        assertEquals(0, inside, "nothing of the stronghold on the neighbour's ground");
+        assertFalse(s.pack.skippedZones.isEmpty(), "the parts that would have reached in were left out");
+        BlockPos fire = null;
+        for (CampBlueprint.Placement op : CampBlueprint.plan(neighbour.id, neighbour.family, neighbour.color, List.of(), neighbour.siteFacing, 0, 1).placements()) {
+            if (op.material() == CampBlueprint.Material.CAMPFIRE) fire = new BlockPos(neighbour.siteX + op.rx(), neighbour.siteY + op.ry(), neighbour.siteZ + op.rz());
+        }
+        assertTrue(s.level.getBlockState(fire).getBlock() instanceof CampfireBlock, "the neighbour's camp stands");
+    }
+
+    @Test
+    void aPackThatDiesBeforeItPlacesAnythingLeavesNoRuins() {
+        Site s = site();
+        Pack.Works w = new Pack.Works(false, 0, 1, s.pack.color, List.of(), Set.of(), Set.of());
+        s.pack.works = w;
+        s.level.chunks.loaded = false;
+        s.level.chunks.ticketsLoad = false; // its ground never comes, so nothing is placed
+        s.tick(100);
+        assertTrue(s.builder.isBuilding(s.pack.id));
+        assertTrue(s.pack.placed.isEmpty());
+        s.data.feud.packs.remove(s.pack.id);
+        s.tick(2);
+        assertTrue(s.data.feud.abandonedSites.isEmpty(), "no abandoned site where nothing was built");
+        assertTrue(s.level.chunks.tickets.isEmpty(), "its reservation and holds went with it");
+    }
+
+    @Test
+    void aDeadPacksSiteSearchStops() throws InterruptedException {
+        Site s = earth();
+        s.pack.siteSet = false;
+        s.seen = false;
+        s.tick(40);
+        long until = System.nanoTime() + 5_000_000_000L;
+        while (!s.builder.searching(s.pack.id) && System.nanoTime() < until) {
+            s.tick(1);
+            Thread.sleep(2);
+        }
+        assertTrue(s.builder.searching(s.pack.id), "an off-screen search on the Earth");
+        s.data.feud.packs.remove(s.pack.id);
+        s.tick(41);
+        assertFalse(s.builder.searching(s.pack.id), "stops when the pack dies");
+    }
+
+    @Test
+    void aSavedBuildFromBeforeThereWasARecordStartsOver() throws Exception {
+        Site s = site();
+        s.tick(260);
+        assertTrue(s.done() > 0);
+        CompoundTag saved = s.data.save(new CompoundTag(), null);
+        CompoundTag works = saved.getList("packs", net.minecraft.nbt.Tag.TAG_COMPOUND).getCompound(0).getCompound("works");
+        works.remove("v"); // as saved by an earlier build of this change
+        Method load = FeudData.class.getDeclaredMethod("load", CompoundTag.class, HolderLookup.Provider.class);
+        load.setAccessible(true);
+        FeudData data = (FeudData) load.invoke(null, saved, null);
+        assertEquals(0, data.feud.pack(s.pack.id).works.done, "it starts again from its first step");
+    }
+
+    @Test
+    void aRepairCutShortLeavesSomethingTheNextRuinCovers() {
+        Pack p = packWith(5);
+        p.builtTier = 1;
+        p.builtRuined = true;
+        p.works = new Pack.Works(true, 1, 2, 0, List.of(), Set.of(), Set.of());
+        p.works.placedCount = 12;
+        CampBuilder.abandonWorks(p);
+        assertNull(p.works);
+        assertEquals(2, p.builtTier, "counted as built to the tier it was repairing to");
+        assertFalse(p.builtRuined, "and intact, so the next ruin covers what it put back");
+        Pack fresh = packWith(5);
+        fresh.works = new Pack.Works(false, 0, 1, 0, List.of(), Set.of(), Set.of());
+        fresh.works.placedCount = 12;
+        CampBuilder.abandonWorks(fresh);
+        assertEquals(0, fresh.builtTier, "a first camp keeps buildStarted instead");
     }
 }
