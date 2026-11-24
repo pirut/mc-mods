@@ -291,6 +291,8 @@ public final class CampBuilder {
         if (Earth.keep(level, packId, origin.getX() - reach, origin.getY() - SiteFinder.SITE_DOWN, origin.getZ() - reach,
                 origin.getX() + reach, origin.getY() + SiteFinder.SITE_UP, origin.getZ() + reach)) {
             cubeHolds.put(packId, level.dimension());
+            BloodFeud.LOG.info("Blood Feud: keeping the Earth's cubes round {} {} {} loaded for an off-screen build",
+                    origin.getX(), origin.getY(), origin.getZ());
         }
     }
 
@@ -299,6 +301,7 @@ public final class CampBuilder {
         if (dimension == null || server == null) return;
         ServerLevel level = server.getLevel(dimension);
         if (level != null) Earth.release(level, packId);
+        BloodFeud.LOG.info("Blood Feud: let go of the Earth's cubes kept for an off-screen build");
     }
 
     /** Whether this mob is building a settlement right now. */
