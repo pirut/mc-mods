@@ -951,8 +951,10 @@ public final class CampBuilder {
             if (!SiteFinder.isFootprintLoaded(level, pack.homeX, pack.homeZ, searchRadius)) {
                 // No player is near enough to load it: load it for the search, off screen.
                 searches.remove(pack.id);
-                holdSite(server, level, pack.id, new BlockPos(pack.homeX, 0, pack.homeZ), searchRadius, gameTime,
+                boolean held = holdSite(server, level, pack.id, new BlockPos(pack.homeX, 0, pack.homeZ), searchRadius, gameTime,
                         TicketPurpose.PREP, false);
+                BloodFeud.LOG.debug("Blood Feud: {}'s home isn't loaded for its site search; {}", pack.title(),
+                        held ? "holding it" : "waiting for a slot");
                 return;
             }
             SiteFinder.Site site;
@@ -967,6 +969,8 @@ public final class CampBuilder {
                 site = SiteFinder.findAutoSite(level, pack, target, feud);
             }
             if (site == null) {
+                BloodFeud.LOG.debug("Blood Feud: {} found no site near its home this time (next from candidate {})",
+                        pack.title(), pack.siteSearchOffset);
                 releaseTicket(server, pack.id);
                 pack.siteRetryAt = gameTime + RETRY_COOLDOWN_TICKS;
                 return;
@@ -1883,9 +1887,9 @@ public final class CampBuilder {
         BlockPos best = null;
         double bestD = Double.MAX_VALUE;
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
-        for (int dx = -4; dx <= 4; dx++) {
-            for (int dz = -4; dz <= 4; dz++) {
-                for (int dy = -3; dy <= 2; dy++) {
+        for (int dx = -5; dx <= 5; dx++) {
+            for (int dz = -5; dz <= 5; dz++) {
+                for (int dy = -4; dy <= 3; dy++) {
                     at.set(pos.getX() + dx, pos.getY() + dy, pos.getZ() + dz);
                     if (at.equals(pos) || at.above().equals(pos)) continue;
                     if (!Earth.isLoaded(level, at.below()) || !Earth.isLoaded(level, at.above())) continue;
