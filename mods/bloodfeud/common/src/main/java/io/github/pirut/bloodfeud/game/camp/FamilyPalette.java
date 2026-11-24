@@ -194,6 +194,18 @@ public final class FamilyPalette {
         });
     }
 
+    /** Every block this family puts down for a material in these pack colors (and their accents). */
+    public Set<Block> blocks(CampBlueprint.Material material, Set<Integer> colors) {
+        Set<Block> out = new HashSet<>();
+        for (int color : colors) {
+            for (int meta : new int[]{0, Math.floorMod(color, 16)}) {
+                out.add(resolve(new CampBlueprint.Placement(0, 0, 0, material, CampBlueprint.Facing.NORTH, meta, material.pass, ""),
+                        color).getBlock());
+            }
+        }
+        return Set.copyOf(out);
+    }
+
     public BlockState resolve(CampBlueprint.Placement op, int packColor) {
         DyeColor primary = DyeColor.byId(Math.floorMod(packColor, 16));
         DyeColor accent = accentColor(primary);

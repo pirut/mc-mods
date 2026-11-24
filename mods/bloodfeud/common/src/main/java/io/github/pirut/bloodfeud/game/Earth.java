@@ -375,8 +375,14 @@ public final class Earth {
         }
     }
 
-    /** Cubes kept for each owner: how many holders (one per 3x5x3-cube tile) it took. */
-    private static final Map<Object, Integer> kept = new HashMap<>();
+    /**
+     * Cubes kept for each owner: the world and release method they were kept with, and how many holders (one per
+     * tile) it took. Releasing uses these, so a hold is let go even after Earth Platform stopped answering.
+     */
+    private static final Map<Object, Kept> kept = new HashMap<>();
+
+    private record Kept(Object cubes, Method release, int tiles) {
+    }
 
     /** One tile of an owner's kept box: Earth Platform keeps 3x3 columns, one cube below to three above, per holder. */
     private record Hold(Object owner, int tile) {
@@ -390,47 +396,66 @@ public final class Earth {
 
     /**
      * Keeps every cube of the box loaded for {@code owner} though no player is near, until {@link #release}d. It
-     * doesn't load them: {@link #ready} asks for them. False where this Earth Platform can't keep cubes.
+     * doesn't load them: {@link #ready} asks for them. False where this Earth Platform can't keep cubes. If keeping
+     * fails part way, what was kept is let go before this returns.
      */
     public static boolean keep(ServerLevel level, Object owner, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         if (!canKeep(level)) return false;
         Api a = api();
+        Object cubes;
         try {
-            Object cubes = a.cubesOf().invoke(null, level);
-            if (cubes == null) return false;
-            int tile = 0;
-            // Each holder keeps cubes cx-1..cx+1, cy-1..cy+3, cz-1..cz+3 round the cube of the block it is given.
+            cubes = a.cubesOf().invoke(null, level);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            fail(e);
+            return false;
+        }
+        if (cubes == null) return false;
+        release(owner); // in place of whatever it kept before
+        int tile = 0;
+        boolean done = false;
+        try {
+            // Each holder keeps cubes cx-1..cx+1, cy-1..cy+3, cz-1..cz+1 round the cube of the block it is given.
             for (int cx = (minX >> 4) + 1; ; cx += 3) {
                 for (int cy = (minY >> 4) + 1; ; cy += 5) {
                     for (int cz = (minZ >> 4) + 1; ; cz += 3) {
-                        a.keepAround().invoke(cubes, new Hold(owner, tile++), new BlockPos(cx << 4, cy << 4, cz << 4));
+                        kept.put(owner, new Kept(cubes, a.release(), tile + 1)); // counted before it is taken
+                        a.keepAround().invoke(cubes, new Hold(owner, tile), new BlockPos(cx << 4, cy << 4, cz << 4));
+                        tile++;
                         if (cz + 1 >= maxZ >> 4) break;
                     }
                     if (cy + 3 >= maxY >> 4) break;
                 }
                 if (cx + 1 >= maxX >> 4) break;
             }
-            Integer before = kept.put(owner, tile);
-            if (before != null) for (int i = tile; i < before; i++) a.release().invoke(cubes, new Hold(owner, i));
+            done = true;
             return true;
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             fail(e);
             return false;
+        } finally {
+            if (!done) release(owner);
         }
     }
 
-    /** Lets go of the cubes {@link #keep} kept for {@code owner}; the Earth unloads them once no player is near. */
-    public static void release(ServerLevel level, Object owner) {
-        Integer tiles = kept.remove(owner);
-        if (tiles == null || !canKeep(level)) return;
-        Api a = api();
-        try {
-            Object cubes = a.cubesOf().invoke(null, level);
-            if (cubes == null) return;
-            for (int i = 0; i < tiles; i++) a.release().invoke(cubes, new Hold(owner, i));
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-            fail(e);
+    /**
+     * Lets go of every cube {@link #keep} kept for {@code owner}; the Earth unloads them once no player is near. Works
+     * whatever else failed, with the handles they were kept with.
+     */
+    public static void release(Object owner) {
+        Kept k = kept.remove(owner);
+        if (k == null) return;
+        for (int i = 0; i < k.tiles(); i++) {
+            try {
+                k.release().invoke(k.cubes(), new Hold(owner, i));
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+                BloodFeud.LOG.warn("Blood Feud couldn't let go of a kept Earth cube; it goes when the world closes", e);
+            }
         }
+    }
+
+    /** How many owners have cubes kept. */
+    public static int keptOwners() {
+        return kept.size();
     }
 
     /** Whether {@code owner} has cubes kept. */
@@ -473,10 +498,19 @@ public final class Earth {
         return found;
     }
 
+    /** For tests: forget a failure and look Earth Platform up again. */
+    static void reset() {
+        api = null;
+        failed = false;
+        for (Object owner : new ArrayList<>(kept.keySet())) release(owner);
+        warmColumns.clear();
+        warmWorld = null;
+    }
+
     /** The server stopped: let go of its world. */
     static void stopped() {
         warmColumns.clear();
         warmWorld = null;
-        kept.clear();
+        for (Object owner : new ArrayList<>(kept.keySet())) release(owner);
     }
 }

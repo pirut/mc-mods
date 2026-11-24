@@ -22,6 +22,8 @@ import io.github.pirut.lib.Spots;
 import io.github.pirut.lib.Titles;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.storage.loot.BuiltInLootTables;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -159,6 +161,15 @@ public final class Live {
         if (mob == null) {
             BlockPos at = Spots.near(level, near, 2, Math.max(8, Math.min(16, radius)), level.getRandom());
             if (at != null) mob = spawnGrunt(level, pack, type, at, pack.id, false);
+        }
+        if (mob != null) {
+            // A crew is hired for the build, not for farming: it drops no loot and gives no experience. Killing it
+            // still costs the pack its grunts, stalls the build and is remembered.
+            CompoundTag tag = new CompoundTag();
+            mob.saveWithoutId(tag);
+            tag.putString("DeathLootTable", BuiltInLootTables.EMPTY.location().toString());
+            mob.load(tag);
+            mob.skipDropExperience();
         }
         return mob;
     }

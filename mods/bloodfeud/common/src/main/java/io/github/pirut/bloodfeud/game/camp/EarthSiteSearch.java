@@ -50,6 +50,11 @@ final class EarthSiteSearch {
 
     /** One tick's work. */
     Step step(ServerLevel level, Pack pack) {
+        return step(level, pack, null);
+    }
+
+    /** One tick's work, keeping off sites other packs of {@code feud} hold. */
+    Step step(ServerLevel level, Pack pack, io.github.pirut.bloodfeud.feud.Feud feud) {
         if (heights == null) return NOTHING;
         if (!heights.isDone()) return WAIT;
         if (heights.isCompletedExceptionally()) return NOTHING;
@@ -62,6 +67,7 @@ final class EarthSiteSearch {
             if (span == null) continue;
             int cx = homeX + SiteFinder.SPIRAL_OFFSETS.get(index)[0];
             int cz = homeZ + SiteFinder.SPIRAL_OFFSETS.get(index)[1];
+            if (SiteFinder.claimedByAnother(feud, pack, cx, cz, radius)) continue;
             if (!SiteFinder.isFootprintLoaded(level, cx, cz, radius)) return WAIT;
             int reach = radius + SiteFinder.SITE_SIDE_MARGIN;
             if (!Earth.ready(level, cx - reach, span[0] - SiteFinder.SITE_DOWN, cz - reach,

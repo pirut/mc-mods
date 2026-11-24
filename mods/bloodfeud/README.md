@@ -67,15 +67,18 @@ player-built bases and world spawn.
 **You can watch them build.** While you can see a pack's site, a new camp, an upgrade or a repair goes up block by
 block: a crew of the pack's own mobs walks to each spot and puts the block there, ground first, then walls and roofs,
 with the stash and banners last. A crew of three places about three blocks a second, and a bigger pack sends more
-builders. They mind their work while you watch from a distance, and turn on you if you come within about 8 blocks or
-hit them. While nobody can see the site, it is built off screen instead, quickly, so you find it finished, or well
+builders. A builder has to reach a block and see it to place it: it never builds through a wall or from afar, and one
+that can't walk to its spot is moved to where it can reach it. They mind their work while you watch from a distance,
+and turn on you if you come within about 8 blocks or hit them. While nobody can see the site, it is built off screen instead, quickly, so you find it finished, or well
 along, when you get there. It's one build either way: walk into view in the middle of it and the crew carries on from
 the same block. The Ledger, `/bloodfeud packs` and the map say how far along a build is ("Camp, being built (40%)").
 
 Kill the builders and the build stalls, half built, in view or not. The pack sends a new crew about five minutes later
 if it's still around, and its Brutes remember who killed their builders. Builders are grunts, so killing them also
-weakens the pack. Builders never replace a block a player put in the site: that spot is left as it is and the rest is
-built around it.
+weakens the pack, but they drop nothing and give no experience: a crew is no farm. A pack beaten down mid-build falls to
+ruin, and the ruin (and any later repair) covers whatever it had already put up. Builders never replace a block a
+player put in the site, even after a restart: that spot is left as it is and the rest is built around it. No two packs
+build on the same ground.
 
 Ruins, the crumbling of abandoned settlements, and banner changes still happen off screen, while players are away.
 

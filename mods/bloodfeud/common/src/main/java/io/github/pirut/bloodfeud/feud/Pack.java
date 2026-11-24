@@ -71,6 +71,13 @@ public final class Pack {
         public int done;
         /** Steps in the whole plan, for "40% built". */
         public int total;
+        /** The tier of the settlement whose blocks counted as the pack's own when the build began. */
+        public int ownedTier;
+        /**
+         * Relative positions ({@code BlockPos.asLong} of the offset from the site) where this build has put a block.
+         * Those, and only those, become the pack's own as the build goes, after a restart too.
+         */
+        public final Set<Long> placed = new HashSet<>();
         /** No builders come before this game time: a player killed the last of them. */
         public long stalledUntil;
         /** The player who killed the last builders, or null. */

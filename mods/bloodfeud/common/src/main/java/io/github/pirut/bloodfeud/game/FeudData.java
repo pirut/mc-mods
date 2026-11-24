@@ -161,6 +161,8 @@ public final class FeudData extends SavedData {
         t.putLongArray("skipColumns", w.skipColumns.stream().mapToLong(Long::longValue).toArray());
         t.putInt("done", w.done);
         t.putInt("total", w.total);
+        t.putInt("ownedTier", w.ownedTier);
+        t.putLongArray("placed", w.placed.stream().mapToLong(Long::longValue).toArray());
         t.putLong("stalledUntil", w.stalledUntil);
         if (w.wreckedBy != null) t.putUUID("wreckedBy", w.wreckedBy);
         return t;
@@ -178,6 +180,8 @@ public final class FeudData extends SavedData {
         Pack.Works w = new Pack.Works(t.getBoolean("repair"), from, Math.max(from, to), t.getInt("color"), vassals, zones, cols);
         w.done = Math.max(0, t.getInt("done"));
         w.total = Math.max(0, t.getInt("total"));
+        w.ownedTier = t.contains("ownedTier") ? Math.max(0, Math.min(to, t.getInt("ownedTier"))) : from;
+        for (long k : t.getLongArray("placed")) w.placed.add(k);
         w.stalledUntil = t.getLong("stalledUntil");
         if (t.hasUUID("wreckedBy")) w.wreckedBy = t.getUUID("wreckedBy");
         return w;

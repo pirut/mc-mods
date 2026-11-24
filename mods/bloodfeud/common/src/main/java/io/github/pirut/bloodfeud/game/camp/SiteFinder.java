@@ -2,6 +2,7 @@ package io.github.pirut.bloodfeud.game.camp;
 
 import io.github.pirut.bloodfeud.BloodFeud;
 import io.github.pirut.bloodfeud.feud.Family;
+import io.github.pirut.bloodfeud.feud.Feud;
 import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.SettlementTier;
 import io.github.pirut.bloodfeud.game.Earth;
@@ -141,6 +142,11 @@ public final class SiteFinder {
      * water/lava/cliffs/trees, avoiding non-natural blocks, and never synchronously force-loading chunks.
      */
     public static Site findAutoSite(ServerLevel level, Pack pack, SettlementTier tier) {
+        return findAutoSite(level, pack, tier, null);
+    }
+
+    /** As {@link #findAutoSite(ServerLevel, Pack, SettlementTier)}, keeping off sites other packs of {@code feud} hold. */
+    public static Site findAutoSite(ServerLevel level, Pack pack, SettlementTier tier, Feud feud) {
         int radius = Math.max(SettlementTier.CAMP.radius, tier == null ? SettlementTier.CAMP.radius : tier.radius);
         int facing = Math.floorMod(pack.id.hashCode(), 4);
         int baseX = pack.homeX;
@@ -157,6 +163,7 @@ public final class SiteFinder {
             int cx = baseX + off[0];
             int cz = baseZ + off[1];
             if (!isFootprintLoaded(level, cx, cz, radius)) continue;
+            if (claimedByAnother(feud, pack, cx, cz, radius)) continue;
             evaluated++;
             Site candidate = evaluateAutoCandidate(level, cx, cz, radius, facing);
             if (candidate != null) {
@@ -166,6 +173,28 @@ public final class SiteFinder {
         }
         pack.siteSearchOffset = (start + scanned) % total;
         return null;
+    }
+
+    /**
+     * Whether a footprint centred on {@code (x, z)} would overlap a site another pack has chosen (built or not; the
+     * choice reserves it) or an abandoned settlement. Null {@code feud} checks nothing.
+     */
+    public static boolean claimedByAnother(Feud feud, Pack pack, int x, int z, int radius) {
+        if (feud == null) return false;
+        int margin = 2 * CampBlueprint.FOOTPRINT_MARGIN;
+        for (Pack other : feud.packs.values()) {
+            if (other == pack || !other.siteSet || !other.dimension.equals(pack.dimension)) continue;
+            int tier = Math.max(other.builtTier, other.tier == null ? 1 : other.tier.level);
+            if (other.works != null) tier = Math.max(tier, other.works.toTier);
+            int r = SettlementTier.byLevel(Math.max(1, tier)).radius;
+            if (Math.max(Math.abs(other.siteX - x), Math.abs(other.siteZ - z)) <= radius + r + margin) return true;
+        }
+        for (Feud.AbandonedSite site : feud.abandonedSites) {
+            if (!site.dimension().equals(pack.dimension)) continue;
+            int r = SettlementTier.byLevel(Math.max(1, site.builtTier())).radius;
+            if (Math.max(Math.abs(site.siteX() - x), Math.abs(site.siteZ() - z)) <= radius + r + margin) return true;
+        }
+        return false;
     }
 
     static Site evaluateAutoCandidate(ServerLevel level, int cx, int cz, int radius, int facing) {
@@ -517,34 +546,61 @@ public final class SiteFinder {
     public static final class Owned extends java.util.AbstractSet<CampBlueprint.Spot> {
         private final Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials;
         private final FamilyPalette palette;
+        /** The pack colors (dye ids) its colored blocks come in; null for any color. */
+        private final Set<Integer> colors;
+        private final Map<CampBlueprint.Material, Set<net.minecraft.world.level.block.Block>> colored = new java.util.EnumMap<>(CampBlueprint.Material.class);
+        /** Blocks a running build has put down itself, exactly: only that block counts as the pack's there. */
+        private final Map<CampBlueprint.Spot, net.minecraft.world.level.block.Block> exact = new java.util.HashMap<>();
 
         public Owned(Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials, Family family) {
+            this(materials, family, null);
+        }
+
+        /**
+         * @param colors the dye colors the pack's wool, carpets and banners can be in (its own, its liege's, its
+         *               vassals'); a player's block in any other color is the player's
+         */
+        public Owned(Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials, Family family, Set<Integer> colors) {
             this.materials = materials;
             this.palette = FamilyPalette.of(family);
+            this.colors = colors == null ? null : Set.copyOf(colors);
+        }
+
+        /** The build put {@code block} at {@code rel}: from now on that block there is the pack's. */
+        public void placed(CampBlueprint.Spot rel, net.minecraft.world.level.block.Block block) {
+            exact.put(rel, block);
         }
 
         boolean isSettlementBlock(CampBlueprint.Spot rel, BlockState state) {
+            net.minecraft.world.level.block.Block mine = exact.get(rel);
+            if (mine != null && state.is(mine)) return true;
             Set<CampBlueprint.Material> placed = materials.get(rel);
             if (placed == null) return false;
             for (CampBlueprint.Material m : placed) {
-                if (palette.blocks(m).contains(state.getBlock())) return true;
+                Set<net.minecraft.world.level.block.Block> blocks = colors == null ? palette.blocks(m)
+                        : colored.computeIfAbsent(m, k -> palette.blocks(k, colors));
+                if (blocks.contains(state.getBlock())) return true;
             }
             return false;
         }
 
         @Override
         public boolean contains(Object o) {
-            return materials.containsKey(o);
+            return materials.containsKey(o) || exact.containsKey(o);
         }
 
         @Override
         public java.util.Iterator<CampBlueprint.Spot> iterator() {
-            return materials.keySet().iterator();
+            Set<CampBlueprint.Spot> all = new java.util.HashSet<>(materials.keySet());
+            all.addAll(exact.keySet());
+            return all.iterator();
         }
 
         @Override
         public int size() {
-            return materials.size();
+            int n = materials.size();
+            for (CampBlueprint.Spot spot : exact.keySet()) if (!materials.containsKey(spot)) n++;
+            return n;
         }
     }
 

@@ -84,6 +84,7 @@ public final class EarthWorldFixture {
         level.chunks.loaded = true;
         level.chunks.tickets = new java.util.HashSet<>();
         level.chunks.ticketsLoad = true;
+        level.chunks.neverLoad = new java.util.HashSet<>();
         level.entityTicking = true;
         level.difficulty = net.minecraft.world.Difficulty.NORMAL;
         level.type = new DimensionType(OptionalLong.empty(), true, false, false, true, 1.0, true, false,
@@ -286,8 +287,12 @@ public final class EarthWorldFixture {
 
         @Override
         public LevelChunk getChunkNow(int x, int z) {
+            if (neverLoad != null && neverLoad.contains(ChunkPos.asLong(x, z))) return null;
             return loaded || (ticketsLoad && !tickets.isEmpty()) ? chunk : null;
         }
+
+        /** Chunks that never load, whatever holds them (ground that can't be had). */
+        public java.util.Set<Long> neverLoad;
     }
 
     static final class FakeServer extends DedicatedServer {
