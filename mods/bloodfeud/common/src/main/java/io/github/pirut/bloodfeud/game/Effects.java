@@ -44,6 +44,8 @@ public final class Effects {
 
     /** For every hit on the server (through Pirut Lib). True if the hit does nothing at all. */
     public static boolean immune(LivingEntity target, DamageSource source) {
+        // A Brute walking off after it rose can't hurt anyone, not even between ticks (or by an arrow it shot).
+        if (Departure.departing(source.getEntity())) return true;
         Live live = Live.current();
         if (live == null) return false;
         Brute b = live.bruteOf(target);

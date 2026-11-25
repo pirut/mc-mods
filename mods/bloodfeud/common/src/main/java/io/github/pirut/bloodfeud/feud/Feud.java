@@ -626,6 +626,16 @@ public final class Feud {
     }
 
     /**
+     * The pack whose patrol a hunting Brute comes with: its own, when the player is in that pack's ground (and the
+     * pack isn't on the move). Null when it comes on its own. Which pack is nearest the player doesn't matter.
+     */
+    public Pack patrolFor(Brute hunter, String dimension, double x, double z) {
+        Pack p = packOf(hunter);
+        if (p == null || p.settling || !inTerritory(p, dimension, x, z)) return null;
+        return p;
+    }
+
+    /**
      * Who leads a pack's patrol to a player: a Brute hunting that player first, then its Nemesis, then one that has
      * met the player, then the strongest. The Boss stays home unless the pack has no one else.
      *

@@ -38,6 +38,22 @@ public final class Brute {
     public UUID killedBy;
     public int timesReturned;
     public final long risenAt;
+    /**
+     * Game time before which it can't be brought out into the world: it rose and walked off, and stays away until
+     * then. Saved, so a restart doesn't cut it short.
+     */
+    public long restUntil;
+
+    /** Whether it is still staying away at game time {@code gameTime}. */
+    public boolean resting(long gameTime) {
+        return restUntil > gameTime;
+    }
+
+    /** It stays away until at least {@code until}; a longer rest it already has is kept. */
+    public void restUntil(long until) {
+        restUntil = Math.max(restUntil, until);
+    }
+
     /** A player it is following across the world, or null. */
     public UUID hunting;
     public final Map<UUID, Relation> relations = new HashMap<>();

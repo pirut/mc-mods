@@ -120,6 +120,7 @@ public final class FeudData extends SavedData {
         t.putInt("timesReturned", b.timesReturned);
         t.putLong("risenAt", b.risenAt);
         if (b.hunting != null) t.putUUID("hunting", b.hunting);
+        if (b.restUntil > 0) t.putLong("restUntil", b.restUntil);
         ListTag rels = new ListTag();
         for (Map.Entry<UUID, Relation> e : b.relations.entrySet()) {
             Relation r = e.getValue();
@@ -325,6 +326,7 @@ public final class FeudData extends SavedData {
                 if (t.hasUUID("killedBy")) b.killedBy = t.getUUID("killedBy");
                 b.timesReturned = t.getInt("timesReturned");
                 if (t.hasUUID("hunting")) b.hunting = t.getUUID("hunting");
+                b.restUntil = t.getLong("restUntil");
                 for (Tag rr : t.getList("relations", Tag.TAG_COMPOUND)) {
                     CompoundTag rt = (CompoundTag) rr;
                     Relation r = b.relation(rt.getUUID("player"));

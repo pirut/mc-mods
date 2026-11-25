@@ -3,13 +3,18 @@
 ## 0.1.0-beta.3
 
 - **Packs don't settle where you fought them.** A pack that forms withdraws 150 to 400 blocks first, to dry, level
-  ground no other pack holds (read from the world generator or the Earth's map data, without loading anything), and
-  makes its home and camp there. Packs that already have a home keep it.
+  ground inside the world border that no other pack holds (read from the world generator or the Earth's map data,
+  without loading anything), and makes its home and camp there. With no such ground, or in the Nether, it settles
+  where it formed. Packs that already have a home keep it.
 - **Packs patrol their ground.** Within about 500 blocks of its home, away from its camp, a pack's patrol can find you:
-  a Brute and a few grunts. A Brute of the pack that is hunting you always comes this way.
+  a Brute and a few grunts, out of the dark and away from player blocks. A Brute of the pack that is hunting you
+  always comes this way. Patrol grunts drop nothing, and go back to the pack when the patrol is over.
 - **A Brute that rises leaves.** It turns and walks off, toward its pack's home if it has one, and is gone once you
-  can't see it (20 seconds at most). It never walks into ground that isn't loaded. It rests about 5 minutes, then
-  comes back through the feud: hunting you, on patrol, or at its pack's home.
+  can't see it (20 seconds at most). It never walks into ground that isn't loaded, and it can't hurt you while it
+  goes. It rests about 5 minutes (saved, so a restart doesn't cut it short), then comes back through the feud:
+  hunting you, on patrol, or at its pack's home.
+- A mob rises at most once. A mob that saw kills while it wasn't loaded, or while too many Brutes were out, now rises
+  later instead of never.
 - The Ledger and `/bloodfeud packs` say "Camp (on the move to a new home)" while a pack picks its ground.
 - New settings `retreatMinDistance`, `retreatMaxDistance`, `patrolRange`, `patrolChancePercent`, `risenLeaveSeconds`
   and `risenRestSeconds`.

@@ -89,7 +89,6 @@ public final class Live {
     private static final ResourceLocation SIZE_MOD = BloodFeud.id("size");
     private static final ResourceLocation SCAR_MOD = BloodFeud.id("scar");
     private static final int WITNESS_RADIUS = 16;
-    private static final int RISE_DELAY = 200;
     private static final int BAR_RANGE = 48;
     private static final int WITHDRAW_RANGE = 96;
     private static final int PACK_ENCOUNTER_RANGE = 80;
@@ -124,8 +123,10 @@ public final class Live {
          */
         long leaveUntil = -1;
         long leftAt;
-        /** Where it rose (where the fight was), which it walks away from. */
-        double fromX, fromZ;
+        /** Where it stood when it rose: its record goes back here if it has no pack. */
+        double roseX, roseZ;
+        /** Where the player it saw (or killed) stood then, which it walks away from. */
+        double awayX, awayZ;
         /** Out on patrol from its pack's home: it isn't called back to its settlement while it hunts. */
         boolean patrol;
 
@@ -137,17 +138,18 @@ public final class Live {
         }
     }
 
-    private record Mark(ResourceKey<net.minecraft.world.level.Level> dimension, UUID player, long at, UUID pack) {
-    }
 
     private final Map<UUID, Active> active = new HashMap<>();
     private final Map<UUID, UUID> bruteOfEntity = new HashMap<>();
     /** Grunt mob -> the pack (or lone Brute) it came with. */
     private final Map<UUID, UUID> grunts = new HashMap<>();
     private final Map<UUID, ResourceKey<net.minecraft.world.level.Level>> gruntLevel = new HashMap<>();
-    /** Grunts out on a patrol: like their Brutes, they aren't called back to the settlement while they hunt. */
-    private final Set<UUID> patrolGrunts = new HashSet<>();
-    private final Map<UUID, Mark> marked = new HashMap<>();
+    /**
+     * Escorts out on a patrol, and the Brute leading each. Like their Brute they aren't called back to the
+     * settlement; when its patrol ends they go back into the pack (they leave the world; the pack's count is unchanged).
+     */
+    private final Map<UUID, UUID> escorts = new HashMap<>();
+    private final Rises rises = new Rises();
     private final Map<UUID, Long> nextEncounter = new HashMap<>();
     private final Map<UUID, Long> lastRise = new HashMap<>();
     /** Brutes (and packs) that just left: they don't come straight back. */
@@ -305,7 +307,7 @@ public final class Live {
             }
             data.changed();
         }
-        marked.remove(mob.getUUID());
+        rises.forget(mob.getUUID());
         Family family = Families.of(mob.getType());
         if (family != null && source.getEntity() instanceof ServerPlayer killer && !killer.isCreative()) {
             witness(mob, family, killer, owner);
@@ -318,9 +320,9 @@ public final class Live {
             if (bruteOfEntity.containsKey(m.getUUID()) || Families.of(m.getType()) != family) continue;
             int saw = sawCount(m) + 1;
             setSawCount(m, saw);
-            if (saw >= BloodFeud.config().killsToRise && !marked.containsKey(m.getUUID()) && mayRise(killer)) {
-                marked.put(m.getUUID(), new Mark(m.level().dimension(), killer.getUUID(), gameTime(),
-                        pack != null ? pack : grunts.get(m.getUUID())));
+            if (saw >= BloodFeud.config().killsToRise && !rises.isMarked(m.getUUID()) && mayRise(killer)) {
+                rises.mark(m.getUUID(), new Rises.Mark(m.level().dimension(), killer.getUUID(), gameTime(),
+                        pack != null ? pack : grunts.get(m.getUUID()), killer.getX(), killer.getZ()));
             }
         }
     }
@@ -328,7 +330,7 @@ public final class Live {
     /** One mob rises per player at a time, and not again until the cooldown is over. */
     private boolean mayRise(ServerPlayer killer) {
         if (killer.level().getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL) return false;
-        for (Mark m : marked.values()) if (m.player().equals(killer.getUUID())) return false;
+        if (rises.hasMarkFor(killer.getUUID())) return false;
         return lastRise.getOrDefault(killer.getUUID(), Long.MIN_VALUE / 2) + BloodFeud.config().riseCooldownSeconds * 20L <= gameTime();
     }
 
@@ -369,19 +371,22 @@ public final class Live {
             if (a != null) a.fought.remove(player.getUUID());
         } else {
             Family family = Families.of(mob.getType());
-            if (family == null || mob.getTags().contains(TAG_GRUNT) && grunts.get(mob.getUUID()) == null) {
+            if (family == null || mob.getTags().contains(TAG_GRUNT) && grunts.get(mob.getUUID()) == null
+                    || !Rises.canRise(mob, bruteOfEntity)) {
                 advanceForDeath();
                 return;
             }
             UUID pack = grunts.remove(mob.getUUID());
             gruntLevel.remove(mob.getUUID());
             mob.removeTag(TAG_GRUNT);
+            rises.forget(mob.getUUID()); // it rose this way: it won't rise again for the kills it saw
             b = f.rise(EntityType.getKey(mob.getType()).toString(), family, dim(mob.level()), mob.getBlockX(),
                     mob.getBlockZ(), player.getUUID(), Memory.Kind.ROSE, cause, pack, now());
             takeGear(mob, b, player);
             becomeBrute(mob, b);
             say(player, b, Lines.rose(this, player, b, true));
-            sendAway(mob, b, player.position());
+            // Where the player died, before any respawn: the fight.
+            sendAway(mob, b, player.getX(), player.getZ());
             for (ServerPlayer other : server.getPlayerList().getPlayers()) {
                 if (other != player && other.level() == player.level() && other.distanceTo(player) < 256) {
                     other.sendSystemMessage(Component.literal(b.fullName() + " rose by killing " + player.getName().getString() + ".")
@@ -470,7 +475,7 @@ public final class Live {
             rises(gt);
             for (Active a : new ArrayList<>(active.values())) watch(a, gt);
             gruntCheck();
-            if (settler.tick(server, data.feud, gt)) data.changed();
+            if (settler.tick(this::level, data.feud, gt)) data.changed();
         }
         boolean anyLeaving = false;
         for (Active a : active.values()) anyLeaving |= a.leaveUntil >= 0;
@@ -606,17 +611,15 @@ public final class Live {
 
     /** Mobs that saw their kin die and lived through it walk off as Brutes. */
     private void rises(long gt) {
-        for (Iterator<Map.Entry<UUID, Mark>> it = marked.entrySet().iterator(); it.hasNext(); ) {
-            Map.Entry<UUID, Mark> e = it.next();
-            Mark m = e.getValue();
-            if (gt - m.at() < RISE_DELAY) continue;
-            it.remove();
+        rises.tick(gt, (id, m) -> {
             ServerLevel level = server.getLevel(m.dimension());
-            if (level == null) continue;
-            if (!(level.getEntity(e.getKey()) instanceof Mob mob) || !mob.isAlive()) continue;
-            if (active.size() >= BloodFeud.config().maxActiveBrutes) continue;
+            if (level == null) return Rises.Outcome.NEVER;
+            // Not loaded (or not yet) is not the same as gone: its mark waits. A dead mob's mark went with it.
+            if (!(level.getEntity(id) instanceof Mob mob)) return Rises.Outcome.NOT_YET;
+            if (!Rises.canRise(mob, bruteOfEntity)) return Rises.Outcome.NEVER;
             Family family = Families.of(mob.getType());
-            if (family == null) continue;
+            if (family == null) return Rises.Outcome.NEVER;
+            if (active.size() >= BloodFeud.config().maxActiveBrutes) return Rises.Outcome.NOT_YET;
             UUID pack = grunts.remove(mob.getUUID());
             gruntLevel.remove(mob.getUUID());
             mob.removeTag(TAG_GRUNT);
@@ -628,10 +631,11 @@ public final class Live {
             if (player != null && player.level() == level && player.distanceTo(mob) < 96) {
                 introduce(player, mob, b, false);
             }
-            sendAway(mob, b, player != null && player.level() == level ? player.position() : null);
+            sendAway(mob, b, m.witnessX(), m.witnessZ());
             data.feud.drainNews();
             data.changed();
-        }
+            return Rises.Outcome.ROSE;
+        });
     }
 
     /** Keeps an active Brute's boss bar, fears and tricks going, and sends it home when players are gone. */
@@ -718,34 +722,37 @@ public final class Live {
     // ---------------------------------------------------------------- a risen Brute walks off
 
     /**
-     * A mob that just rose doesn't stay to fight: it turns and walks off, away from where it rose (toward its pack's
-     * home if it has one), and is gone once nobody is near enough to see it, or after {@code risenLeaveSeconds}. It
-     * comes back later, through the feud: a pack forming round it, its pack's patrols, or hunting you down.
+     * A mob that just rose doesn't stay to fight: it turns and walks off, away from where the fight was (toward its
+     * pack's home if it has one), and is gone once nobody is near enough to see it, or after {@code risenLeaveSeconds}.
+     * It can't fight while it departs (see {@link Departure}). Its rest starts now and is saved: however it leaves the
+     * world, it stays away {@code risenRestSeconds} after that. It comes back later, through the feud: a pack forming
+     * round it, its pack's patrols, or hunting you down.
      *
-     * @param from where the fight was (the player it saw or killed), or null
+     * @param awayX where the player it saw or killed stood at the time
      */
-    private void sendAway(Mob mob, Brute b, Vec3 from) {
+    private void sendAway(Mob mob, Brute b, double awayX, double awayZ) {
         Active a = active.get(b.id);
         if (a == null) return;
         long gt = gameTime();
         a.leftAt = gt;
         a.leaveUntil = gt + BloodFeud.config().risenLeaveSeconds * 20L;
-        a.fromX = from == null ? mob.getX() : from.x;
-        a.fromZ = from == null ? mob.getZ() : from.z;
-        calm(mob);
+        a.roseX = mob.getX();
+        a.roseZ = mob.getZ();
+        a.awayX = awayX;
+        a.awayZ = awayZ;
+        b.restUntil(a.leaveUntil + restTicks());
+        Departure.hold(mob);
         for (ServerPlayer p : ((ServerLevel) mob.level()).players()) {
             if (p.isSpectator() || p.distanceTo(mob) > 64) continue;
             p.sendSystemMessage(Component.literal(b.fullName() + " turns and walks off. It will be back.")
                     .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
         }
         BloodFeud.LOG.debug("Blood Feud: {} rose at {} and walks off", b.fullName(), mob.blockPosition().toShortString());
+        data.changed();
     }
 
-    /** It fights no one while it leaves. Brain mobs (piglin brutes) keep their target in memory. */
-    private static void calm(Mob mob) {
-        mob.setTarget(null);
-        mob.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.ATTACK_TARGET);
-        mob.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.ANGRY_AT);
+    private static long restTicks() {
+        return BloodFeud.config().risenRestSeconds * 20L;
     }
 
     /** Each tick of a Brute walking off. */
@@ -754,7 +761,7 @@ public final class Live {
         ServerLevel level = server.getLevel(a.dimension);
         if (b == null || !b.alive || level == null) return; // watch() tidies it up
         if (!(level.getEntity(a.entity) instanceof Mob mob) || !mob.isAlive()) return;
-        calm(mob);
+        Departure.calm(mob);
         long walked = gt - a.leftAt;
         if (walked >= 60 && (gt >= a.leaveUntil || unseen(level, mob))) {
             vanish(a, b, mob, level, gt);
@@ -784,8 +791,8 @@ public final class Live {
             dx = pk.campX() + 0.5 - mob.getX();
             dz = pk.campZ() + 0.5 - mob.getZ();
         } else {
-            dx = mob.getX() - a.fromX;
-            dz = mob.getZ() - a.fromZ;
+            dx = mob.getX() - a.awayX;
+            dz = mob.getZ() - a.awayZ;
         }
         double len = Math.hypot(dx, dz);
         if (len < 1) {
@@ -825,35 +832,40 @@ public final class Live {
         return null;
     }
 
-    /** It's gone: back to being a record, at its pack's home or where it rose, and resting a while. */
+    /** It's gone: back to being a record, at its pack's home or where it rose (see {@link #recordGone}). */
     private void vanish(Active a, Brute b, Mob mob, ServerLevel level, long gt) {
         if (level.getNearestPlayer(mob, 96) != null) {
             level.sendParticles(net.minecraft.core.particles.ParticleTypes.POOF, mob.getX(), mob.getY() + 0.8, mob.getZ(),
                     12, 0.3, 0.6, 0.3, 0.02);
         }
         Pack pk = data.feud.packOf(b);
+        BloodFeud.LOG.info("Blood Feud: {} rose and left: gone {} blocks from where it rose after {} s, {}",
+                b.fullName(), Math.round(Math.hypot(mob.getX() - a.roseX, mob.getZ() - a.roseZ)), (gt - a.leftAt) / 20,
+                pk != null ? "back to " + pk.title() : "off on its own");
+        removeActive(b.id, true); // records it (recordGone) and restarts its rest
+        data.changed();
+    }
+
+    /**
+     * Where a departed Brute is on paper: at its pack's camp, or, on its own, where it rose (its own position, never
+     * where a player went after). A pack forming round it then withdraws from the fight itself.
+     */
+    static void recordGone(Brute b, Pack pk, double roseX, double roseZ) {
         if (pk != null) {
             b.x = pk.campX();
             b.z = pk.campZ();
         } else {
-            // On paper it is off in the feud, from where it rose: a pack forming round it withdraws from the fight
-            // itself (see Feud.settleAway), not from where it happened to slip out of sight.
-            b.x = (int) Math.floor(a.fromX);
-            b.z = (int) Math.floor(a.fromZ);
+            b.x = (int) Math.floor(roseX);
+            b.z = (int) Math.floor(roseZ);
         }
-        BloodFeud.LOG.info("Blood Feud: {} rose and left: gone {} blocks from where it rose after {} s, {}",
-                b.fullName(), Math.round(Math.hypot(mob.getX() - a.fromX, mob.getZ() - a.fromZ)), (gt - a.leftAt) / 20,
-                pk != null ? "back to " + pk.title() : "off on its own");
-        removeActive(b.id, true);
-        rested.put(b.id, gt + BloodFeud.config().risenRestSeconds * 20L);
-        data.changed();
     }
 
     // ---------------------------------------------------------------- patrols
 
     /**
      * A pack's patrol finds a player out in the ground it holds: a Brute (one hunting the player if it has one, never
-     * the Boss while it has others) and a few grunts, coming from the direction of its home.
+     * the Boss while it has others) and a few escorts, coming from the direction of its home. Everyone comes out on a
+     * {@link PatrolSpots} spot: dark, clear of player blocks, on known ground.
      */
     private boolean spawnPatrol(ServerLevel level, Pack pk, ServerPlayer p, long gt) {
         Feud f = data.feud;
@@ -865,14 +877,14 @@ public final class Live {
             dx = 1;
             d = 1;
         }
-        Mob mob = null;
+        BlockPos at = null;
         for (int reach : new int[]{30, 22}) {
             BlockPos base = BlockPos.containing(p.getX() + dx / d * reach, p.getY(), p.getZ() + dz / d * reach);
-            if (!Earth.knowsHeight(level, base.getX(), base.getZ())) continue;
-            mob = spawnBrute(level, leader, base, 0, 6);
-            if (mob != null) break;
+            at = PatrolSpots.find(level, base, 0, 6, level.getRandom());
+            if (at != null) break;
         }
-        if (mob == null) mob = spawnBrute(level, leader, p.blockPosition(), 20, 30);
+        if (at == null) at = PatrolSpots.find(level, p.blockPosition(), 20, 30, level.getRandom());
+        Mob mob = at == null ? null : spawnBruteAt(level, leader, at);
         if (mob == null) return false;
         Active a = active.get(leader.id);
         if (a != null) a.patrol = true;
@@ -882,9 +894,11 @@ public final class Live {
         int grunts = Math.min(pk.grunts, 2 + random.nextInt(2));
         int out = 0;
         for (int i = 0; i < grunts; i++) {
-            Mob g = spawnGrunt(level, pk, type, mob.blockPosition(), pk.id, false);
+            BlockPos gs = PatrolSpots.find(level, mob.blockPosition(), 1, 6, level.getRandom());
+            Mob g = gs == null ? null : spawnGruntAt(level, pk, type, gs, pk.id);
             if (g == null) continue;
-            patrolGrunts.add(g.getUUID());
+            noSpoils(g);
+            escorts.put(g.getUUID(), leader.id);
             g.setTarget(p);
             out++;
         }
@@ -899,19 +913,37 @@ public final class Live {
         return true;
     }
 
+    /** An escort, like a builder, is no farm: it drops nothing, gear included, gives no experience and picks nothing up. */
+    static void noSpoils(Mob mob) {
+        CompoundTag tag = new CompoundTag();
+        mob.saveWithoutId(tag);
+        tag.putString("DeathLootTable", BuiltInLootTables.EMPTY.location().toString());
+        mob.load(tag);
+        mob.skipDropExperience();
+        for (EquipmentSlot slot : EquipmentSlot.values()) mob.setDropChance(slot, 0f);
+        mob.setCanPickUpLoot(false);
+    }
+
     private void removeActive(UUID bruteId, boolean discard) {
         Active a = active.remove(bruteId);
         if (a == null) return;
         bruteOfEntity.remove(a.entity);
         a.bar.removeAllPlayers();
-        if (discard) {
-            ServerLevel level = server.getLevel(a.dimension);
-            Entity e = level == null ? null : level.getEntity(a.entity);
-            if (e != null && !e.isRemoved()) e.discard();
+        ServerLevel level = server.getLevel(a.dimension);
+        Entity e = level == null ? null : level.getEntity(a.entity);
+        Brute b = data.feud.brute(bruteId);
+        if (a.leaveUntil >= 0 && b != null && b.alive) {
+            // It left mid-departure, by whatever path (gone from sight, unloaded, missing): it is a record now, and
+            // its rest runs from now.
+            recordGone(b, data.feud.packOf(b), a.roseX, a.roseZ);
+            b.restUntil(gameTime() + restTicks());
+            data.changed();
         }
+        if (e instanceof Mob m) Departure.release(m); // if it stays in the world, it can fight again
+        if (discard && e != null && !e.isRemoved()) e.discard();
     }
 
-    /** Grunts go home with their Brutes. */
+    /** Grunts go home with their Brutes; a patrol's escorts go back into the pack when their patrol ends. */
     private void gruntCheck() {
         Set<UUID> owners = new HashSet<>();
         for (Active a : active.values()) {
@@ -920,13 +952,28 @@ public final class Live {
             owners.add(b.id);
             if (b.pack != null) owners.add(b.pack);
         }
+        for (Iterator<Map.Entry<UUID, UUID>> it = escorts.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<UUID, UUID> g = it.next();
+            if (active.containsKey(g.getValue()) && grunts.containsKey(g.getKey())) continue;
+            it.remove();
+            grunts.remove(g.getKey());
+            ServerLevel level = server.getLevel(gruntLevel.getOrDefault(g.getKey(), net.minecraft.world.level.Level.OVERWORLD));
+            gruntLevel.remove(g.getKey());
+            Entity e = level == null ? null : level.getEntity(g.getKey());
+            if (e == null || e.isRemoved()) continue;
+            if (level.getNearestPlayer(e, 96) != null) {
+                level.sendParticles(net.minecraft.core.particles.ParticleTypes.POOF, e.getX(), e.getY() + 0.8, e.getZ(),
+                        8, 0.3, 0.6, 0.3, 0.02);
+            }
+            e.discard();
+        }
         for (Iterator<Map.Entry<UUID, UUID>> it = grunts.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<UUID, UUID> g = it.next();
-            if (campBuilder.isBuilder(g.getKey())) continue; // it goes when its build is done
+            if (campBuilder.isBuilder(g.getKey()) || escorts.containsKey(g.getKey())) continue;
             ServerLevel level = server.getLevel(gruntLevel.getOrDefault(g.getKey(), net.minecraft.world.level.Level.OVERWORLD));
             if (owners.contains(g.getValue())) {
                 Pack pk = data.feud.pack(g.getValue());
-                if (pk != null && pk.builtTier > 0 && pk.siteSet && level != null && !patrolGrunts.contains(g.getKey())
+                if (pk != null && pk.builtTier > 0 && pk.siteSet && level != null
                         && level.getEntity(g.getKey()) instanceof Mob mob && mob.isAlive()) {
                     enforceSettlementLeash(mob, pk);
                 }
@@ -939,7 +986,6 @@ public final class Live {
             if (level.getNearestPlayer(e, 48) == null) e.discard();
             else e.removeTag(TAG_GRUNT); // a player is still fighting it: it's just a mob now
         }
-        patrolGrunts.retainAll(grunts.keySet());
     }
 
     /** Actively calls wandering garrison mobs back to their built settlement when they chase too far afield. */
@@ -977,7 +1023,16 @@ public final class Live {
             if (Math.hypot(b.x - p.getX(), b.z - p.getZ()) > HUNTER_ENCOUNTER_RANGE) continue;
             Pack pack = f.packOf(b);
             if (pack != null && b.id.equals(pack.boss)) continue; // a Boss meets you at home, with its pack
-            if (pack != null && f.inTerritory(pack, dim, p.getX(), p.getZ())) continue; // it comes with its pack's patrol
+            Pack own = f.patrolFor(b, dim, p.getX(), p.getZ());
+            if (own != null) {
+                // In its own pack's ground it comes with that pack's patrol, whichever pack is nearest the player.
+                if (!resting(own.id, gt) && !packOut(own) && spawnPatrol(level, own, p, gt)) {
+                    nextEncounter.put(p.getUUID(), gt + cfg.encounterCooldownSeconds * 20L);
+                    return;
+                }
+                continue;
+            }
+            if (pack != null && pack.settling) continue; // its pack is on the move
             boolean followed = Math.hypot(b.x - p.getX(), b.z - p.getZ()) > 300;
             Mob mob = spawnBrute(level, b, p.blockPosition(), 20, 32);
             if (mob == null) continue;
@@ -1017,11 +1072,7 @@ public final class Live {
             }
         }
         if (ground != null) {
-            boolean hunted = false;
-            for (Brute b : f.members(ground)) {
-                if (b.alive && p.getUUID().equals(b.hunting) && !isActive(b) && !resting(b.id, gt)) hunted = true;
-            }
-            if ((hunted || random.nextInt(100) < cfg.patrolChancePercent) && spawnPatrol(level, ground, p, gt)) {
+            if (random.nextInt(100) < cfg.patrolChancePercent && spawnPatrol(level, ground, p, gt)) {
                 nextEncounter.put(p.getUUID(), gt + cfg.encounterCooldownSeconds * 20L);
                 return;
             }
@@ -1038,8 +1089,11 @@ public final class Live {
         }
     }
 
+    /** A pack or Brute that just left doesn't come straight back; a risen Brute's rest is saved with it. */
     private boolean resting(UUID id, long gt) {
-        return rested.getOrDefault(id, 0L) > gt;
+        if (rested.getOrDefault(id, 0L) > gt) return true;
+        Brute b = data.feud.brute(id);
+        return b != null && b.resting(gt);
     }
 
     private boolean packOut(Pack p) {
@@ -1173,8 +1227,14 @@ public final class Live {
     }
 
     private Mob spawnBrute(ServerLevel level, Brute b, BlockPos near, int min, int max, boolean preferAnchor) {
+        if (b.resting(gameTime())) return null; // every way a Brute comes out goes through here
         BlockPos pos = preferAnchor ? findSettlementSpot(level, near, min, max) : findSpot(level, near, min, max);
-        if (pos == null) return null;
+        return pos == null ? null : spawnBruteAt(level, b, pos);
+    }
+
+    /** Brings a Brute out as a real mob at {@code pos}, unless it is resting. */
+    private Mob spawnBruteAt(ServerLevel level, Brute b, BlockPos pos) {
+        if (b.resting(gameTime())) return null;
         EntityType<?> type = EntityType.byString(b.entityType).orElse(null);
         if (type == null) type = EntityType.byString(b.family.defaultType).orElse(EntityType.ZOMBIE);
         if (!(type.create(level) instanceof Mob mob)) return null;
@@ -1196,7 +1256,10 @@ public final class Live {
 
     private Mob spawnGrunt(ServerLevel level, Pack pack, String entityType, BlockPos near, UUID owner, boolean preferAnchor) {
         BlockPos pos = preferAnchor ? findSettlementSpot(level, near, 1, 8) : findSpot(level, near, 1, 8);
-        if (pos == null) return null;
+        return pos == null ? null : spawnGruntAt(level, pack, entityType, pos, owner);
+    }
+
+    private Mob spawnGruntAt(ServerLevel level, Pack pack, String entityType, BlockPos pos, UUID owner) {
         EntityType<?> type = EntityType.byString(entityType).orElse(EntityType.ZOMBIE);
         if (!(type.create(level) instanceof Mob mob)) return null;
         mob.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, random.nextFloat() * 360, 0);
@@ -1869,9 +1932,9 @@ public final class Live {
         data.feud.packs.clear();
         data.feud.abandonedSites.clear();
         data.stolen.clear();
-        marked.clear();
         settler.clear();
-        patrolGrunts.clear();
+        escorts.clear();
+        rises.clear();
         data.changed();
     }
 }
