@@ -561,6 +561,7 @@ public final class Feud {
         }
         moveHome(p, best[0], best[1]);
         p.settling = true;
+        p.retreatHome = true;
     }
 
     /** Moves a pack's home, and its members' records with it. */
@@ -651,7 +652,8 @@ public final class Feud {
             if (player.equals(b.hunting)) score += 1000;
             else if (r != null && r.nemesis) score += 500;
             else if (r != null && r.met) score += 100;
-            if (b.id.equals(p.boss)) score -= 10_000;
+            // The Boss stays home while the pack has someone else, unless it is the one hunting this player.
+            if (b.id.equals(p.boss) && !player.equals(b.hunting)) score -= 10_000;
             if (score > bestScore) {
                 bestScore = score;
                 best = b;

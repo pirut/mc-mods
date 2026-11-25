@@ -124,17 +124,17 @@ class SettleTest {
         for (int i = 0; i < ground.length; i++) ground[i] = new int[]{70, 0};
         ground[0] = new int[]{62, Settler.WET};       // the first is under water
         ground[n + 3] = new int[]{90, 0};              // the second is a cliff
-        assertArrayEquals(new int[]{-200, 0}, Settler.choose(f, p, candidates, ground, (x, z) -> 1, (x, z) -> 0));
+        assertArrayEquals(new int[]{-200, 0}, Settler.choose(f, p, candidates, ground, (x, z) -> 1, (x, z) -> 0).pick());
 
         Pack other = new Pack(new UUID(7, 7), Family.BONES, "minecraft:overworld", "Other", 2, -200, 0, 0);
         other.siteSet = true;
         other.siteX = -210;
         other.siteZ = 5;
         f.packs.put(other.id, other);
-        assertArrayEquals(new int[]{0, -200}, Settler.choose(f, p, candidates, ground, (x, z) -> 1, (x, z) -> 0), "the third is another pack's");
+        assertArrayEquals(new int[]{0, -200}, Settler.choose(f, p, candidates, ground, (x, z) -> 1, (x, z) -> 0).pick(), "the third is another pack's");
 
         for (int i = 0; i < ground.length; i++) ground[i] = new int[]{60, 1};
-        assertNull(Settler.choose(f, p, candidates, ground, (x, z) -> 1, (x, z) -> 0), "all sea");
+        assertNull(Settler.choose(f, p, candidates, ground, (x, z) -> 1, (x, z) -> 0).pick(), "all sea");
         assertTrue(Settler.dryAndLevel(new int[][]{{70, 0}, {71, 0}, {72, 0}, {73, 0}, {74, 0}, {75, 0}, {76, 0}, {77, 0}, {78, 0}}, 0));
         assertFalse(Settler.dryAndLevel(new int[][]{{70, 0}, {71, 0}, {72, 0}, {73, 0}, {74, 0}, {75, 0}, {76, 0}, {77, 0}, {79, 0}}, 0));
     }

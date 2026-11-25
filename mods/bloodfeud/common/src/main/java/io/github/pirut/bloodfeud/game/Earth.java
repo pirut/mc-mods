@@ -314,6 +314,14 @@ public final class Earth {
      * Null if the Earth can't be read.
      */
     public static CompletableFuture<int[][]> survey(ServerLevel level, List<int[]> columns) {
+        return survey(level, columns, () -> false);
+    }
+
+    /**
+     * As {@link #survey(ServerLevel, List)}, stopping its map reads as soon as {@code cancelled} says so: the column
+     * after that is never read, and the future completes with a cancellation.
+     */
+    public static CompletableFuture<int[][]> survey(ServerLevel level, List<int[]> columns, java.util.function.BooleanSupplier cancelled) {
         Api a = api();
         if (a == null) return null;
         try {
@@ -323,6 +331,7 @@ public final class Earth {
             return CompletableFuture.supplyAsync(() -> {
                 int[][] out = new int[columns.size()][];
                 for (int i = 0; i < out.length; i++) {
+                    if (cancelled.getAsBoolean()) throw new java.util.concurrent.CancellationException("survey cancelled");
                     int[] c = columns.get(i);
                     out[i] = new int[]{mapData(a.surfaceY(), generator, c[0], c[1]), mapData(a.waterY(), generator, c[0], c[1])};
                 }

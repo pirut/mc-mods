@@ -55,6 +55,8 @@ public final class SiteFinder {
     /** How far below a column's top to look for ground on the Earth, whose world floor is 16 km down. */
     private static final int EARTH_SURFACE_REACH = 256;
     public static final int MAX_SPIRAL_RADIUS = CampBlueprint.MAX_SEARCH_SPIRAL_RADIUS;
+    /** The ground a picked home holds until its camp has a site: a Stronghold's reservation round any spiral spot. */
+    public static final int HOME_HOLD = SettlementTier.STRONGHOLD.radius + CampBlueprint.FOOTPRINT_MARGIN + MAX_SPIRAL_RADIUS;
     private static final int SPIRAL_STEP = 6;
     private static final int MAX_CANDIDATES_PER_ATTEMPT = 8;
 
@@ -195,9 +197,15 @@ public final class SiteFinder {
         List<int[]> held = new ArrayList<>();
         if (feud == null) return held;
         for (Pack other : feud.packs.values()) {
-            if (other == pack || !other.siteSet || !other.dimension.equals(pack.dimension)) continue;
-            int r = reservedRadius(other);
-            held.add(new int[]{other.siteX - r, other.siteZ - r, other.siteX + r, other.siteZ + r});
+            if (other == pack || !other.dimension.equals(pack.dimension)) continue;
+            if (other.siteSet) {
+                int r = reservedRadius(other);
+                held.add(new int[]{other.siteX - r, other.siteZ - r, other.siteX + r, other.siteZ + r});
+            } else if (other.retreatHome) {
+                // A home picked after a fight holds everything its site search could reserve, from the moment it
+                // is picked until its camp has a site.
+                held.add(new int[]{other.homeX - HOME_HOLD, other.homeZ - HOME_HOLD, other.homeX + HOME_HOLD, other.homeZ + HOME_HOLD});
+            }
         }
         for (Feud.AbandonedSite site : feud.abandonedSites) {
             if (!site.dimension().equals(pack.dimension)) continue;

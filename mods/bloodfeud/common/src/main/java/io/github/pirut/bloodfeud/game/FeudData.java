@@ -243,6 +243,7 @@ public final class FeudData extends SavedData {
         t.putInt("color", p.color);
         t.putInt("homeX", p.homeX);
         t.putInt("homeZ", p.homeZ);
+        if (p.retreatHome) t.putBoolean("retreatHome", true);
         if (p.settling) {
             t.putBoolean("settling", true);
             t.putInt("settleFromX", p.settleFromX);
@@ -368,6 +369,7 @@ public final class FeudData extends SavedData {
                         t.getInt("color"), t.getInt("homeX"), t.getInt("homeZ"), t.getLong("formedAt"));
                 // Saves from before 0.1.0-beta.3 have no "settling": their packs keep the homes they have.
                 p.settling = t.getBoolean("settling");
+                p.retreatHome = t.getBoolean("retreatHome");
                 p.settleFromX = t.getInt("settleFromX");
                 p.settleFromZ = t.getInt("settleFromZ");
                 if (t.hasUUID("boss")) p.boss = t.getUUID("boss");

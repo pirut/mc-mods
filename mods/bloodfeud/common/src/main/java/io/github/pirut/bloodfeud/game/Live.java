@@ -129,6 +129,8 @@ public final class Live {
         double awayX, awayZ;
         /** Out on patrol from its pack's home: it isn't called back to its settlement while it hunts. */
         boolean patrol;
+        /** What its departure switched off, to switch back on if it ever stops departing in the world. */
+        Departure.Held held;
 
         Active(UUID brute, UUID entity, ResourceKey<net.minecraft.world.level.Level> dimension, ServerBossEvent bar) {
             this.brute = brute;
@@ -144,11 +146,8 @@ public final class Live {
     /** Grunt mob -> the pack (or lone Brute) it came with. */
     private final Map<UUID, UUID> grunts = new HashMap<>();
     private final Map<UUID, ResourceKey<net.minecraft.world.level.Level>> gruntLevel = new HashMap<>();
-    /**
-     * Escorts out on a patrol, and the Brute leading each. Like their Brute they aren't called back to the
-     * settlement; when its patrol ends they go back into the pack (they leave the world; the pack's count is unchanged).
-     */
-    private final Map<UUID, UUID> escorts = new HashMap<>();
+    /** Everything packs and lone Brutes have sent out: patrols, encounters and garrisons (see {@link Outings}). */
+    private final Outings outings = new Outings();
     private final Rises rises = new Rises();
     private final Map<UUID, Long> nextEncounter = new HashMap<>();
     private final Map<UUID, Long> lastRise = new HashMap<>();
@@ -273,7 +272,11 @@ public final class Live {
     public boolean onEntityLoad(Entity e) {
         Set<String> tags = e.getTags();
         if (tags.contains(TAG_BRUTE)) return bruteOfEntity.containsKey(e.getUUID());
-        if (tags.contains(TAG_GRUNT)) return grunts.containsKey(e.getUUID());
+        if (tags.contains(TAG_GRUNT)) {
+            if (!grunts.containsKey(e.getUUID())) return false; // its outing is over (or it was before a restart)
+            if (e instanceof Mob m) Outings.onLoad(m);
+            return true;
+        }
         return true;
     }
 
@@ -291,6 +294,7 @@ public final class Live {
         }
         UUID owner = grunts.remove(mob.getUUID());
         gruntLevel.remove(mob.getUUID());
+        outings.leave(mob.getUUID());
         if (owner != null) {
             Pack p = data.feud.pack(owner);
             ServerPlayer playerKiller = source.getEntity() instanceof ServerPlayer sp ? sp : null;
@@ -379,6 +383,7 @@ public final class Live {
             UUID pack = grunts.remove(mob.getUUID());
             gruntLevel.remove(mob.getUUID());
             mob.removeTag(TAG_GRUNT);
+            promoteMember(mob);
             rises.forget(mob.getUUID()); // it rose this way: it won't rise again for the kills it saw
             b = f.rise(EntityType.getKey(mob.getType()).toString(), family, dim(mob.level()), mob.getBlockX(),
                     mob.getBlockZ(), player.getUUID(), Memory.Kind.ROSE, cause, pack, now());
@@ -623,6 +628,7 @@ public final class Live {
             UUID pack = grunts.remove(mob.getUUID());
             gruntLevel.remove(mob.getUUID());
             mob.removeTag(TAG_GRUNT);
+            promoteMember(mob);
             Brute b = data.feud.rise(EntityType.getKey(mob.getType()).toString(), family, dim(level), mob.getBlockX(),
                     mob.getBlockZ(), m.player(), Memory.Kind.SAW_KILLS, null, pack != null ? pack : m.pack(), now());
             becomeBrute(mob, b);
@@ -741,7 +747,7 @@ public final class Live {
         a.awayX = awayX;
         a.awayZ = awayZ;
         b.restUntil(a.leaveUntil + restTicks());
-        Departure.hold(mob);
+        a.held = Departure.hold(mob);
         for (ServerPlayer p : ((ServerLevel) mob.level()).players()) {
             if (p.isSpectator() || p.distanceTo(mob) > 64) continue;
             p.sendSystemMessage(Component.literal(b.fullName() + " turns and walks off. It will be back.")
@@ -761,7 +767,7 @@ public final class Live {
         ServerLevel level = server.getLevel(a.dimension);
         if (b == null || !b.alive || level == null) return; // watch() tidies it up
         if (!(level.getEntity(a.entity) instanceof Mob mob) || !mob.isAlive()) return;
-        Departure.calm(mob);
+        Departure.suppress(mob, a.held); // every tick: vanilla turns movement and looking back on every few ticks
         long walked = gt - a.leftAt;
         if (walked >= 60 && (gt >= a.leaveUntil || unseen(level, mob))) {
             vanish(a, b, mob, level, gt);
@@ -867,38 +873,37 @@ public final class Live {
      * the Boss while it has others) and a few escorts, coming from the direction of its home. Everyone comes out on a
      * {@link PatrolSpots} spot: dark, clear of player blocks, on known ground.
      */
-    private boolean spawnPatrol(ServerLevel level, Pack pk, ServerPlayer p, long gt) {
+    private boolean spawnPatrol(ServerLevel level, Pack pk, ServerPlayer p, long gt, Brute leader) {
         Feud f = data.feud;
         if (active.size() >= BloodFeud.config().maxActiveBrutes) return false;
-        Brute leader = f.patrolLeader(pk, p.getUUID(), b -> !isActive(b) && !resting(b.id, gt));
+        if (leader == null) leader = f.patrolLeader(pk, p.getUUID(), b -> !isActive(b) && !resting(b.id, gt));
         if (leader == null) return false;
         double dx = pk.campX() - p.getX(), dz = pk.campZ() - p.getZ(), d = Math.hypot(dx, dz);
         if (d < 1) {
             dx = 1;
             d = 1;
         }
+        Outings.Outing outing = outings.start(pk.id, true);
         BlockPos at = null;
         for (int reach : new int[]{30, 22}) {
             BlockPos base = BlockPos.containing(p.getX() + dx / d * reach, p.getY(), p.getZ() + dz / d * reach);
-            at = PatrolSpots.find(level, base, 0, 6, level.getRandom());
+            at = PatrolSpots.find(level, base, 0, 6, level.getRandom(), pk);
             if (at != null) break;
         }
-        if (at == null) at = PatrolSpots.find(level, p.blockPosition(), 20, 30, level.getRandom());
-        Mob mob = at == null ? null : spawnBruteAt(level, leader, at);
-        if (mob == null) return false;
-        Active a = active.get(leader.id);
-        if (a != null) a.patrol = true;
+        if (at == null) at = PatrolSpots.find(level, p.blockPosition(), 20, 30, level.getRandom(), pk);
+        Mob mob = at == null ? null : spawnBruteAt(level, leader, at, outing);
+        if (mob == null) {
+            outings.end(outing);
+            return false;
+        }
         mob.setTarget(p);
         Brute boss = f.brute(pk.boss);
         String type = boss != null ? boss.entityType : leader.entityType;
         int grunts = Math.min(pk.grunts, 2 + random.nextInt(2));
         int out = 0;
         for (int i = 0; i < grunts; i++) {
-            BlockPos gs = PatrolSpots.find(level, mob.blockPosition(), 1, 6, level.getRandom());
-            Mob g = gs == null ? null : spawnGruntAt(level, pk, type, gs, pk.id);
+            Mob g = spawnMember(level, pk, type, mob.blockPosition(), false, outing, pk.id);
             if (g == null) continue;
-            noSpoils(g);
-            escorts.put(g.getUUID(), leader.id);
             g.setTarget(p);
             out++;
         }
@@ -913,15 +918,10 @@ public final class Live {
         return true;
     }
 
-    /** An escort, like a builder, is no farm: it drops nothing, gear included, gives no experience and picks nothing up. */
-    static void noSpoils(Mob mob) {
-        CompoundTag tag = new CompoundTag();
-        mob.saveWithoutId(tag);
-        tag.putString("DeathLootTable", BuiltInLootTables.EMPTY.location().toString());
-        mob.load(tag);
-        mob.skipDropExperience();
-        for (EquipmentSlot slot : EquipmentSlot.values()) mob.setDropChance(slot, 0f);
-        mob.setCanPickUpLoot(false);
+    /** A member that rises to a Brute leaves its outing first: the outing's end never takes the new Brute. */
+    private void promoteMember(Mob mob) {
+        outings.leave(mob.getUUID());
+        Outings.promote(mob);
     }
 
     private void removeActive(UUID bruteId, boolean discard) {
@@ -939,53 +939,56 @@ public final class Live {
             b.restUntil(gameTime() + restTicks());
             data.changed();
         }
-        if (e instanceof Mob m) Departure.release(m); // if it stays in the world, it can fight again
+        if (e instanceof Mob m) Departure.release(m, a.held); // if it stays in the world, it can fight again
         if (discard && e != null && !e.isRemoved()) e.discard();
     }
 
-    /** Grunts go home with their Brutes; a patrol's escorts go back into the pack when their patrol ends. */
+    /**
+     * Each second: every outing that is over sends its members back into the pack (see {@link Outings}); garrison
+     * members of one still out are called back to their settlement when they chase too far.
+     */
     private void gruntCheck() {
-        Set<UUID> owners = new HashSet<>();
-        for (Active a : active.values()) {
-            Brute b = data.feud.brute(a.brute);
-            if (b == null) continue;
-            owners.add(b.id);
-            if (b.pack != null) owners.add(b.pack);
-        }
-        for (Iterator<Map.Entry<UUID, UUID>> it = escorts.entrySet().iterator(); it.hasNext(); ) {
-            Map.Entry<UUID, UUID> g = it.next();
-            if (active.containsKey(g.getValue()) && grunts.containsKey(g.getKey())) continue;
-            it.remove();
-            grunts.remove(g.getKey());
-            ServerLevel level = server.getLevel(gruntLevel.getOrDefault(g.getKey(), net.minecraft.world.level.Level.OVERWORLD));
-            gruntLevel.remove(g.getKey());
-            Entity e = level == null ? null : level.getEntity(g.getKey());
-            if (e == null || e.isRemoved()) continue;
-            if (level.getNearestPlayer(e, 96) != null) {
-                level.sendParticles(net.minecraft.core.particles.ParticleTypes.POOF, e.getX(), e.getY() + 0.8, e.getZ(),
-                        8, 0.3, 0.6, 0.3, 0.02);
+        long gt = gameTime();
+        for (Outings.Outing o : outings.all()) {
+            boolean leaderOut = false;
+            for (UUID l : o.leaders) leaderOut |= active.containsKey(l);
+            long farFor = 0;
+            if (o.leaders.isEmpty()) {
+                boolean near = false;
+                for (UUID m : o.members) {
+                    Entity e = memberEntity(m);
+                    if (e != null && e.level().getNearestPlayer(e, WITHDRAW_RANGE) != null) near = true;
+                }
+                if (near) o.farSince = -1;
+                else if (o.farSince < 0) o.farSince = gt;
+                farFor = o.farSince < 0 ? 0 : gt - o.farSince;
             }
-            e.discard();
-        }
-        for (Iterator<Map.Entry<UUID, UUID>> it = grunts.entrySet().iterator(); it.hasNext(); ) {
-            Map.Entry<UUID, UUID> g = it.next();
-            if (campBuilder.isBuilder(g.getKey()) || escorts.containsKey(g.getKey())) continue;
-            ServerLevel level = server.getLevel(gruntLevel.getOrDefault(g.getKey(), net.minecraft.world.level.Level.OVERWORLD));
-            if (owners.contains(g.getValue())) {
-                Pack pk = data.feud.pack(g.getValue());
-                if (pk != null && pk.builtTier > 0 && pk.siteSet && level != null
-                        && level.getEntity(g.getKey()) instanceof Mob mob && mob.isAlive()) {
-                    enforceSettlementLeash(mob, pk);
+            if (!Outings.over(!o.leaders.isEmpty(), leaderOut, o.members.size(), farFor)) {
+                Pack pk = o.pack == null ? null : data.feud.pack(o.pack);
+                if (!o.patrol && pk != null && pk.builtTier > 0 && pk.siteSet) {
+                    for (UUID m : o.members) if (memberEntity(m) instanceof Mob mob && mob.isAlive()) enforceSettlementLeash(mob, pk);
                 }
                 continue;
             }
-            Entity e = level == null ? null : level.getEntity(g.getKey());
-            it.remove();
-            gruntLevel.remove(g.getKey());
-            if (e == null || e.isRemoved()) continue;
-            if (level.getNearestPlayer(e, 48) == null) e.discard();
-            else e.removeTag(TAG_GRUNT); // a player is still fighting it: it's just a mob now
+            for (UUID m : outings.end(o)) {
+                Entity e = memberEntity(m);
+                grunts.remove(m);
+                gruntLevel.remove(m);
+                if (e == null || e.isRemoved()) continue; // unloaded: it is dropped if it ever loads again
+                if (e.level() instanceof ServerLevel level && level.getNearestPlayer(e, 96) != null) {
+                    level.sendParticles(net.minecraft.core.particles.ParticleTypes.POOF, e.getX(), e.getY() + 0.8, e.getZ(),
+                            8, 0.3, 0.6, 0.3, 0.02);
+                }
+                e.discard();
+            }
+            long rest = Outings.restAfter(o, gt);
+            if (o.pack != null && rest > 0) rested.merge(o.pack, rest, Math::max);
         }
+    }
+
+    private Entity memberEntity(UUID id) {
+        ServerLevel level = server.getLevel(gruntLevel.getOrDefault(id, net.minecraft.world.level.Level.OVERWORLD));
+        return level == null ? null : level.getEntity(id);
     }
 
     /** Actively calls wandering garrison mobs back to their built settlement when they chase too far afield. */
@@ -1020,21 +1023,22 @@ public final class Live {
         Feud f = data.feud;
         for (Brute b : f.brutes.values()) {
             if (!b.alive || !p.getUUID().equals(b.hunting) || !b.dimension.equals(dim) || isActive(b) || resting(b.id, gt)) continue;
-            if (Math.hypot(b.x - p.getX(), b.z - p.getZ()) > HUNTER_ENCOUNTER_RANGE) continue;
-            Pack pack = f.packOf(b);
-            if (pack != null && b.id.equals(pack.boss)) continue; // a Boss meets you at home, with its pack
             Pack own = f.patrolFor(b, dim, p.getX(), p.getZ());
             if (own != null) {
-                // In its own pack's ground it comes with that pack's patrol, whichever pack is nearest the player.
-                if (!resting(own.id, gt) && !packOut(own) && spawnPatrol(level, own, p, gt)) {
+                // Anywhere in its own pack's ground (its patrol range) it comes, Boss or not, leading that pack's
+                // patrol, whichever pack is nearest the player.
+                if (!resting(own.id, gt) && !packOut(own) && spawnPatrol(level, own, p, gt, b)) {
                     nextEncounter.put(p.getUUID(), gt + cfg.encounterCooldownSeconds * 20L);
                     return;
                 }
                 continue;
             }
+            if (Math.hypot(b.x - p.getX(), b.z - p.getZ()) > HUNTER_ENCOUNTER_RANGE) continue;
+            Pack pack = f.packOf(b);
+            if (pack != null && b.id.equals(pack.boss)) continue; // out of its ground, a Boss stays home
             if (pack != null && pack.settling) continue; // its pack is on the move
             boolean followed = Math.hypot(b.x - p.getX(), b.z - p.getZ()) > 300;
-            Mob mob = spawnBrute(level, b, p.blockPosition(), 20, 32);
+            Mob mob = spawnBrute(level, b, p.blockPosition(), 20, 32, false, null, pack);
             if (mob == null) continue;
             mob.setTarget(p);
             introduce(p, mob, b, followed);
@@ -1072,7 +1076,7 @@ public final class Live {
             }
         }
         if (ground != null) {
-            if (random.nextInt(100) < cfg.patrolChancePercent && spawnPatrol(level, ground, p, gt)) {
+            if (random.nextInt(100) < cfg.patrolChancePercent && spawnPatrol(level, ground, p, gt, null)) {
                 nextEncounter.put(p.getUUID(), gt + cfg.encounterCooldownSeconds * 20L);
                 return;
             }
@@ -1080,7 +1084,7 @@ public final class Live {
         if (random.nextInt(100) >= cfg.encounterChancePercent) return;
         for (Brute b : f.alive(dim, p.getX(), p.getZ(), LONE_ENCOUNTER_RANGE)) {
             if (b.pack != null || isActive(b) || resting(b.id, gt)) continue;
-            Mob mob = spawnBrute(level, b, p.blockPosition(), 18, 30);
+            Mob mob = spawnBrute(level, b, p.blockPosition(), 18, 30, false, null, null);
             if (mob == null) continue;
             mob.setTarget(p);
             introduce(p, mob, b, false);
@@ -1096,7 +1100,9 @@ public final class Live {
         return b != null && b.resting(gt);
     }
 
+    /** Whether the pack has anyone out, a Brute or a grunt: it sends one outing at a time. */
     private boolean packOut(Pack p) {
+        if (outings.packOut(p.id)) return true;
         for (Active a : active.values()) {
             Brute b = data.feud.brute(a.brute);
             if (b != null && p.id.equals(b.pack)) return true;
@@ -1154,6 +1160,7 @@ public final class Live {
         }
 
         List<Brute> members = f.members(pack);
+        Outings.Outing outing = outings.start(pack.id, false);
         Mob bossMob = null;
         Brute boss = null;
         int out = 0;
@@ -1173,8 +1180,8 @@ public final class Live {
                     maxR = 4;
                 }
             }
-            Mob mob = spawnBrute(level, b, spawnAnchor, minR, maxR, hasSettlement);
-            if (mob == null && hasSettlement) mob = spawnBrute(level, b, origin, 1, Math.min(12, tier.radius), false);
+            Mob mob = spawnBrute(level, b, spawnAnchor, minR, maxR, hasSettlement, outing, pack);
+            if (mob == null && hasSettlement) mob = spawnBrute(level, b, origin, 1, Math.min(12, tier.radius), false, outing, pack);
             if (mob == null) continue;
             if (hasSettlement) mob.restrictTo(origin, tetherRadius);
             if (player != null) b.relation(player.getUUID()).met = true;
@@ -1196,8 +1203,18 @@ public final class Live {
                     gAnchor = origin.offset(s.rx(), s.ry(), s.rz());
                 }
             }
-            Mob grunt = spawnGrunt(level, pack, gruntType, gAnchor, pack.id, hasSettlement);
+            Mob grunt = spawnMember(level, pack, gruntType, gAnchor, hasSettlement, outing, pack.id);
             if (grunt != null && hasSettlement) grunt.restrictTo(origin, tetherRadius);
+        }
+        if (out == 0) {
+            // No Brute could come (they rest, or are out already): a wave of grunts on its own, the only one until
+            // its Brutes' rest is over (see the end of outings).
+            long window = 0;
+            for (Brute b : members) {
+                window = Math.max(window, b.restUntil);
+                window = Math.max(window, rested.getOrDefault(b.id, 0L));
+            }
+            outing.restWindow = window;
         }
         if (player != null) {
             if (bossMob != null) introduce(player, bossMob, boss, false);
@@ -1221,19 +1238,29 @@ public final class Live {
         data.changed();
     }
 
-    /** Spawns a Brute as a real mob somewhere between {@code min} and {@code max} blocks from {@code near}. */
+    /** Ops only: brings a Brute out near {@code near}, anywhere a mob can stand (an operator asked for it there). */
     public Mob spawnBrute(ServerLevel level, Brute b, BlockPos near, int min, int max) {
-        return spawnBrute(level, b, near, min, max, false);
+        BlockPos pos = findSpot(level, near, min, max);
+        return pos == null ? null : spawnBruteAt(level, b, pos, null);
     }
 
-    private Mob spawnBrute(ServerLevel level, Brute b, BlockPos near, int min, int max, boolean preferAnchor) {
-        if (b.resting(gameTime())) return null; // every way a Brute comes out goes through here
-        BlockPos pos = preferAnchor ? findSettlementSpot(level, near, min, max) : findSpot(level, near, min, max);
-        return pos == null ? null : spawnBruteAt(level, b, pos);
+    /**
+     * Brings a Brute of an outing out near {@code near}, on a {@link PatrolSpots} spot (in its settlement's anchors
+     * first when {@code preferAnchor}). Every way a pack's Brute comes out goes through here or
+     * {@link #spawnBruteAt}.
+     */
+    private Mob spawnBrute(ServerLevel level, Brute b, BlockPos near, int min, int max, boolean preferAnchor,
+                           Outings.Outing outing, Pack pack) {
+        if (b.resting(gameTime())) return null;
+        BlockPos pos = preferAnchor ? anchorSpot(level, near, min, max, pack) : PatrolSpots.find(level, near, min, max, level.getRandom(), pack);
+        return pos == null ? null : spawnBruteAt(level, b, pos, outing);
     }
 
-    /** Brings a Brute out as a real mob at {@code pos}, unless it is resting. */
-    private Mob spawnBruteAt(ServerLevel level, Brute b, BlockPos pos) {
+    /**
+     * Brings a Brute out as a real mob at {@code pos}, unless it is resting, as a leader of {@code outing} (a new
+     * outing of its own when null). Its Packcaller grunts come out with it, as members of the same outing.
+     */
+    private Mob spawnBruteAt(ServerLevel level, Brute b, BlockPos pos, Outings.Outing outing) {
         if (b.resting(gameTime())) return null;
         EntityType<?> type = EntityType.byString(b.entityType).orElse(null);
         if (type == null) type = EntityType.byString(b.family.defaultType).orElse(EntityType.ZOMBIE);
@@ -1247,15 +1274,32 @@ public final class Live {
         }
         becomeBrute(mob, b);
         level.addFreshEntity(mob);
+        Outings.Outing o = outing != null ? outing : outings.start(b.pack, false);
+        outings.addLeader(o, b.id);
+        Active a = active.get(b.id);
+        if (a != null) a.patrol = o.patrol;
         if (b.traits.contains(Trait.PACKCALLER)) {
             Pack p = data.feud.packOf(b);
-            for (int i = 0; i < 3; i++) spawnGrunt(level, p, b.entityType, pos, p != null ? p.id : b.id, false);
+            for (int i = 0; i < 3; i++) spawnMember(level, p, b.entityType, pos, false, o, p != null ? p.id : b.id);
         }
         return mob;
     }
 
+    /** One member of an outing near {@code near}, on a {@link PatrolSpots} spot; tagged and no farm. */
+    private Mob spawnMember(ServerLevel level, Pack pack, String entityType, BlockPos near, boolean preferAnchor,
+                            Outings.Outing outing, UUID owner) {
+        BlockPos pos = preferAnchor ? anchorSpot(level, near, 1, 8, pack) : PatrolSpots.find(level, near, 1, 8, level.getRandom(), pack);
+        if (pos == null) return null;
+        Mob mob = spawnGruntAt(level, pack, entityType, pos, owner);
+        if (mob == null) return null;
+        Outings.outfit(mob);
+        outings.addMember(outing, mob.getUUID());
+        return mob;
+    }
+
+    /** A builder for a pack's crew (#32's rules, not an outing's). */
     private Mob spawnGrunt(ServerLevel level, Pack pack, String entityType, BlockPos near, UUID owner, boolean preferAnchor) {
-        BlockPos pos = preferAnchor ? findSettlementSpot(level, near, 1, 8) : findSpot(level, near, 1, 8);
+        BlockPos pos = findSpot(level, near, 1, 8);
         return pos == null ? null : spawnGruntAt(level, pack, entityType, pos, owner);
     }
 
@@ -1277,8 +1321,8 @@ public final class Live {
         return mob;
     }
 
-    /** Checks local standability right around a settlement anchor first so Bosses/guards spawn inside halls, not on roofs. */
-    private BlockPos findSettlementSpot(ServerLevel level, BlockPos anchor, int fallbackMin, int fallbackMax) {
+    /** Right round a settlement anchor first, so Bosses and guards come out in halls, not on roofs; by the same rule. */
+    private BlockPos anchorSpot(ServerLevel level, BlockPos anchor, int fallbackMin, int fallbackMax, Pack pack) {
         int[][] offsets = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
         for (int[] off : offsets) {
             int x = anchor.getX() + off[0];
@@ -1286,10 +1330,10 @@ public final class Live {
             if (!level.hasChunk(x >> 4, z >> 4)) continue;
             for (int dy : new int[]{0, 1, -1, 2}) {
                 BlockPos candidate = new BlockPos(x, anchor.getY() + dy, z);
-                if (Spots.standable(level, candidate, false)) return candidate;
+                if (PatrolSpots.allowed(level, candidate, pack)) return candidate;
             }
         }
-        return findSpot(level, anchor, fallbackMin, fallbackMax);
+        return PatrolSpots.find(level, anchor, fallbackMin, fallbackMax, level.getRandom(), pack);
     }
 
     private BlockPos findSpot(ServerLevel level, BlockPos near, int min, int max) {
@@ -1933,7 +1977,7 @@ public final class Live {
         data.feud.abandonedSites.clear();
         data.stolen.clear();
         settler.clear();
-        escorts.clear();
+        outings.clear();
         rises.clear();
         data.changed();
     }

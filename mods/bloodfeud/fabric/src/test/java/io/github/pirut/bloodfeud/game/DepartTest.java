@@ -143,7 +143,7 @@ class DepartTest {
         Zombie victim = new Zombie(EntityType.ZOMBIE, level);
         assertFalse(Effects.immune(victim, hit));
 
-        Departure.hold(z);
+        Departure.Held held = Departure.hold(z);
         assertTrue(Departure.departing(z));
         for (GoalSelector g : selectors) {
             assertTrue(disabled(g).containsAll(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK, Goal.Flag.TARGET)));
@@ -152,7 +152,7 @@ class DepartTest {
         assertNull(z.getTarget());
         assertTrue(Effects.immune(victim, hit), "its hits do nothing");
 
-        Departure.release(z);
+        Departure.release(z, held);
         assertFalse(Departure.departing(z));
         for (GoalSelector g : selectors) assertTrue(disabled(g).isEmpty(), "it can fight again");
         assertFalse(Effects.immune(victim, hit));
@@ -166,7 +166,7 @@ class DepartTest {
         chance.setAccessible(true);
         Zombie z = new Zombie(EntityType.ZOMBIE, overworld());
         z.setCanPickUpLoot(true);
-        Live.noSpoils(z);
+        Outings.outfit(z);
         assertEquals(BuiltInLootTables.EMPTY, z.getLootTable());
         assertFalse(z.canPickUpLoot());
         for (EquipmentSlot slot : EquipmentSlot.values()) {
@@ -213,17 +213,18 @@ class DepartTest {
         assertEquals(Settler.VOID, Settler.kind(-16384, -16384, -16384), "the world's floor is void");
         assertEquals(Settler.WET, Settler.kind(60, 62, -64));
         for (int i = 0; i < Settler.SAMPLES.length; i++) ground[i] = new int[]{-64, Settler.VOID};
-        assertArrayEquals(new int[]{0, 300}, Settler.choose(f, p, candidates, ground, (x, z) -> 1, (x, z) -> 0), "not over the void");
-        assertArrayEquals(new int[]{-300, 0}, Settler.choose(f, p, candidates, ground, (x, z) -> z > 100 ? 0 : 1, (x, z) -> 0),
+        assertArrayEquals(new int[]{0, 300}, Settler.choose(f, p, candidates, ground, (x, z) -> 1, (x, z) -> 0).pick(), "not over the void");
+        assertArrayEquals(new int[]{-300, 0}, Settler.choose(f, p, candidates, ground, (x, z) -> z > 100 ? 0 : 1, (x, z) -> 0).pick(),
                 "not past the border");
 
         // Another pack still settling, its pick at (-280, 30): that ground is held from the moment it was picked.
         Pack other = new Pack(new UUID(7, 7), Family.BONES, OW, "Other", 2, -280, 30, 0);
         other.settling = true;
+        other.retreatHome = true;
         f.packs.put(other.id, other);
         assertTrue(Settler.heldByAnother(f, p, -300, 0));
         assertFalse(Settler.heldByAnother(f, p, 0, 300));
-        assertNull(Settler.choose(f, p, candidates, ground, (x, z) -> z > 100 ? 0 : 1, (x, z) -> 0));
+        assertNull(Settler.choose(f, p, candidates, ground, (x, z) -> z > 100 ? 0 : 1, (x, z) -> 0).pick());
     }
 
     @Test

@@ -44,8 +44,8 @@ show gear, so they get a tougher hide instead of armor and caps.
   such ground (or in the Nether), it settles where it formed, as before.
 - A pack holds the ground for about 500 blocks round its home and patrols it. Out there, away from its camp, a
   patrol can find you: a Brute (the one hunting you, if any) and a few grunts, coming from the direction of its home.
-  Patrols only come out in the dark, away from anything you built, and their grunts drop nothing. When a patrol is
-  over, its grunts go back to the pack.
+  Everything a pack sends out (patrols, its garrison, a Packcaller's grunts) comes out only in the dark (or in its own
+  camp), away from anything you built, and its grunts drop nothing. When it's over they go back to the pack.
 - A pack is named after the place it formed (the Mossy Bog Pack, the Cold Ridge Pack) and has a color. Its members
   wear leather caps in that color and the Boss wears the pack's banner.
 - Packs grow every night, and faster for every player they kill. New Brutes rise inside the pack. A Brute that gets

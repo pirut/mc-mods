@@ -25,6 +25,11 @@ public final class Pack {
      */
     public boolean settling;
     public int settleFromX, settleFromZ;
+    /**
+     * True once its home was picked by withdrawing from a fight: until its camp has a site, the home holds the ground
+     * round it in the same reservations camp sites keep (see {@code SiteFinder.heldByOthers}). Saved.
+     */
+    public boolean retreatHome;
     public UUID boss;
     /** The King's pack this one kneels to, or null. */
     public UUID liege;

@@ -8,7 +8,10 @@
   where it formed. Packs that already have a home keep it.
 - **Packs patrol their ground.** Within about 500 blocks of its home, away from its camp, a pack's patrol can find you:
   a Brute and a few grunts, out of the dark and away from player blocks. A Brute of the pack that is hunting you
-  always comes this way. Patrol grunts drop nothing, and go back to the pack when the patrol is over.
+  always comes this way, Boss or not, anywhere in that ground. Every mob a pack sends out (a patrol, a garrison, a
+  Packcaller's grunts) comes out the same way, drops nothing and gives no experience (after a reload too), and goes
+  back to the pack when it's over: nothing it sent out stays behind. A pack whose Brutes are resting sends at most one
+  wave of grunts until they're back.
 - **A Brute that rises leaves.** It turns and walks off, toward its pack's home if it has one, and is gone once you
   can't see it (20 seconds at most). It never walks into ground that isn't loaded, and it can't hurt you while it
   goes. It rests about 5 minutes (saved, so a restart doesn't cut it short), then comes back through the feud:

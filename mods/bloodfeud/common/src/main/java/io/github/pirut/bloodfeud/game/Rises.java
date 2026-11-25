@@ -65,8 +65,12 @@ final class Rises {
         for (Map.Entry<UUID, Mark> e : new HashMap<>(marked).entrySet()) {
             Mark m = e.getValue();
             if (gameTime - m.at() < DELAY) continue;
+            if (gameTime - m.at() > EXPIRE) { // expired before anything else: an expired mark never makes a Brute
+                marked.remove(e.getKey());
+                continue;
+            }
             Outcome o = riser.rise(e.getKey(), m);
-            if (o != Outcome.NOT_YET || gameTime - m.at() > EXPIRE) marked.remove(e.getKey());
+            if (o != Outcome.NOT_YET) marked.remove(e.getKey());
         }
     }
 

@@ -44,7 +44,7 @@ final class Settler {
      * The ground a home holds until its camp has a site: everything its site search could reserve, a Stronghold's
      * reservation round any spiral candidate. Two homes whose holds overlap could end up with overlapping camps.
      */
-    static final int HOLD = SettlementTier.STRONGHOLD.radius + CampBlueprint.FOOTPRINT_MARGIN + SiteFinder.MAX_SPIRAL_RADIUS;
+    static final int HOLD = SiteFinder.HOME_HOLD;
 
     /** A survey's ground value: {@code {top, kind}}, kind 0 for dry ground. */
     static final int DRY = 0, WET = 1, VOID = 2;
@@ -102,9 +102,9 @@ final class Settler {
                 changed |= fallBack(feud, p, "its ground couldn't be read");
                 continue;
             }
-            int[] pick = choose(feud, p, s.candidates, ground, inside(level), (x, z) -> nearSpawn(level, x, z) ? 1 : 0);
-            if (pick == null) changed |= fallBack(feud, p, "no dry, level ground no other pack holds was found");
-            else changed |= settle(feud, p, pick[0], pick[1], null);
+            Choice c = choose(feud, p, s.candidates, ground, inside(level), (x, z) -> nearSpawn(level, x, z) ? 1 : 0);
+            if (c.pick() == null) changed |= fallBack(feud, p, c.why());
+            else changed |= settle(feud, p, c.pick()[0], c.pick()[1], null);
         }
         return changed;
     }
@@ -139,16 +139,49 @@ final class Settler {
      * The first candidate with dry, level, real ground, inside the border ({@code inside} gives 1), not near spawn
      * ({@code nearSpawn} gives 0), and holding no ground another pack holds; or null.
      */
-    static int[] choose(Feud feud, Pack p, List<int[]> candidates, int[][] ground, IntBinaryOperator inside,
-                        IntBinaryOperator nearSpawn) {
+    static Choice choose(Feud feud, Pack p, List<int[]> candidates, int[][] ground, IntBinaryOperator inside,
+                         IntBinaryOperator nearSpawn) {
+        int wet = 0, voids = 0, steep = 0, border = 0, spawn = 0, held = 0;
         for (int i = 0; i < candidates.size(); i++) {
             int[] c = candidates.get(i);
-            if (!dryAndLevel(ground, i * SAMPLES.length)) continue;
-            if (inside.applyAsInt(c[0], c[1]) == 0 || nearSpawn.applyAsInt(c[0], c[1]) != 0) continue;
-            if (heldByAnother(feud, p, c[0], c[1])) continue;
-            return c;
+            int first = i * SAMPLES.length;
+            if (!dryAndLevel(ground, first)) {
+                if (anyKind(ground, first, VOID)) voids++;
+                else if (anyKind(ground, first, WET)) wet++;
+                else steep++;
+                continue;
+            }
+            if (inside.applyAsInt(c[0], c[1]) == 0) {
+                border++;
+                continue;
+            }
+            if (nearSpawn.applyAsInt(c[0], c[1]) != 0) {
+                spawn++;
+                continue;
+            }
+            if (heldByAnother(feud, p, c[0], c[1])) {
+                held++;
+                continue;
+            }
+            return new Choice(c, null);
         }
-        return null;
+        List<String> why = new ArrayList<>();
+        if (border > 0) why.add(border + " outside the world border");
+        if (wet > 0) why.add(wet + " under water");
+        if (voids > 0) why.add(voids + " over the void");
+        if (steep > 0) why.add(steep + " too steep");
+        if (spawn > 0) why.add(spawn + " too near spawn");
+        if (held > 0) why.add(held + " on ground another pack holds");
+        return new Choice(null, "none of its " + candidates.size() + " places would do: " + String.join(", ", why));
+    }
+
+    /** The home picked, or why none was. */
+    record Choice(int[] pick, String why) {
+    }
+
+    private static boolean anyKind(int[][] ground, int first, int kind) {
+        for (int i = 0; i < SAMPLES.length; i++) if (ground[first + i] != null && ground[first + i][1] == kind) return true;
+        return false;
     }
 
     /**
@@ -157,12 +190,7 @@ final class Settler {
      * holds its reservation (see {@link SiteFinder#heldByOthers}).
      */
     static boolean heldByAnother(Feud feud, Pack p, int x, int z) {
-        List<int[]> held = SiteFinder.heldByOthers(feud, p);
-        for (Pack o : feud.packs.values()) {
-            if (o == p || o.siteSet || !o.dimension.equals(p.dimension)) continue;
-            held.add(new int[]{o.homeX - HOLD, o.homeZ - HOLD, o.homeX + HOLD, o.homeZ + HOLD});
-        }
-        return SiteFinder.overlapsAny(held, x - HOLD, z - HOLD, x + HOLD, z + HOLD);
+        return SiteFinder.overlapsAny(SiteFinder.heldByOthers(feud, p), x - HOLD, z - HOLD, x + HOLD, z + HOLD);
     }
 
     /**
@@ -196,7 +224,7 @@ final class Settler {
         List<int[]> columns = new ArrayList<>();
         for (int[] c : candidates) for (int[] s : SAMPLES) columns.add(new int[]{c[0] + s[0], c[1] + s[1]});
         if (Earth.is(level)) {
-            CompletableFuture<int[][]> heights = Earth.survey(level, columns);
+            CompletableFuture<int[][]> heights = Earth.survey(level, columns, cancelled::get);
             if (heights == null) return null;
             int floor = Earth.bottom(level);
             return heights.thenApply(h -> {
