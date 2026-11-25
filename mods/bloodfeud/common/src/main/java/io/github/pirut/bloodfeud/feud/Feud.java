@@ -50,6 +50,15 @@ public final class Feud {
     public int maxGrunts() {
         return campsEnabled ? MAX_GRUNTS : CLASSIC_MAX_GRUNTS;
     }
+    /**
+     * How far a pack that forms withdraws from where it formed (where it fought) before it makes its home, in blocks.
+     * Set from the config.
+     */
+    public int retreatMin = 150, retreatMax = 400;
+    /** How far from its home a pack patrols, and can find a player. Set from the config. */
+    public int patrolRange = PACK_RANGE;
+    /** Packs keep their new homes at least this far from another pack's, where they can. */
+    public static final int HOME_SPACING = 96;
     public int maxPacks = 64;
     public int maxBrutes = 256;
 
@@ -470,8 +479,8 @@ public final class Feud {
             }
             if (near != null && random.nextDouble() < 0.4) {
                 b.pack = near.id;
-                b.x = near.homeX;
-                b.z = near.homeZ;
+                b.x = near.campX();
+                b.z = near.campZ();
                 tell(News.Kind.JOINED, b.fullName() + " has joined " + near.title() + ".", b);
                 continue;
             }
@@ -488,12 +497,12 @@ public final class Feud {
                 Brute second = boss == b ? other : b;
                 Pack p = form(boss, places, now, 3 + random.nextInt(3));
                 second.pack = p.id;
-                second.x = p.homeX;
-                second.z = p.homeZ;
+                settleAway(p);
                 tell(News.Kind.FORMED, boss.fullName() + " and " + second.fullName() + " have formed " + p.title()
                         + ", with " + boss.name + " as its Boss.", boss, second);
             } else if (random.nextDouble() < 0.3) {
                 Pack p = form(b, places, now, 2 + random.nextInt(3));
+                settleAway(p);
                 tell(News.Kind.FORMED, b.fullName() + " has gathered a following: " + p.title() + ".", b);
             }
         }
@@ -525,6 +534,132 @@ public final class Feud {
         for (Map.Entry<UUID, Relation> e : boss.relations.entrySet()) if (e.getValue().met) p.met.add(e.getKey());
         packs.put(p.id, p);
         return p;
+    }
+
+    /**
+     * A pack that just formed doesn't settle where it formed, which is where it fought: it withdraws
+     * {@link #retreatMin} to {@link #retreatMax} blocks and makes its home there, keeping {@link #HOME_SPACING} from
+     * other packs' homes where it can. Its members go with it. It stays {@link Pack#settling} until the game has
+     * checked the ground there (see {@link #homeCandidates}); nothing is built for it until then.
+     */
+    public void settleAway(Pack p) {
+        p.settleFromX = p.homeX;
+        p.settleFromZ = p.homeZ;
+        int[] best = null;
+        double bestRoom = -1;
+        for (int i = 0; i < 8; i++) {
+            int[] at = retreatPoint(random, p.settleFromX, p.settleFromZ, Double.NaN, retreatMin, retreatMax);
+            double room = roomFromOtherPacks(p, at[0], at[1]);
+            if (room >= HOME_SPACING) {
+                best = at;
+                break;
+            }
+            if (room > bestRoom) {
+                bestRoom = room;
+                best = at;
+            }
+        }
+        moveHome(p, best[0], best[1]);
+        p.settling = true;
+        p.retreatHome = true;
+    }
+
+    /** Moves a pack's home, and its members' records with it. */
+    public void moveHome(Pack p, int x, int z) {
+        p.homeX = x;
+        p.homeZ = z;
+        for (Brute b : members(p)) {
+            b.x = p.campX();
+            b.z = p.campZ();
+        }
+    }
+
+    /** How far {@code (x, z)} is from the nearest other pack's home in {@code p}'s dimension. */
+    public double roomFromOtherPacks(Pack p, int x, int z) {
+        double room = Double.POSITIVE_INFINITY;
+        for (Pack o : packs.values()) {
+            if (o == p || !o.dimension.equals(p.dimension)) continue;
+            room = Math.min(room, Math.hypot(o.campX() - x, o.campZ() - z));
+        }
+        return room;
+    }
+
+    /**
+     * A point between {@code min} and {@code max} blocks from {@code (fromX, fromZ)}: in the direction {@code angle}
+     * (radians, give or take 45 degrees), or any direction when it is NaN.
+     */
+    public static int[] retreatPoint(Random random, int fromX, int fromZ, double angle, int min, int max) {
+        int lo = Math.max(0, Math.min(min, max)), hi = Math.max(min, max);
+        double a = Double.isNaN(angle) ? random.nextDouble() * Math.PI * 2 : angle + (random.nextDouble() - 0.5) * Math.PI / 2;
+        double d = lo + random.nextDouble() * (hi - lo);
+        return new int[]{fromX + (int) Math.round(Math.cos(a) * d), fromZ + (int) Math.round(Math.sin(a) * d)};
+    }
+
+    /**
+     * Places a settling pack could make its home, best first: the one it picked, then others between
+     * {@link #retreatMin} and {@link #retreatMax} from where it formed, round the compass. The game takes the first
+     * with dry, level ground that no other pack holds. The same pack always gets the same list.
+     */
+    public List<int[]> homeCandidates(Pack p, int count) {
+        List<int[]> out = new ArrayList<>();
+        out.add(new int[]{p.homeX, p.homeZ});
+        Random r = new Random(p.id.getLeastSignificantBits() ^ 0x5EEDL);
+        double start = Math.atan2(p.homeZ - p.settleFromZ, p.homeX - p.settleFromX);
+        for (int i = 1; i < count; i++) {
+            // Round the compass from the first pick, alternating sides, at a fresh distance each time.
+            double a = start + Math.PI * 2 * ((i + 1) / 2) / count * (i % 2 == 0 ? -1 : 1);
+            int lo = Math.min(retreatMin, retreatMax), hi = Math.max(retreatMin, retreatMax);
+            double d = lo + r.nextDouble() * (hi - lo);
+            out.add(new int[]{p.settleFromX + (int) Math.round(Math.cos(a) * d), p.settleFromZ + (int) Math.round(Math.sin(a) * d)});
+        }
+        return out;
+    }
+
+    /** The pack has made its home at {@code (x, z)}: it builds there from now on. */
+    public void settle(Pack p, int x, int z) {
+        moveHome(p, x, z);
+        p.settling = false;
+    }
+
+    /** Whether {@code (x, z)} in {@code dimension} is in the ground a pack patrols. */
+    public boolean inTerritory(Pack p, String dimension, double x, double z) {
+        return p.distanceTo(dimension, x, z) <= patrolRange;
+    }
+
+    /**
+     * The pack whose patrol a hunting Brute comes with: its own, when the player is in that pack's ground (and the
+     * pack isn't on the move). Null when it comes on its own. Which pack is nearest the player doesn't matter.
+     */
+    public Pack patrolFor(Brute hunter, String dimension, double x, double z) {
+        Pack p = packOf(hunter);
+        if (p == null || p.settling || !inTerritory(p, dimension, x, z)) return null;
+        return p;
+    }
+
+    /**
+     * Who leads a pack's patrol to a player: a Brute hunting that player first, then its Nemesis, then one that has
+     * met the player, then the strongest. The Boss stays home unless the pack has no one else.
+     *
+     * @param free whether a Brute can go out now (not already out, not resting)
+     */
+    public Brute patrolLeader(Pack p, UUID player, java.util.function.Predicate<Brute> free) {
+        Brute best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (Brute b : members(p)) {
+            if (!b.alive || !free.test(b)) continue;
+            Relation r = b.relations.get(player);
+            int score = b.level;
+            if (player.equals(b.hunting)) score += 1000;
+            else if (r != null && r.nemesis) score += 500;
+            else if (r != null && r.met) score += 100;
+            // The Boss stays home while the pack has someone else, unless it is the one hunting this player.
+            if (b.id.equals(p.boss) && !player.equals(b.hunting)) score -= 10_000;
+            if (score > bestScore) {
+                bestScore = score;
+                best = b;
+            }
+        }
+        return best;
     }
 
     private void grow(Pack p, long now) {

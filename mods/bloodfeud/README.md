@@ -17,6 +17,11 @@ rivalries around the places where players fight.
   kills you again gets stronger.
 - **It got away.** A Brute you run from gets stronger for driving you off.
 
+A mob that rises doesn't stay to fight. It turns and walks off ("It will be back"), toward its pack's home if it has
+one, and is gone once you can't see it, or within about 20 seconds. While it walks off it can't hurt you, even if you
+hit it. It stays away about 5 minutes, across a restart too, then comes back, the same Brute with the same memory,
+name and rank: hunting you down, leading a patrol of its pack, or meeting you at its home. A mob only ever rises once.
+
 Brutes have a level, a name and an epithet, and a few traits: things it can't be hurt by (Arrowproof, Fireproof,
 Unshakable, Watchful), things it is good at (Venom Blade, Bonebreaker, Thief, Blink, Berserker, Regenerating,
 Packcaller, Shieldbearer, Night Stalker), ways to kill it fast (Headshot, Unguarded, Beast-Bait, Hallowed Bane, Glass
@@ -34,6 +39,13 @@ show gear, so they get a tougher hide instead of armor and caps.
 
 - At night a lone Brute pulls in plain mobs of its kind. When two Brutes of the same family meet, the stronger one
   becomes the **Boss** and the other its first Brute. That's a pack.
+- A pack doesn't settle where it formed, which is where you fought it. It withdraws 150 to 400 blocks, to dry, level
+  ground inside the world border that no other pack holds, and makes its home and camp there. Where there is no
+  such ground (or in the Nether), it settles where it formed, as before.
+- A pack holds the ground for about 500 blocks round its home and patrols it. Out there, away from its camp, a
+  patrol can find you: a Brute (the one hunting you, if any) and a few grunts, coming from the direction of its home.
+  Everything a pack sends out (patrols, its garrison, a Packcaller's grunts) comes out only in the dark (or in its own
+  camp), away from anything you built, and its grunts drop nothing. When it's over they go back to the pack.
 - A pack is named after the place it formed (the Mossy Bog Pack, the Cold Ridge Pack) and has a color. Its members
   wear leather caps in that color and the Boss wears the pack's banner.
 - Packs grow every night, and faster for every player they kill. New Brutes rise inside the pack. A Brute that gets
@@ -85,7 +97,10 @@ no other pack builds there.
 
 Ruins, the crumbling of abandoned settlements, and banner changes still happen off screen, while players are away.
 
-Settings in `config/bloodfeud.properties`: `campBlocksPerMinute` (each builder's pace, default 60). Turn automatic
+Settings in `config/bloodfeud.properties`: `campBlocksPerMinute` (each builder's pace, default 60),
+`retreatMinDistance` and `retreatMaxDistance` (how far a new pack withdraws from the fight, default 150 and 400),
+`patrolRange` (default 500), `patrolChancePercent` (default 20), `risenLeaveSeconds` (default 20) and
+`risenRestSeconds` (how long a risen Brute stays away, default 300). Turn automatic
 pack settlements off or back on anytime with `buildCamps=false` or `/bloodfeud camps off` and `/bloodfeud camps on`.
 
 ## Relics

@@ -120,6 +120,7 @@ public final class FeudData extends SavedData {
         t.putInt("timesReturned", b.timesReturned);
         t.putLong("risenAt", b.risenAt);
         if (b.hunting != null) t.putUUID("hunting", b.hunting);
+        if (b.restUntil > 0) t.putLong("restUntil", b.restUntil);
         ListTag rels = new ListTag();
         for (Map.Entry<UUID, Relation> e : b.relations.entrySet()) {
             Relation r = e.getValue();
@@ -242,6 +243,12 @@ public final class FeudData extends SavedData {
         t.putInt("color", p.color);
         t.putInt("homeX", p.homeX);
         t.putInt("homeZ", p.homeZ);
+        if (p.retreatHome) t.putBoolean("retreatHome", true);
+        if (p.settling) {
+            t.putBoolean("settling", true);
+            t.putInt("settleFromX", p.settleFromX);
+            t.putInt("settleFromZ", p.settleFromZ);
+        }
         if (p.boss != null) t.putUUID("boss", p.boss);
         if (p.liege != null) t.putUUID("liege", p.liege);
         t.putInt("grunts", p.grunts);
@@ -320,6 +327,7 @@ public final class FeudData extends SavedData {
                 if (t.hasUUID("killedBy")) b.killedBy = t.getUUID("killedBy");
                 b.timesReturned = t.getInt("timesReturned");
                 if (t.hasUUID("hunting")) b.hunting = t.getUUID("hunting");
+                b.restUntil = t.getLong("restUntil");
                 for (Tag rr : t.getList("relations", Tag.TAG_COMPOUND)) {
                     CompoundTag rt = (CompoundTag) rr;
                     Relation r = b.relation(rt.getUUID("player"));
@@ -359,6 +367,11 @@ public final class FeudData extends SavedData {
                 if (family == null) continue;
                 Pack p = new Pack(t.getUUID("id"), family, t.getString("dimension"), t.getString("place"),
                         t.getInt("color"), t.getInt("homeX"), t.getInt("homeZ"), t.getLong("formedAt"));
+                // Saves from before 0.1.0-beta.3 have no "settling": their packs keep the homes they have.
+                p.settling = t.getBoolean("settling");
+                p.retreatHome = t.getBoolean("retreatHome");
+                p.settleFromX = t.getInt("settleFromX");
+                p.settleFromZ = t.getInt("settleFromZ");
                 if (t.hasUUID("boss")) p.boss = t.getUUID("boss");
                 if (t.hasUUID("liege")) p.liege = t.getUUID("liege");
                 p.grunts = t.getInt("grunts");

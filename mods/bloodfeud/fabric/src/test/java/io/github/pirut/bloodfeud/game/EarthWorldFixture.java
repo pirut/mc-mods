@@ -195,6 +195,23 @@ public final class EarthWorldFixture {
             return 0;
         }
 
+        /** Light from blocks (torches, campfires) at each position; none anywhere else. */
+        public Map<BlockPos, Integer> blockLight;
+
+        @Override
+        public int getBrightness(net.minecraft.world.level.LightLayer layer, BlockPos pos) {
+            if (layer != net.minecraft.world.level.LightLayer.BLOCK || blockLight == null) return 0;
+            return blockLight.getOrDefault(pos, 0);
+        }
+
+        public net.minecraft.world.level.border.WorldBorder border;
+
+        @Override
+        public net.minecraft.world.level.border.WorldBorder getWorldBorder() {
+            if (border == null) border = new net.minecraft.world.level.border.WorldBorder();
+            return border;
+        }
+
         @Override
         public DimensionType dimensionType() {
             return type;
