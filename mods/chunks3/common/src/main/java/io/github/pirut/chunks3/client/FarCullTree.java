@@ -101,7 +101,13 @@ final class FarCullTree {
      * holds only boxes outside it. The branches stay as they are for the next view of the same
      * columns, as from a camera moving within the walk's ground (see FarRenderer#walkDue).
      */
-    void classify(FrustumIntersection view, double camX, double camY, double camZ) {
+    void classify(FrustumIntersection view, double camX, double camY, double camZ) { classify(view, camX, camY, camZ, 0.0); }
+
+    /** The same with every box grown by {@code grow} blocks each way, for a view held while the camera moves that far (see FarRenderer#VIEW_MARGIN). */
+    void classify(FrustumIntersection view, double camX, double camY, double camZ, double grow) { classify(view, camX, camY, camZ, grow, 0); }
+
+    /** The same with every box reaching down as far as the Earth's curve can drop it with this curvature (see {@link EarthView}). */
+    void classify(FrustumIntersection view, double camX, double camY, double camZ, double grow, float curvature) {
         if (!enabled) return;
         // Branches come after the ones holding them, so going backwards a branch is complete before its holder takes it in.
         for (int n = nodes - 1; n >= 0 && !grown; n--) {
@@ -113,8 +119,9 @@ final class FarCullTree {
         Arrays.fill(state, 0, columns, PARTLY);
         for (int n = 0; n < nodes; ) {
             if (start[n] == end[n] || box[n * 6] > box[n * 6 + 3]) { n++; continue; }
-            int seen = view.intersectAab((float) (box[n * 6] - camX), (float) (box[n * 6 + 1] - camY), (float) (box[n * 6 + 2] - camZ),
-                    (float) (box[n * 6 + 3] - camX), (float) (box[n * 6 + 4] - camY), (float) (box[n * 6 + 5] - camZ));
+            double drop = EarthView.drop(box[n * 6], box[n * 6 + 3], box[n * 6 + 2], box[n * 6 + 5], camX, camZ, grow, curvature);
+            int seen = view.intersectAab((float) (box[n * 6] - grow - camX), (float) (box[n * 6 + 1] - grow - drop - camY), (float) (box[n * 6 + 2] - grow - camZ),
+                    (float) (box[n * 6 + 3] + grow - camX), (float) (box[n * 6 + 4] + grow - camY), (float) (box[n * 6 + 5] + grow - camZ));
             if (seen == FrustumIntersection.INTERSECT) { n++; continue; }
             byte settled = seen == FrustumIntersection.INSIDE ? INSIDE : OUTSIDE;
             Arrays.fill(state, start[n], end[n], settled);

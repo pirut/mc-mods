@@ -17,9 +17,10 @@ displayURL="https://github.com/pirut/mc-mods/tree/main/mods/chunks3"
 authors="JR Bussard"
 credits='''The cubic engine of Earth Platform. Its distant terrain renderer is built on ideas from Voxy by Cortex (MCRcortex) and Distant Horizons by James Seibel and contributors: the voxel level pyramid, detail by on-screen size, compact GPU faces and Voxy's shader-pack interface from Voxy; exact far heights and server-built far terrain from Distant Horizons. It contains no code from either.'''
 description='''
-Cubic chunks for other mods to build on. A mod registers a dimension with Chunks3 and its blocks then live in
-16-block cubes from Y -16,384 to 16,383, with vanilla mining, building, light, mobs and redstone working on top
-and a distant terrain renderer that works with Sodium and Iris shader packs. Adds nothing to the game by itself.
+Cubic chunks for Minecraft. Pick the "Cubic" world type when making a world: a vanilla-looking overworld whose
+ground goes on down for thousands of blocks to bedrock at Y -4,096, with a distant terrain renderer that draws to
+the horizon and works with Sodium and Iris shader packs. Other mods can register their own dimensions, whose blocks
+then live in 16-block cubes from Y -16,384 to 16,383, with vanilla mining, building, light, mobs and redstone on top.
 '''
 
 [[mixins]]
