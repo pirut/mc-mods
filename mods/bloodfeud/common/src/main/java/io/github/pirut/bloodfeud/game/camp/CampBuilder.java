@@ -773,6 +773,8 @@ public final class CampBuilder {
         // 2. New builds, upgrades and repairs, by the pack's crew in the open; in-place ruinations off-screen
         for (Pack pack : feud.packs.values()) {
             if (jobs.containsKey(pack.id)) continue;
+            // A pack still choosing ground for its home (it just withdrew from a fight) builds nothing yet.
+            if (pack.settling && !pack.siteSet && pack.works == null) continue;
             HeldTicket existingTicket = heldTickets.get(pack.id);
             if (existingTicket != null && existingTicket.purpose == TicketPurpose.REBANNER) continue;
             if (!scheduled && !isWaitingForCubes(existingTicket) && !searches.containsKey(pack.id)) continue;

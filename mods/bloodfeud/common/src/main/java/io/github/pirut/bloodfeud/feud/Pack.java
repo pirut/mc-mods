@@ -13,7 +13,18 @@ public final class Pack {
     public final String place;
     /** Dye color index (0 to 15), worn by every member. */
     public final int color;
-    public final int homeX, homeZ;
+    /**
+     * Where it lives and roams from. A pack that forms after a fight withdraws from it first: its home is then picked
+     * {@code Feud.retreatMin} to {@code Feud.retreatMax} blocks away (see {@link #settling}). Packs from older saves
+     * keep theirs.
+     */
+    public int homeX, homeZ;
+    /**
+     * True while a pack that just formed is still choosing ground for its new home: nothing is built for it yet. The
+     * home already holds the spot it is heading for; {@link #settleFromX}/{@link #settleFromZ} hold where it formed.
+     */
+    public boolean settling;
+    public int settleFromX, settleFromZ;
     public UUID boss;
     /** The King's pack this one kneels to, or null. */
     public UUID liege;
@@ -114,6 +125,7 @@ public final class Pack {
             String what = SettlementTier.byLevel(works.toTier).title(false);
             return what + (works.repair ? ", being rebuilt (" : ", being built (") + works.percent() + "%)";
         }
+        if (settling && !siteSet) return title + " (on the move to a new home)";
         if (!ruined && builtTier < (tier == null ? SettlementTier.CAMP : tier).level) {
             return title + " (not built yet)";
         }

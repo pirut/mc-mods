@@ -279,7 +279,7 @@ public final class SiteFinder {
         };
     }
 
-    private static boolean tooCloseToWorldSpawn(ServerLevel level, int x, int z) {
+    public static boolean tooCloseToWorldSpawn(ServerLevel level, int x, int z) {
         boolean earth = Earth.is(level);
         if (!earth && !level.dimension().equals(Level.OVERWORLD)) return false;
         BlockPos spawn = earth ? Earth.arrival(level) : level.getSharedSpawnPos();

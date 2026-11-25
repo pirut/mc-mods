@@ -31,6 +31,18 @@ public final class Config {
     public boolean buildCamps = true;
     /** Blocks each builder places a minute. A crew of three at 60 puts up about three blocks a second. */
     public int campBlocksPerMinute = 60;
+    /** A pack that forms after a fight withdraws this far (in blocks, at least) before it makes its home. */
+    public int retreatMinDistance = 150;
+    /** ...and at most this far. */
+    public int retreatMaxDistance = 400;
+    /** How far from its home a pack patrols, and can find you. */
+    public int patrolRange = 500;
+    /** Chance (percent) a pack's patrol finds you in its ground at each 10-second check once the cooldown is over. */
+    public int patrolChancePercent = 20;
+    /** Most seconds a mob that just rose as a Brute takes to walk off and be gone. */
+    public int risenLeaveSeconds = 20;
+    /** Seconds after it is gone before a risen Brute can turn up again. */
+    public int risenRestSeconds = 300;
 
     private Path file;
 
@@ -50,6 +62,12 @@ public final class Config {
         c.takeGear = PropertiesFile.bool(p, "takeGear", c.takeGear);
         c.buildCamps = PropertiesFile.bool(p, "buildCamps", c.buildCamps);
         c.campBlocksPerMinute = Math.max(1, Math.min(1200, PropertiesFile.integer(p, "campBlocksPerMinute", c.campBlocksPerMinute)));
+        c.retreatMinDistance = Math.max(0, Math.min(1500, PropertiesFile.integer(p, "retreatMinDistance", c.retreatMinDistance)));
+        c.retreatMaxDistance = Math.max(c.retreatMinDistance, Math.min(1500, PropertiesFile.integer(p, "retreatMaxDistance", c.retreatMaxDistance)));
+        c.patrolRange = Math.max(0, Math.min(2000, PropertiesFile.integer(p, "patrolRange", c.patrolRange)));
+        c.patrolChancePercent = Math.max(0, Math.min(100, PropertiesFile.integer(p, "patrolChancePercent", c.patrolChancePercent)));
+        c.risenLeaveSeconds = Math.max(3, Math.min(120, PropertiesFile.integer(p, "risenLeaveSeconds", c.risenLeaveSeconds)));
+        c.risenRestSeconds = Math.max(0, PropertiesFile.integer(p, "risenRestSeconds", c.risenRestSeconds));
         c.save();
         return c;
     }
@@ -86,8 +104,22 @@ public final class Config {
                 # Pack mobs build their settlements in front of you (out of sight, they're built off screen).
                 # Blocks each builder places a minute (1 to 1200).
                 campBlocksPerMinute=%d
+                # A pack doesn't settle where you fought it: it withdraws this many blocks (from the min to the max)
+                # and makes its home and camp there. Packs that already have a home keep it.
+                retreatMinDistance=%d
+                retreatMaxDistance=%d
+                # How far from its home (in blocks) a pack patrols. A patrol can find you anywhere in that ground.
+                patrolRange=%d
+                # Chance (percent) a pack's patrol finds you in its ground at each 10-second check once the cooldown is
+                # over. A patrol with a Brute that is hunting you always does.
+                patrolChancePercent=%d
+                # A mob that rises as a Brute walks off and is gone within this many seconds (3 to 120).
+                risenLeaveSeconds=%d
+                # Seconds after it is gone before it can turn up again.
+                risenRestSeconds=%d
                 """.formatted(killsToRise, riseCooldownSeconds, encounterCooldownSeconds, encounterChancePercent, spawnSafeRadius,
-                maxActiveBrutes, maxPacks, announceNews, giveLedger, takeGear, buildCamps, campBlocksPerMinute);
+                maxActiveBrutes, maxPacks, announceNews, giveLedger, takeGear, buildCamps, campBlocksPerMinute,
+                retreatMinDistance, retreatMaxDistance, patrolRange, patrolChancePercent, risenLeaveSeconds, risenRestSeconds);
         PropertiesFile.writeText(file, text, (f, e) -> BloodFeud.LOG.warn("Couldn't write {}: {}", f, e.toString()));
     }
 }

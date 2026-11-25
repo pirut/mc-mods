@@ -17,6 +17,10 @@ rivalries around the places where players fight.
   kills you again gets stronger.
 - **It got away.** A Brute you run from gets stronger for driving you off.
 
+A mob that rises doesn't stay to fight. It turns and walks off ("It will be back"), toward its pack's home if it has
+one, and is gone once you can't see it, or within about 20 seconds. It comes back later, the same Brute with the same
+memory, name and rank: hunting you down, leading a patrol of its pack, or meeting you at its home.
+
 Brutes have a level, a name and an epithet, and a few traits: things it can't be hurt by (Arrowproof, Fireproof,
 Unshakable, Watchful), things it is good at (Venom Blade, Bonebreaker, Thief, Blink, Berserker, Regenerating,
 Packcaller, Shieldbearer, Night Stalker), ways to kill it fast (Headshot, Unguarded, Beast-Bait, Hallowed Bane, Glass
@@ -34,6 +38,10 @@ show gear, so they get a tougher hide instead of armor and caps.
 
 - At night a lone Brute pulls in plain mobs of its kind. When two Brutes of the same family meet, the stronger one
   becomes the **Boss** and the other its first Brute. That's a pack.
+- A pack doesn't settle where it formed, which is where you fought it. It withdraws 150 to 400 blocks, to dry, level
+  ground no other pack holds, and makes its home and camp there.
+- A pack holds the ground for about 500 blocks round its home and patrols it. Out there, away from its camp, a
+  patrol can find you: a Brute (the one hunting you, if any) and a few grunts, coming from the direction of its home.
 - A pack is named after the place it formed (the Mossy Bog Pack, the Cold Ridge Pack) and has a color. Its members
   wear leather caps in that color and the Boss wears the pack's banner.
 - Packs grow every night, and faster for every player they kill. New Brutes rise inside the pack. A Brute that gets
@@ -85,7 +93,10 @@ no other pack builds there.
 
 Ruins, the crumbling of abandoned settlements, and banner changes still happen off screen, while players are away.
 
-Settings in `config/bloodfeud.properties`: `campBlocksPerMinute` (each builder's pace, default 60). Turn automatic
+Settings in `config/bloodfeud.properties`: `campBlocksPerMinute` (each builder's pace, default 60),
+`retreatMinDistance` and `retreatMaxDistance` (how far a new pack withdraws from the fight, default 150 and 400),
+`patrolRange` (default 500), `patrolChancePercent` (default 20), `risenLeaveSeconds` (default 20) and
+`risenRestSeconds` (how long a risen Brute stays away, default 300). Turn automatic
 pack settlements off or back on anytime with `buildCamps=false` or `/bloodfeud camps off` and `/bloodfeud camps on`.
 
 ## Relics
