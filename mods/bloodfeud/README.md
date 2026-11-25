@@ -61,11 +61,32 @@ King, or being wiped out completely — its Camp, Outpost, Stronghold, or Town f
 campfires, collapsed roofs and walls, cracked/mossy family masonry, tattered banners, rubble, and cobwebs). If the
 pack later rebuilds its strength back to its threshold, it restores its ruined settlement.
 
-Every family builds in its own vanilla block palette, foundations adapt to hills, automatic settlement changes
-(new builds, upgrades, ruinations, repairs, and banner updates) happen off-screen while players are away so nothing
-pops in front of you, and automatic placement avoids player-built bases and world spawn. Turn automatic pack
-settlements off or back on anytime with `buildCamps=false` in `config/bloodfeud.properties` or `/bloodfeud camps off`
-and `/bloodfeud camps on`.
+Every family builds in its own vanilla block palette, foundations adapt to hills, and automatic placement avoids
+player-built bases and world spawn.
+
+**You can watch them build.** While you can see a pack's site, a new camp, an upgrade or a repair goes up block by
+block: a crew of the pack's own mobs clears the site, then walks to each spot and puts the block there, ground first,
+then walls and roofs, with the stash and banners last. A crew of three places up to three blocks a second (less when
+it has to walk), and a bigger pack sends more builders. A builder has to reach a block and see it to place it: it
+never builds through a wall or from afar. One that can't walk to its spot is moved there only if the spot is safe to
+stand on, and a block no builder can get at is put up off screen later (unless it's shut in where nobody could ever
+see it). They mind their work while you watch from a distance, and turn on you if you come within about 8 blocks or
+hit them. While nobody can see the site, it is built off screen instead, quickly, so you find it finished, or well
+along, when you get there. It's one build either way: walk into view in the middle of it and the crew carries on from
+the same block. The Ledger, `/bloodfeud packs` and the map say how far along a build is ("Camp, being built (40%)").
+
+Kill the builders and the build stalls, half built, in view or not. The pack sends a new crew about five minutes later
+if it's still around, and its Brutes remember who killed their builders. Builders are grunts, so killing them also
+weakens the pack, but they drop nothing (not even their gear) and give no experience: a crew is no farm. A pack beaten
+down mid-build falls to ruin, and the ruin (and any later repair) covers whatever it had already put up. A camp only
+ever counts the blocks it put down itself, while they still stand, as its own: anything a player puts in the site is
+left as it is, even across a restart, and the rest is built around it. A pack's site keeps room for a Stronghold, and
+no other pack builds there.
+
+Ruins, the crumbling of abandoned settlements, and banner changes still happen off screen, while players are away.
+
+Settings in `config/bloodfeud.properties`: `campBlocksPerMinute` (each builder's pace, default 60). Turn automatic
+pack settlements off or back on anytime with `buildCamps=false` or `/bloodfeud camps off` and `/bloodfeud camps on`.
 
 ## Relics
 
@@ -127,8 +148,10 @@ far-away pack no one has met fades away.
 ## On the Earth
 
 [Earth Platform](https://github.com/pirut/earth-platform) is optional and needs no setup: packs settle at real
-heights and leave player builds alone there too (tested with build 76, with and without Sable). A camp takes a little
-longer to appear somewhere nobody has visited, while the map data for it downloads. The Ledger's map and the Map of
+heights and leave player builds alone there too (tested with builds 76, 77 and 78, with and without Sable). The
+Earth only keeps the ground near players loaded, so a settlement nobody can see has its ground loaded just for its
+build, and let go after. With build 78 or later its cubes are kept for the build; with older builds they are asked
+for until they are all there at once. Nothing is ever built into ground that isn't loaded. The Ledger's map and the Map of
 the Feuds don't show the Earth's terrain, only where packs and Brutes are.
 
 ## Commands

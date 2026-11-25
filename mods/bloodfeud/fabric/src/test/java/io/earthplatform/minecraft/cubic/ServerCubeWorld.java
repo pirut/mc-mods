@@ -34,6 +34,21 @@ public final class ServerCubeWorld extends CubeWorld {
         return ready;
     }
 
+    /** What build 78 keeps loaded for whom: the holder and the block it keeps cubes round. */
+    public final java.util.Map<Object, BlockPos> kept = new java.util.HashMap<>();
+
+    /** For a test of a failing Earth Platform: keepAround throws once this many holders are kept. */
+    public int failKeepAfter = Integer.MAX_VALUE;
+
+    public void keepAround(Object holder, BlockPos at) {
+        if (kept.size() >= failKeepAfter) throw new IllegalStateException("keepAround failed");
+        kept.put(holder, at);
+    }
+
+    public void release(Object holder) {
+        kept.remove(holder);
+    }
+
     public void deliver() {
         for (BlockPos cube : requested) loaded.put(cube, new Cube());
         requested.clear();

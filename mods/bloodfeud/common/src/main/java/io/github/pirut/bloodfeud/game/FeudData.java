@@ -86,6 +86,7 @@ public final class FeudData extends SavedData {
                 for (Long c : s.skippedColumns()) cols[idx++] = c;
                 st.putLongArray("skippedColumns", cols);
             }
+            savePlaced(st, s.placed());
             abandoned.add(st);
         }
         tag.put("abandonedSites", abandoned);
@@ -150,6 +151,88 @@ public final class FeudData extends SavedData {
         return t;
     }
 
+    /** Saves a placed map compactly: the positions, and for each an index into a list of the block ids used. */
+    private static void savePlaced(CompoundTag t, Map<Long, String> placed) {
+        if (placed.isEmpty()) return;
+        List<String> palette = new ArrayList<>();
+        Map<String, Integer> index = new HashMap<>();
+        long[] at = new long[placed.size()];
+        int[] what = new int[placed.size()];
+        int i = 0;
+        for (Map.Entry<Long, String> e : placed.entrySet()) {
+            at[i] = e.getKey();
+            what[i] = index.computeIfAbsent(e.getValue(), k -> {
+                palette.add(k);
+                return palette.size() - 1;
+            });
+            i++;
+        }
+        CompoundTag p = new CompoundTag();
+        p.putLongArray("at", at);
+        p.putIntArray("block", what);
+        p.put("palette", strings(palette));
+        t.put("placed", p);
+    }
+
+    private static void loadPlaced(CompoundTag t, Map<Long, String> into) {
+        if (!t.contains("placed", Tag.TAG_COMPOUND)) return;
+        CompoundTag p = t.getCompound("placed");
+        long[] at = p.getLongArray("at");
+        int[] what = p.getIntArray("block");
+        ListTag palette = p.getList("palette", Tag.TAG_STRING);
+        for (int i = 0; i < Math.min(at.length, what.length); i++) {
+            if (what[i] >= 0 && what[i] < palette.size()) into.put(at[i], palette.getString(what[i]));
+        }
+    }
+
+    /** Works saves older than this kept no record of what they placed, and start over. */
+    private static final int WORKS_VERSION = 3;
+
+    private static CompoundTag saveWorks(Pack.Works w) {
+        CompoundTag t = new CompoundTag();
+        t.putBoolean("repair", w.repair);
+        t.putInt("from", w.fromTier);
+        t.putInt("to", w.toTier);
+        t.putInt("color", w.color);
+        t.putIntArray("vassalColors", w.vassalColors.stream().mapToInt(Integer::intValue).toArray());
+        t.put("skipZones", strings(new ArrayList<>(w.skipZones)));
+        t.putLongArray("skipColumns", w.skipColumns.stream().mapToLong(Long::longValue).toArray());
+        t.putInt("done", w.done);
+        t.putInt("total", w.total);
+        t.putInt("v", WORKS_VERSION);
+        t.putInt("placedCount", w.placedCount);
+        t.putIntArray("deferred", w.deferred.stream().mapToInt(Integer::intValue).toArray());
+        t.putLong("stalledUntil", w.stalledUntil);
+        if (w.wreckedBy != null) t.putUUID("wreckedBy", w.wreckedBy);
+        return t;
+    }
+
+    private static Pack.Works loadWorks(CompoundTag t) {
+        List<Integer> vassals = new ArrayList<>();
+        for (int c : t.getIntArray("vassalColors")) vassals.add(c);
+        java.util.Set<String> zones = new java.util.HashSet<>();
+        for (Tag s : t.getList("skipZones", Tag.TAG_STRING)) zones.add(s.getAsString());
+        java.util.Set<Long> cols = new java.util.HashSet<>();
+        for (long c : t.getLongArray("skipColumns")) cols.add(c);
+        int from = Math.max(0, Math.min(SettlementTier.TOWN.level, t.getInt("from")));
+        int to = Math.max(1, Math.min(SettlementTier.TOWN.level, t.getInt("to")));
+        Pack.Works w = new Pack.Works(t.getBoolean("repair"), from, Math.max(from, to), t.getInt("color"), vassals, zones, cols);
+        w.done = Math.max(0, t.getInt("done"));
+        w.total = Math.max(0, t.getInt("total"));
+        if (t.getInt("v") < WORKS_VERSION) {
+            // Saved by a build that kept no record of what it placed: start again from the first step, which passes
+            // over whatever already stands and never touches a player's block.
+            BloodFeud.LOG.info("Blood Feud: a settlement build saved by an older version starts over from its first step");
+            w.done = 0;
+            return w;
+        }
+        w.placedCount = Math.max(0, t.getInt("placedCount"));
+        for (int i : t.getIntArray("deferred")) if (i >= 0) w.deferred.add(i);
+        w.stalledUntil = t.getLong("stalledUntil");
+        if (t.hasUUID("wreckedBy")) w.wreckedBy = t.getUUID("wreckedBy");
+        return w;
+    }
+
     private static CompoundTag savePack(Pack p) {
         CompoundTag t = new CompoundTag();
         t.putUUID("id", p.id);
@@ -190,6 +273,8 @@ public final class FeudData extends SavedData {
         ListTag met = new ListTag();
         for (UUID u : p.met) met.add(StringTag.valueOf(u.toString()));
         t.put("met", met);
+        if (p.works != null) t.put("works", saveWorks(p.works));
+        savePlaced(t, p.placed);
         ListTag chronicle = new ListTag();
         for (Pack.Event e : p.chronicle) {
             CompoundTag c = new CompoundTag();
@@ -303,6 +388,8 @@ public final class FeudData extends SavedData {
                     legacyPacks.add(p);
                 }
                 for (Tag s : t.getList("met", Tag.TAG_STRING)) p.met.add(UUID.fromString(s.getAsString()));
+                if (p.siteSet && t.contains("works", Tag.TAG_COMPOUND)) p.works = loadWorks(t.getCompound("works"));
+                if (p.siteSet) loadPlaced(t, p.placed);
                 for (Tag c : t.getList("chronicle", Tag.TAG_COMPOUND)) {
                     p.remember(((CompoundTag) c).getLong("t"), ((CompoundTag) c).getString("s"));
                 }
@@ -328,10 +415,12 @@ public final class FeudData extends SavedData {
                 for (Tag s : st.getList("skippedZones", Tag.TAG_STRING)) sz.add(s.getAsString());
                 java.util.Set<Long> sc = new java.util.HashSet<>();
                 for (long c : st.getLongArray("skippedColumns")) sc.add(c);
+                Map<Long, String> placed = new HashMap<>();
+                loadPlaced(st, placed);
                 f.abandonedSites.add(new Feud.AbandonedSite(
                         st.getUUID("id"), fam, st.getInt("color"), st.getString("dimension"),
                         st.getInt("siteX"), st.getInt("siteY"), st.getInt("siteZ"),
-                        Math.floorMod(st.getInt("siteFacing"), 4), bt, vc, sz, sc));
+                        Math.floorMod(st.getInt("siteFacing"), 4), bt, vc, sz, sc, placed));
             } catch (RuntimeException e) {
                 BloodFeud.LOG.warn("Skipped an abandoned site that couldn't be read: {}", e.toString());
             }

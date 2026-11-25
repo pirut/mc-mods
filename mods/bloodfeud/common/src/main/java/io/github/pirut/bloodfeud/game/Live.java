@@ -22,6 +22,8 @@ import io.github.pirut.lib.Spots;
 import io.github.pirut.lib.Titles;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.storage.loot.BuiltInLootTables;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -148,6 +150,30 @@ public final class Live {
         this.server = server;
         this.data = FeudData.get(server);
         this.data.feud.campsEnabled = BloodFeud.config().buildCamps;
+        campBuilder.setHiring(this::hireBuilder);
+    }
+
+    /** One builder for a pack's settlement: a grunt of its kind, standing near the site. */
+    private Mob hireBuilder(ServerLevel level, Pack pack, BlockPos near, int radius) {
+        Brute boss = data.feud.brute(pack.boss);
+        String type = boss != null ? boss.entityType : pack.family.defaultType;
+        Mob mob = spawnGrunt(level, pack, type, near, pack.id, false);
+        if (mob == null) {
+            BlockPos at = Spots.near(level, near, 2, Math.max(8, Math.min(16, radius)), level.getRandom());
+            if (at != null) mob = spawnGrunt(level, pack, type, at, pack.id, false);
+        }
+        if (mob != null) {
+            // A crew is hired for the build, not for farming: it drops no loot and gives no experience. Killing it
+            // still costs the pack its grunts, stalls the build and is remembered.
+            CompoundTag tag = new CompoundTag();
+            mob.saveWithoutId(tag);
+            tag.putString("DeathLootTable", BuiltInLootTables.EMPTY.location().toString());
+            mob.load(tag);
+            mob.skipDropExperience();
+            // No drops (its gear too, a brute's axe), no pickups, and no burning in the sun while it builds.
+            CampBuilder.outfitCrew(mob);
+        }
+        return mob;
     }
 
     public static Live get(MinecraftServer server) {
@@ -243,6 +269,14 @@ public final class Live {
         gruntLevel.remove(mob.getUUID());
         if (owner != null) {
             Pack p = data.feud.pack(owner);
+            ServerPlayer playerKiller = source.getEntity() instanceof ServerPlayer sp ? sp : null;
+            if (p != null && campBuilder.isBuilder(mob.getUUID())
+                    && campBuilder.builderDied(p, mob.getUUID(), playerKiller == null ? null : playerKiller.getUUID(), gameTime())) {
+                String what = p.works == null ? "camp" : SettlementTier.byLevel(p.works.toTier).key;
+                data.feud.wreckedBuild(p, playerKiller.getUUID(), playerKiller.getName().getString(), what, now());
+                playerKiller.sendSystemMessage(Component.literal("You killed the last of " + p.title() + "'s builders. Its "
+                        + what + " stands half built, until it sends more.").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+            }
             if (p != null) {
                 data.feud.gruntKilled(p, now());
                 announce(data.feud.drainNews());
@@ -669,6 +703,7 @@ public final class Live {
         }
         for (Iterator<Map.Entry<UUID, UUID>> it = grunts.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<UUID, UUID> g = it.next();
+            if (campBuilder.isBuilder(g.getKey())) continue; // it goes when its build is done
             ServerLevel level = server.getLevel(gruntLevel.getOrDefault(g.getKey(), net.minecraft.world.level.Level.OVERWORLD));
             if (owners.contains(g.getValue())) {
                 Pack pk = data.feud.pack(g.getValue());
@@ -961,6 +996,7 @@ public final class Live {
     /** Makes a mob the living body of a Brute record: name, gear, stats, boss bar. */
     void becomeBrute(Mob mob, Brute b) {
         removeActive(b.id, true);
+        campBuilder.leaveCrew(mob); // a builder that rises is a builder no more
         for (String t : new ArrayList<>(mob.getTags())) if (t.startsWith(TAG_ID) || t.startsWith(TAG_SAW)) mob.removeTag(t);
         mob.removeTag(TAG_GRUNT);
         mob.addTag(TAG_BRUTE);

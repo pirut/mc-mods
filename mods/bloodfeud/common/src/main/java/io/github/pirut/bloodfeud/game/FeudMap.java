@@ -57,7 +57,7 @@ public final class FeudMap {
         boolean campsOn = BloodFeud.config().buildCamps;
         for (Pack pk : packs) {
             Brute boss = f.brute(pk.boss);
-            String tierTitle = pk.displayTierTitle(campsOn);
+            String tierTitle = pk.settlementLabel(campsOn);
             String tierTag = tierTitle.isEmpty() ? "" : " (" + tierTitle + ")";
             String who = boss == null ? "" : ", " + boss.name + (f.top(pk) == pk && !f.vassals(pk).isEmpty() ? " the King" : "");
             marks.add(new Mark("pack:" + pk.id, pk.campX(), pk.campZ(), cap(pk.title()) + tierTag + who, pk.color, false));

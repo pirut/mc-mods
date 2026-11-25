@@ -189,7 +189,7 @@ public final class Ledger {
         DyeColor dye = DyeColor.byId(pk.color);
         b.line(Component.literal("■ ").withStyle(s -> s.withColor(dye.getTextColor()))
                 .append(text(cap(pk.title().substring(4)), INK).withStyle(ChatFormatting.BOLD)));
-        String tierTitle = pk.displayTierTitle(BloodFeud.config().buildCamps);
+        String tierTitle = pk.settlementLabel(BloodFeud.config().buildCamps);
         String tierSuffix = tierTitle.isEmpty() ? "" : " · " + tierTitle;
         b.line(text(cap(pk.family.title) + tierSuffix, FADED));
         String dist = pk.dimension.equals(Live.dim(p.level())) ? FeudCommand.where(p.getX(), p.getZ(), pk.campX(), pk.campZ())

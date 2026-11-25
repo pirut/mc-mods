@@ -29,6 +29,8 @@ public final class Config {
     public boolean takeGear = true;
     /** Packs automatically build camps that grow into outposts, strongholds and towns as they grow stronger. */
     public boolean buildCamps = true;
+    /** Blocks each builder places a minute. A crew of three at 60 puts up about three blocks a second. */
+    public int campBlocksPerMinute = 60;
 
     private Path file;
 
@@ -47,6 +49,7 @@ public final class Config {
         c.giveLedger = PropertiesFile.bool(p, "giveLedger", c.giveLedger);
         c.takeGear = PropertiesFile.bool(p, "takeGear", c.takeGear);
         c.buildCamps = PropertiesFile.bool(p, "buildCamps", c.buildCamps);
+        c.campBlocksPerMinute = Math.max(1, Math.min(1200, PropertiesFile.integer(p, "campBlocksPerMinute", c.campBlocksPerMinute)));
         c.save();
         return c;
     }
@@ -80,8 +83,11 @@ public final class Config {
                 takeGear=%b
                 # Packs build camps that grow into outposts, strongholds and towns as they grow stronger.
                 buildCamps=%b
+                # Pack mobs build their settlements in front of you (out of sight, they're built off screen).
+                # Blocks each builder places a minute (1 to 1200).
+                campBlocksPerMinute=%d
                 """.formatted(killsToRise, riseCooldownSeconds, encounterCooldownSeconds, encounterChancePercent, spawnSafeRadius,
-                maxActiveBrutes, maxPacks, announceNews, giveLedger, takeGear, buildCamps);
+                maxActiveBrutes, maxPacks, announceNews, giveLedger, takeGear, buildCamps, campBlocksPerMinute);
         PropertiesFile.writeText(file, text, (f, e) -> BloodFeud.LOG.warn("Couldn't write {}: {}", f, e.toString()));
     }
 }

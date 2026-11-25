@@ -50,6 +50,75 @@ public final class Pack {
     public final Set<Long> skippedColumns = new HashSet<>();
     /** Players who have seen it. */
     public final Set<UUID> met = new HashSet<>();
+    /** The settlement its builders are putting up right now, or null. Saved, so a build picks up where it stopped. */
+    public Works works;
+    /**
+     * Every block the pack's settlement has put down and is still answerable for: the offset from the site
+     * ({@code BlockPos.asLong}) to the block's id. A position is the pack's only while this block still stands there.
+     * Empty for settlements built before 0.1.0-beta.2, which fall back to their blueprint.
+     */
+    public final java.util.Map<Long, String> placed = new java.util.HashMap<>();
+
+    /**
+     * A settlement under construction: which plan, and how far the builders got. The plan's steps come from the
+     * pack and these fields alone, so the same steps come back after a restart.
+     */
+    public static final class Works {
+        /** True for rebuilding a ruined settlement, false for building a new one or the next tier. */
+        public final boolean repair;
+        public final int fromTier, toTier;
+        /** The color its banners and wool are in, fixed for the whole build. */
+        public final int color;
+        public final java.util.List<Integer> vassalColors;
+        /** Parts left out when the build started (a player's block stood in them), on top of the pack's own. */
+        public final Set<String> skipZones;
+        public final Set<Long> skipColumns;
+        /** Steps done (placed, or passed over because nothing needed doing there). */
+        public int done;
+        /** Steps in the whole plan, for "40% built". */
+        public int total;
+        /** Blocks this build has put down, so a cut-short build can tell whether it changed anything. */
+        public int placedCount;
+        /**
+         * Steps its crew couldn't place safely (no builder could reach or see them, or a move there wasn't safe),
+         * in plan order. They are placed off screen once nobody can see the site.
+         */
+        public final java.util.TreeSet<Integer> deferred = new java.util.TreeSet<>();
+        /** No builders come before this game time: a player killed the last of them. */
+        public long stalledUntil;
+        /** The player who killed the last builders, or null. */
+        public UUID wreckedBy;
+
+        public Works(boolean repair, int fromTier, int toTier, int color, java.util.List<Integer> vassalColors,
+                     Set<String> skipZones, Set<Long> skipColumns) {
+            this.repair = repair;
+            this.fromTier = fromTier;
+            this.toTier = toTier;
+            this.color = color;
+            this.vassalColors = vassalColors == null ? java.util.List.of() : java.util.List.copyOf(vassalColors);
+            this.skipZones = skipZones == null ? new HashSet<>() : new HashSet<>(skipZones);
+            this.skipColumns = skipColumns == null ? new HashSet<>() : new HashSet<>(skipColumns);
+        }
+
+        /** How far along, 0 to 100. */
+        public int percent() {
+            return total <= 0 ? 0 : Math.min(100, (int) (100L * done / total));
+        }
+    }
+
+    /** "Camp", "Stronghold, being built (40%)", "Ruined Camp": the settlement as a player would find it. */
+    public String settlementLabel(boolean campsEnabled) {
+        String title = displayTierTitle(campsEnabled);
+        if (title.isEmpty() || !campsEnabled) return title;
+        if (works != null) {
+            String what = SettlementTier.byLevel(works.toTier).title(false);
+            return what + (works.repair ? ", being rebuilt (" : ", being built (") + works.percent() + "%)";
+        }
+        if (!ruined && builtTier < (tier == null ? SettlementTier.CAMP : tier).level) {
+            return title + " (not built yet)";
+        }
+        return title;
+    }
 
     /** What happened to the pack, oldest first, for the Feud Ledger. */
     public final java.util.Deque<Event> chronicle = new java.util.ArrayDeque<>();

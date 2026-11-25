@@ -2,10 +2,12 @@ package io.github.pirut.bloodfeud.game.camp;
 
 import io.github.pirut.bloodfeud.BloodFeud;
 import io.github.pirut.bloodfeud.feud.Family;
+import io.github.pirut.bloodfeud.feud.Feud;
 import io.github.pirut.bloodfeud.feud.Pack;
 import io.github.pirut.bloodfeud.feud.SettlementTier;
 import io.github.pirut.bloodfeud.game.Earth;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
@@ -107,6 +109,17 @@ public final class SiteFinder {
                 origin.getX() + reach, origin.getY() + SITE_UP, origin.getZ() + reach);
     }
 
+    /**
+     * Whether a site is loaded as it is, without asking for anything to load: its chunks, and on the Earth its cubes,
+     * from {@value #SITE_DOWN} below to {@value #SITE_UP} above. A site a player is near passes.
+     */
+    public static boolean isSiteLoaded(ServerLevel level, BlockPos origin, int radius) {
+        if (!isFootprintLoaded(level, origin.getX(), origin.getZ(), radius)) return false;
+        int reach = radius + SITE_SIDE_MARGIN;
+        return Earth.loaded(level, origin.getX() - reach, origin.getY() - SITE_DOWN, origin.getZ() - reach,
+                origin.getX() + reach, origin.getY() + SITE_UP, origin.getZ() + reach);
+    }
+
     /** True when a site on the Earth has to wait for its cubes. Never true in other dimensions. */
     public static boolean isWaitingForGround(ServerLevel level, BlockPos origin, int radius) {
         return Earth.is(level) && !isSiteReady(level, origin, radius);
@@ -130,6 +143,11 @@ public final class SiteFinder {
      * water/lava/cliffs/trees, avoiding non-natural blocks, and never synchronously force-loading chunks.
      */
     public static Site findAutoSite(ServerLevel level, Pack pack, SettlementTier tier) {
+        return findAutoSite(level, pack, tier, null);
+    }
+
+    /** As {@link #findAutoSite(ServerLevel, Pack, SettlementTier)}, keeping off sites other packs of {@code feud} hold. */
+    public static Site findAutoSite(ServerLevel level, Pack pack, SettlementTier tier, Feud feud) {
         int radius = Math.max(SettlementTier.CAMP.radius, tier == null ? SettlementTier.CAMP.radius : tier.radius);
         int facing = Math.floorMod(pack.id.hashCode(), 4);
         int baseX = pack.homeX;
@@ -146,6 +164,7 @@ public final class SiteFinder {
             int cx = baseX + off[0];
             int cz = baseZ + off[1];
             if (!isFootprintLoaded(level, cx, cz, radius)) continue;
+            if (claimedByAnother(feud, pack, cx, cz, radius)) continue;
             evaluated++;
             Site candidate = evaluateAutoCandidate(level, cx, cz, radius, facing);
             if (candidate != null) {
@@ -155,6 +174,57 @@ public final class SiteFinder {
         }
         pack.siteSearchOffset = (start + scanned) % total;
         return null;
+    }
+
+    /**
+     * How far a chosen site reserves the ground round it: a Stronghold's footprint, or more if it is already bigger.
+     * Nothing else is built inside another pack's reservation.
+     */
+    public static int reservedRadius(Pack pack) {
+        int tier = Math.max(pack.builtTier, pack.tier == null ? 1 : pack.tier.level);
+        if (pack.works != null) tier = Math.max(tier, pack.works.toTier);
+        return Math.max(SettlementTier.STRONGHOLD.radius, SettlementTier.byLevel(Math.max(1, tier)).radius)
+                + CampBlueprint.FOOTPRINT_MARGIN;
+    }
+
+    /**
+     * The ground other packs of {@code feud} hold, as {@code {minX, minZ, maxX, maxZ}}: their reservations, and
+     * abandoned settlements. Null {@code feud} holds nothing.
+     */
+    public static List<int[]> heldByOthers(Feud feud, Pack pack) {
+        List<int[]> held = new ArrayList<>();
+        if (feud == null) return held;
+        for (Pack other : feud.packs.values()) {
+            if (other == pack || !other.siteSet || !other.dimension.equals(pack.dimension)) continue;
+            int r = reservedRadius(other);
+            held.add(new int[]{other.siteX - r, other.siteZ - r, other.siteX + r, other.siteZ + r});
+        }
+        for (Feud.AbandonedSite site : feud.abandonedSites) {
+            if (!site.dimension().equals(pack.dimension)) continue;
+            int r = SettlementTier.byLevel(Math.max(1, site.builtTier())).radius + CampBlueprint.FOOTPRINT_MARGIN;
+            held.add(new int[]{site.siteX() - r, site.siteZ() - r, site.siteX() + r, site.siteZ() + r});
+        }
+        return held;
+    }
+
+    /** Whether a rectangle {@code {minX, minZ, maxX, maxZ}} overlaps any of {@code held}. */
+    public static boolean overlapsAny(List<int[]> held, int minX, int minZ, int maxX, int maxZ) {
+        for (int[] h : held) {
+            if (minX <= h[2] && maxX >= h[0] && minZ <= h[3] && maxZ >= h[1]) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Whether a site centred on {@code (x, z)} would reserve ground (a Stronghold's, or {@code radius} if bigger) that
+     * overlaps ground another pack of {@code feud} holds (see {@link #heldByOthers}). Null {@code feud} checks nothing.
+     */
+    public static boolean claimedByAnother(Feud feud, Pack pack, int x, int z, int radius) {
+        if (feud == null) return false;
+        // The candidate's whole reservation (a Stronghold's, or its own if bigger), not just its first camp: two sites
+        // never claim overlapping ground.
+        int r = Math.max(SettlementTier.STRONGHOLD.radius, radius) + CampBlueprint.FOOTPRINT_MARGIN;
+        return overlapsAny(heldByOthers(feud, pack), x - r, z - r, x + r, z + r);
     }
 
     static Site evaluateAutoCandidate(ServerLevel level, int cx, int cz, int radius, int facing) {
@@ -500,22 +570,51 @@ public final class SiteFinder {
     }
 
     /**
-     * A settlement's own positions, which know what the settlement puts at each: only those blocks (or natural ones)
-     * may be replaced there. A plain set of positions protects everything that isn't natural.
+     * A settlement's own positions. Exact (what the pack has put down, {@code Pack.placed}): a position is the pack's
+     * only while the very block it placed still stands there. Legacy (a settlement built before 0.1.0-beta.2, with no
+     * such record): the blocks its blueprint puts at each position, except anything colored (wool, carpet, banners),
+     * which it can't tell from a player's.
      */
     public static final class Owned extends java.util.AbstractSet<CampBlueprint.Spot> {
         private final Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials;
         private final FamilyPalette palette;
+        private final Map<Long, String> placed;
 
+        /** Legacy: by blueprint. */
         public Owned(Map<CampBlueprint.Spot, Set<CampBlueprint.Material>> materials, Family family) {
             this.materials = materials;
             this.palette = FamilyPalette.of(family);
+            this.placed = null;
+        }
+
+        /** Exact: a live view of what the pack has put down (offset {@code BlockPos.asLong} to block id). */
+        public Owned(Map<Long, String> placed) {
+            this.materials = Map.of();
+            this.palette = null;
+            this.placed = placed;
+        }
+
+        public boolean exact() {
+            return placed != null;
+        }
+
+        /** Materials that come in a pack's colors, which an older settlement can't prove are its own. */
+        static boolean colored(CampBlueprint.Material m) {
+            return switch (m) {
+                case WOOL_PRIMARY, WOOL_ACCENT, CARPET, BANNER_STANDING, BANNER_WALL, VASSAL_BANNER -> true;
+                default -> false;
+            };
         }
 
         boolean isSettlementBlock(CampBlueprint.Spot rel, BlockState state) {
-            Set<CampBlueprint.Material> placed = materials.get(rel);
-            if (placed == null) return false;
-            for (CampBlueprint.Material m : placed) {
+            if (placed != null) {
+                String mine = placed.get(BlockPos.asLong(rel.rx(), rel.ry(), rel.rz()));
+                return mine != null && mine.equals(BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
+            }
+            Set<CampBlueprint.Material> here = materials.get(rel);
+            if (here == null) return false;
+            for (CampBlueprint.Material m : here) {
+                if (colored(m)) continue;
                 if (palette.blocks(m).contains(state.getBlock())) return true;
             }
             return false;
@@ -523,17 +622,23 @@ public final class SiteFinder {
 
         @Override
         public boolean contains(Object o) {
+            if (placed != null) {
+                return o instanceof CampBlueprint.Spot spot && placed.containsKey(BlockPos.asLong(spot.rx(), spot.ry(), spot.rz()));
+            }
             return materials.containsKey(o);
         }
 
         @Override
         public java.util.Iterator<CampBlueprint.Spot> iterator() {
-            return materials.keySet().iterator();
+            if (placed == null) return materials.keySet().iterator();
+            java.util.List<CampBlueprint.Spot> spots = new java.util.ArrayList<>(placed.size());
+            for (long k : placed.keySet()) spots.add(new CampBlueprint.Spot(BlockPos.getX(k), BlockPos.getY(k), BlockPos.getZ(k)));
+            return spots.iterator();
         }
 
         @Override
         public int size() {
-            return materials.size();
+            return placed != null ? placed.size() : materials.size();
         }
     }
 
